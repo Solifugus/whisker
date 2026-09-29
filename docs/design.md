@@ -15,7 +15,8 @@ a path, a picture is a stream of bytes, and `cat picture.svg > /w0` puts it on
 the screen. What such a window cannot do is tell you **which thing the user
 touched**, because it holds a document, not a set of objects.
 
-So the missing layer is small and it is two pure functions:
+So the missing layer is small and it is two pure functions — the first
+certain, the second **not yet decided** (see §4.0):
 
 ```
 render(tree)        -> SVG text
@@ -62,9 +63,17 @@ no retained tree to keep in sync.
 From `docs/roadmap.md`, *"Open — damage tracking, before the GUI direction"*,
 measured with `tools/hosttest/scale.c` and on the C5 at 320×172:
 
-- full redraw **59 ms**; press **15 ms**; release **15 ms** — so a whole tap is
-  **30 ms** against 59 for one full frame, once band clipping is in
+- full redraw **59 ms**; press **15 ms**; release **15 ms** — so **acknowledging**
+  a tap is **30 ms** against 59 for one full frame, once band clipping is in
   (`RV9_SVG_SS_ROWS`).
+
+  **Read `modules/flick/flick.c` before quoting this.** It times *three draws*,
+  not an input round trip: the whole window, then the button's rows in a pressed
+  colour, then the button's rows back to normal. Its own header says *"2 and 3
+  together are what a person experiences as one tap."* There is **no input
+  device on the board** (§2.6), so no tap has ever been measured — what has been
+  measured is what it costs to *answer* one, which is the number that was in
+  doubt.
 - widening to 1024×600 costs only **1.7×** (not 3.2× — the per-band re-parse does
   not care about width), so a tap is about **52 ms at 1024×600** against ~640 ms
   for a full screen.
@@ -76,10 +85,46 @@ RV-9's own conclusion, which whisker takes as its budget: **"tap-to-act with a
 flash to confirm is affordable today."** A retained object tree with per-object
 bounding boxes is an optimisation for later, not a gate.
 
-**The consequence for whisker's design:** a full re-render per interaction is
-*not* affordable, and a re-render of the touched band is. So `render` should be
-able to produce **a fragment for one widget**, not only a whole document. That is
-a requirement, and it comes from a measurement rather than from taste.
+**The consequence for whisker's design, corrected after reading the driver.**
+An earlier draft of this document said `render` must emit *"a fragment for one
+widget"*. That is wrong, and the real mechanism is both simpler and more
+constraining.
+
+`RV9_SVG_SS_ROWS` is a **setstat carrying a row range**, stored as
+`clip_y0, clip_y1` — *"rows the next document should repaint"*. You then write a
+**complete SVG document**, and only the bands covering that range are rasterised
+and pushed. There is no partial XML anywhere. `flick` does exactly this: its
+`PRESSED` and `NORMAL` strings are whole `<svg>` documents with the same
+`viewBox`, containing **only the button** — because nothing outside the clipped
+rows would be drawn from them anyway.
+
+So what whisker needs is not a fragment but:
+
+```
+render(tree)          -> a complete SVG document of everything
+render(tree, id)      -> a complete SVG document, same viewBox, containing only
+                         what intersects that widget's rows
+rows(tree, id)        -> the row range to hand RV9_SVG_SS_ROWS
+```
+
+**And the sharp part: clipping is vertical only.** There is no horizontal clip,
+so repainting a widget repaints **the full width of its rows**, and the band is
+first cleared to the *device* background (`rv9_raster_clear(&b, s->bg)`, the
+`OPT_BG` descriptor option) — not to whatever the scene had drawn there. Anything
+sharing rows with the widget, and any background the scene painted, must be in
+that second document or it disappears.
+
+**This decides more of §4.3 than §4.3 does.** In a single **column**, no two
+widgets share rows, so each repaints alone. In a **row** of three buttons,
+tapping one repaints all three plus the panel background behind them. The
+clipping model rewards a column; it does not forbid a row, but it prices one, and
+that price should be in the design rather than discovered later.
+
+**A second cost, from the same source:** *"Every band still re-parses the whole
+document, so the saving is in bands not in parsing."* Parse cost therefore scales
+with document **size** even when repainting 48 rows. Terse emission is not only
+about the 4 KB ceiling in §2.3 — it is paid again on every band of every
+repaint.
 
 ### 2.3 The ceilings that do not move with screen size
 
@@ -119,6 +164,35 @@ Source: `~/development/gbasic`, read 2026-09-29.
 - **No SVG rasteriser is installed**: librsvg absent, no rsvg typelib. Pango is
   present (6 typelibs), so text metrics are reachable on a Linux host if needed.
 
+### 2.6 There is no input device, and this is the biggest thing here
+
+**Measured 2026-09-29, and it contradicts what an earlier draft of §3 asserted.**
+
+`components/rv9_io/src/` holds 29 drivers. **None of them is a touch driver.**
+The panel is an **ST7789**, which is display-only; a touch panel needs a separate
+controller (FT6236, CST816, GT911 or similar) and no driver for one exists. A
+grep for touch across the whole tree returns only the English word.
+
+Nor is there a local keyboard. RV-9's own design document, §on the terminal: *"a
+USB keyboard cannot be attached to this board at any price... the terminal is the
+only reason the shell has a keyboard at all."* Keyboard input arrives over UART
+or SSH, from somewhere else.
+
+**What does exist is `/gpio`**, where *"a pin opened for reading becomes an
+input"*. So physical buttons are available today, and a touch panel is not.
+
+Three consequences, and the third is the one that reaches into §4:
+
+1. **§3's contract is half-real.** The output half *is* RV-9, exactly. The input
+   half is **proposed and unbuilt**, and the earlier draft's claim that *"the
+   touch controller is another device"* was false.
+2. **whisker can still be built and fully tested**, because both its functions
+   are pure and the host harness needs no hardware. But it cannot be *used* on
+   RV-9 until some input device exists, and nothing here should pretend
+   otherwise.
+3. **It is not yet known that the second function is `hit(tree, x, y)` at all.**
+   That is §4.0.
+
 ---
 
 ## 3. The substrate contract
@@ -126,14 +200,29 @@ Source: `~/development/gbasic`, read 2026-09-29.
 whisker talks to a host through **two byte channels and nothing else**:
 
 ```
-out:  SVG text          (a whole document, or a fragment plus the band it occupies)
-in:   pointer events    (down / up / move, with a coordinate)
+out:  a complete SVG document, plus the row range it needs repainted
+in:   input events -- SHAPE UNDECIDED, see §4.0
 ```
 
-This is not an abstraction invented for portability — **it is what RV-9 already
-is.** `/w0` is a path you write to; the touch controller is another device. A
-Linux host that satisfies the same contract is a small program: a window, a
-rasteriser, and a loop that reports clicks.
+Note what `out` does *not* say. It is never a fragment of XML and never a
+drawing call: always a whole document, and separately a range of rows. That is
+RV-9's mechanism exactly (§2.2), and it is the thing an earlier draft of this
+document got wrong.
+
+Note what `in` does not say either. It does not say *pointer*, because RV-9 has
+no pointing device and may never have one (§2.6).
+
+**The `out` half is not an abstraction invented for portability — it is what
+RV-9 already is.** `/w0` is a path you write to, plus a `RV9_SVG_SS_ROWS`
+setstat for the row range (§2.2).
+
+**The `in` half does not exist yet** (§2.6), and its shape is §4.0's question
+rather than something to be assumed here. A Linux host would satisfy both halves
+easily — a window, a rasteriser, and a loop that reports clicks — which is
+precisely why the Linux host must not be the one that defines them. The
+constrained host has no pointing device; the comfortable one has every input you
+could want. Designing against the comfortable one is how a layer arrives on the
+small target needing a mouse.
 
 **Argued, not measured:** because the contract is bytes rather than a function
 table, a host may sit at the far end of a pipe, a socket or a serial line. A
@@ -143,11 +232,39 @@ nothing to leave possible.
 
 ---
 
-## 4. Five decisions, before any code
+## 4. Six decisions, before any code — and one of them is not ours
 
 These are named rather than assumed, because the gBASIC document this grew out
 of was criticised for exactly that — it designed three chapters on top of a layer
 choice it never asked about.
+
+**§4.0 outranks the other five and is not ours to answer.**
+
+### 4.0 What is the input, and therefore what is the second function?
+
+`hit(tree, x, y)` assumes **pointing**. RV-9 has no pointing device (§2.6), and
+what it does have is GPIO pins that can be read. So there are three futures and
+they want different libraries:
+
+| Input | Second function | Shape of the widget model |
+|---|---|---|
+| **A touch panel** (driver unwritten) | `hit(tree, x, y)` | pointing; no focus needed; any layout works |
+| **GPIO buttons / a rotary encoder** | `focus_next(tree, from)` and `activate(tree, focused)` | **focus traversal**; a visible focus ring is mandatory; order matters more than position |
+| **Both, or a remote terminal driving it** | both | the union, and a rule for which wins |
+
+**This is not a detail to settle in iteration 2.** If the input is buttons, then
+hit-testing is dead weight and the missing thing is a traversal order and a focus
+indicator — a different library with a different test suite. Building the pointing
+version first and discovering the hardware is a rotary encoder would mean
+throwing away the half that took the work.
+
+**Only the RV-9 side can answer it**, because it is a hardware and roadmap
+question: is a touch controller planned, and on which board? `docs/rv9-review.md`
+asks it directly.
+
+**Provisional position, not a decision:** `render` is common to all three
+futures, so **iteration 1 can be the renderer alone** and still be worth having.
+That is what §5 has been narrowed to.
 
 ### 4.1 What language?
 
@@ -188,7 +305,13 @@ and not enough for a document, which matches what the substrate is for.
 
 **This is the decision most likely to be got wrong by being generous.** Every
 layout feature is paid for twice — once in the 4 KB output ceiling, once in the
-30 ms tap budget.
+30 ms repaint budget.
+
+**And §2.2 has already decided most of it.** Clipping is vertical only, so a
+column is the shape where each widget repaints alone and a row makes siblings
+repaint together. Prefer the column; price the row; do not reach for a grid,
+where every cell shares rows with its whole row and columns with its whole
+column.
 
 ### 4.4 Is the address space the SVG `id`?
 
@@ -217,31 +340,51 @@ than a compromise.
 
 ---
 
-## 5. Iteration 1 — the smallest thing that is a toolkit
+## 5. Iteration 1 — the renderer alone
 
 Per house methodology: the first iteration is a working product, not scaffolding.
+**Narrowed after §4.0**: `render` is common to all three input futures, so it is
+the only part that can be built before the input question is answered. A hit-test
+built now is a coin flip.
 
-**Scope:** labels and buttons in a single vertical stack. `render` produces a
-whole document. `hit` returns an id. Nothing else — no focus, no keyboard, no
-scrolling, no text entry, no second axis.
+**Scope:** labels and buttons in a single vertical **column** — the shape §2.2's
+clipping model rewards, since in a column no two widgets share rows.
+
+```
+render(tree)       -> a complete SVG document
+render(tree, id)   -> a complete document, same viewBox, only what intersects
+                      that widget's rows
+rows(tree, id)     -> the row range for RV9_SVG_SS_ROWS
+```
 
 **Done means:**
 
-1. `render` output parses, and is under the 4 KB `SRC_MAX` ceiling for a
-   realistic panel of a dozen controls — **asserted, because the ceiling is real**.
-2. Every widget's declared rectangle is what `hit` reports, checked at the four
-   corners and the centre, and a point in the gaps reports nothing — the control
-   that stops `hit` from being satisfied by "always return the first widget".
-3. Rendered through RV-9's own `tools/hosttest/render.c` to a PPM that a person
-   looks at once — because *"a picture can be geometrically perfect and still be
-   wrong in a way only an eye catches"*, which is RV-9's own lesson and is
-   quoted here so it is not learned twice.
-4. A **fragment** render for one widget, and the band it occupies, so §2.2's
-   30 ms tap is reachable rather than promised.
+1. `render(tree)` output parses, and a realistic panel of a dozen controls fits
+   **under the 4 KB `SRC_MAX` ceiling** — asserted, because the ceiling is real
+   and is also re-paid per band (§2.2).
+2. `render(tree, id)` and `rows(tree, id)` agree: everything the document draws
+   lies inside the reported rows, and every widget intersecting those rows is in
+   the document. **With the control** that a widget *not* intersecting them is
+   absent — without it, "the fragment is correct" is satisfied by emitting the
+   whole scene every time, which is the thing being optimised away.
+3. **The band is cleared to the device background, not the scene's** (§2.2), so a
+   fragment over a coloured panel must carry its own backing. Asserted by
+   rendering a fragment over a non-default `OPT_BG` and requiring the backing
+   rect to be present — the failure mode is a widget that flashes the wrong
+   colour behind it, which no geometric check sees.
+4. Rendered through RV-9's own `tools/hosttest/render.c` to a PPM **that a person
+   looks at once** — because *"a picture can be geometrically perfect and still be
+   wrong in a way only an eye catches"*, which is RV-9's own lesson, learned from
+   circles that came out lumpy with the right radius and the right area.
 
-**Explicitly not in iteration 1:** the gBASIC binding. gBASIC keeps GTK, and the
-whole point of a separate project is that whisker has to be worth adopting before
-anything adopts it.
+**Explicitly not in iteration 1:** hit-testing or focus traversal (§4.0 decides
+which), the gBASIC binding, focus, keyboard, scrolling, text entry, a second
+layout axis.
+
+**What iteration 1 proves, stated plainly:** that a widget set can be described,
+drawn, and repainted a band at a time within RV-9's budgets. It proves nothing
+about interaction, and the absence of an input device (§2.6) means nothing here
+can.
 
 ---
 

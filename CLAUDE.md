@@ -27,23 +27,40 @@ while nothing is invested.
 
 ## Status
 
-**Nothing is built.** This repository holds `docs/design.md` and the
-measurements it rests on.
+**Nothing is built, and it is gated twice.**
 
-**Do not write code until `docs/design.md` §4 is decided.** It names five
-decisions — language, one implementation or two, how much layout, whether the
-address space is the SVG `id`, and who retains the tree. Each has a
-recommendation and an argument; none has been ratified. The document this grew
-out of was criticised for designing three chapters on top of a layer choice it
-never asked about, and §4 exists so that is not repeated here.
+1. **`docs/rv9-review.md` is waiting on the RV-9 session.** Every claim this
+   project makes about RV-9 was *read*, in one sitting, by someone who has never
+   run it on hardware — and **three of the first claims were wrong**, listed in
+   that document's §3 as a calibration on the rest. The review checks 16 claims
+   and asks 6 questions.
+2. **`docs/design.md` §4 names six decisions and none is ratified.**
+   `docs/decisions.md` is the ledger; it is empty of outcomes on purpose.
+
+**§4.0 blocks everything and is not ours to answer.** RV-9 has **no input
+device** — no touch driver among its 29 drivers, an ST7789 panel that is
+display-only, and no local keyboard. What it has is GPIO pins that can be read.
+So whether whisker's second function is `hit(tree, x, y)` or `focus_next` /
+`activate` depends on hardware nobody has chosen yet, and those are two
+different libraries with two different test suites. Building the pointing
+version and then meeting a rotary encoder means discarding the half that took
+the work.
+
+`render` is common to all three input futures, which is why **iteration 1 is the
+renderer alone** (§5). That much can be built as soon as D0..D5 are settled.
 
 ## Read before working
 
-1. `docs/design.md` — all of it. It is 261 lines and it is the whole project.
-2. `~/development/Software-Development-Conventions.md` — the house conventions.
-3. For anything touching the substrate: `~/development/esp32/rv9` —
-   `components/rv9_io/src/drv_svgwin.c` (read its header comment, which states
-   two design decisions whisker adopts), `raster.c`, and
+1. `docs/design.md` — all of it. It is the whole project.
+2. `docs/decisions.md` — what is actually settled, as against what is merely
+   recommended. Read this *before* the design's §4, or you will mistake a
+   recommendation for a verdict.
+3. `docs/rv9-review.md` — what is still unverified, and what I already got wrong.
+4. `~/development/Software-Development-Conventions.md` — the house conventions.
+5. For anything touching the substrate: `~/development/esp32/rv9` —
+   `components/rv9_io/src/drv_svgwin.c` (its header states two design decisions
+   whisker adopts), `raster.c`, `modules/flick/flick.c` (the only working example
+   of a clipped repaint, and the source of the timing figures), and
    `tools/hosttest/run.sh`, which builds the renderer natively and writes a PPM.
 
 ## Conventions
@@ -67,10 +84,18 @@ Anything proposed here is priced against them:
 - **4 KB of SVG** (`SRC_MAX`) is the ceiling on how much interface fits on a
   screen. Verbose output hits this long before it hits the frame budget, so
   terse emission is a requirement rather than an optimisation.
-- **~30 ms for a tap** at 320×172, ~52 ms at 1024×600, against ~59 ms and
-  ~640 ms for a full redraw. A full re-render per interaction is therefore
-  **not** affordable and a band re-render is — which is why `render` must be
-  able to produce a fragment for one widget, not only a whole document.
+- **~30 ms to acknowledge a tap** at 320×172, ~52 ms at 1024×600, against
+  ~59 ms and ~640 ms for a full redraw. A full re-render per interaction is
+  therefore **not** affordable and a banded one is. Note the wording: `flick`
+  times three *draws*, and with no input device nothing has ever measured a tap
+  arriving.
+
+  The mechanism is **not** a fragment of XML — `RV9_SVG_SS_ROWS` takes a row
+  range and you write a **complete** document containing only what intersects
+  those rows. And the clip is **vertical only**, so a repaint covers the full
+  width of its rows and the band is cleared to the *device* background, not to
+  what the scene drew. Both facts are in §2.2 and both constrain the layout
+  model more than §4.3 does.
 
 ## Evidence standards
 

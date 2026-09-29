@@ -5,10 +5,19 @@
 *A cat's whiskers are how it reads a surface it cannot see. RV-9's mascot is an
 armoured robot cat; this is the part that feels where you touched.*
 
-**Status: nothing built.** This repository currently holds a design document and
-the measurements it rests on. Read `docs/design.md` before writing code — the
-house methodology is design-document-first, and §4 of that document lists five
-decisions that have to be made before the first line.
+**Status: nothing built, and waiting on a review.**
+
+- `docs/design.md` — the project. Read all of it first.
+- `docs/decisions.md` — what is settled (scope only; every design decision is
+  still open).
+- `docs/rv9-review.md` — **with the RV-9 session.** 16 claims to check, 6
+  questions to answer, and 3 things this project already got wrong.
+
+**One question blocks the rest, and it is about hardware.** RV-9 has no input
+device: no touch driver among its 29, an ST7789 panel that is display-only, no
+local keyboard. It does have GPIO pins that can be read. So whether whisker's
+second function is `hit(tree, x, y)` or focus traversal depends on a part nobody
+has chosen — and they are two different libraries. See `docs/design.md` §4.0.
 
 ---
 
@@ -43,7 +52,7 @@ neither should own it.
 
 | | |
 |---|---|
-| **RV-9** (`~/development/esp32/rv9`) | Has the surface and the input; its roadmap heads a section *"Open — damage tracking, before the GUI direction."* A quarter of a megabyte of RAM, one RISC-V core at 240 MHz. **The harder constraint, so it sets the budget.** |
+| **RV-9** (`~/development/esp32/rv9`) | Has the surface — `/w0`, plus a row-range setstat for banded repaint — and **not** the input. Its roadmap heads a section *"Open — damage tracking, before the GUI direction."* A quarter of a megabyte of RAM, one RISC-V core at 240 MHz. **The harder constraint, so it sets the budget.** |
 | **gBASIC** (`~/development/gbasic`) | Already emits deterministic SVG from pure gBASIC (`stdlib/chart.bas`, 1,612 lines, zero dependencies). Wants an addressable widget tree; see its `docs/gui_addressability_design.md` §0.3. |
 
 A layer that satisfies RV-9 will satisfy a Linux host. The reverse is not true,
