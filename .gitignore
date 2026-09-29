@@ -1,0 +1,9 @@
+# Build output
+build/
+*.o
+*.a
+*.ppm
+
+# Editor and OS noise
+*.swp
+.DS_Store
