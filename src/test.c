@@ -54,32 +54,32 @@ static int has(const char *hay, const char *needle) { return strstr(hay, needle)
 /* ---- the panels ---- */
 
 static const wsk_widget_t SETTINGS[] = {
-	{ WSK_LABEL,  "title",  "Settings", 0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "ok",     "OK",       0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "cancel", "Cancel",   0, 0, WSK_INHERIT, WSK_INHERIT },
+	{ .kind = WSK_LABEL, .id = "title", .text = "Settings" },
+	{ .kind = WSK_BUTTON, .id = "ok", .text = "OK" },
+	{ .kind = WSK_BUTTON, .id = "cancel", .text = "Cancel" },
 };
 
 static const wsk_widget_t BIG[] = {
-	{ WSK_BUTTON, "pump",    "Pump",    0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "valve_a", "Valve A", 0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "valve_b", "Valve B", 0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "heater",  "Heater",  0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "fan",     "Fan",     0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "alarm",   "Alarm",   0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "purge",   "Purge",   0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "drain",   "Drain",   0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "fill",    "Fill",    0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "vent",    "Vent",    0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "reset",   "Reset",   0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "start",   "Start",   0, 0, WSK_INHERIT, WSK_INHERIT },
+	{ .kind = WSK_BUTTON, .id = "pump", .text = "Pump" },
+	{ .kind = WSK_BUTTON, .id = "valve_a", .text = "Valve A" },
+	{ .kind = WSK_BUTTON, .id = "valve_b", .text = "Valve B" },
+	{ .kind = WSK_BUTTON, .id = "heater", .text = "Heater" },
+	{ .kind = WSK_BUTTON, .id = "fan", .text = "Fan" },
+	{ .kind = WSK_BUTTON, .id = "alarm", .text = "Alarm" },
+	{ .kind = WSK_BUTTON, .id = "purge", .text = "Purge" },
+	{ .kind = WSK_BUTTON, .id = "drain", .text = "Drain" },
+	{ .kind = WSK_BUTTON, .id = "fill", .text = "Fill" },
+	{ .kind = WSK_BUTTON, .id = "vent", .text = "Vent" },
+	{ .kind = WSK_BUTTON, .id = "reset", .text = "Reset" },
+	{ .kind = WSK_BUTTON, .id = "start", .text = "Start" },
 };
 
 /* Deliberately not band-aligned: 30 rows from an odd offset, so the clip has
    to snap and the backing has to follow it. */
 static const wsk_widget_t RAGGED[] = {
-	{ WSK_BUTTON, "a", "A", 30, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "b", "B", 30, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "c", "C", 30, 0, WSK_INHERIT, WSK_INHERIT },
+	{ .kind = WSK_BUTTON, .id = "a", .text = "A", .size = 30 },
+	{ .kind = WSK_BUTTON, .id = "b", .text = "B", .size = 30 },
+	{ .kind = WSK_BUTTON, .id = "c", .text = "C", .size = 30 },
 };
 
 int main(void)
@@ -208,7 +208,7 @@ int main(void)
 		wsk_tree_t g = t;
 
 		memset(bad, 0, sizeof bad);
-		bad[0].kind = WSK_BUTTON; bad[0].fill = WSK_INHERIT; bad[0].ink = WSK_INHERIT;
+		bad[0].kind = WSK_BUTTON;    /* memset left everything inheriting */
 		memcpy(bad[0].id, "ok", 3);
 		memcpy(bad[0].text, "a < b", 6);
 		bad[1] = bad[0];
@@ -236,6 +236,44 @@ int main(void)
 		memcpy(bad[0].text, "a to b", 7);
 		ok(render_into(&g, doc, sizeof doc, 4096) > 0,
 		   "CONTROL: the same label, legal, is drawn");
+	}
+
+	/* ---- 4b. the pressed mark ---- */
+	{
+		wsk_widget_t live[3];
+		wsk_tree_t g = t;
+		int plain, marked;
+
+		wsk_clone(live, SETTINGS, 3);
+		g.item = live; g.n = 3;
+
+		plain = render_into(&g, doc, sizeof doc, 4096);
+		ok(!has(doc, "<path"), "CONTROL: an unmarked widget draws no corner marks");
+
+		live[1].mark = WSK_MARK_CORNERS;
+		marked = render_into(&g, doc, sizeof doc, 4096);
+		ok(has(doc, "<path d=\"M"), "a marked one does");
+		ok(has(doc, "stroke-width=\"2\"") && !has(doc, "fill=\"none\""),
+		   "one path, stroked, and no fill=\"none\" -- a two-point contour has no area");
+		printf("     the marks cost %d bytes on a %d-byte screen\n",
+		       marked - plain, plain);
+
+		/* The arm is a quarter of the height, capped, so it keeps its
+		   proportion on a big panel and its presence on a small one. */
+		{
+			wsk_rect_t r = wsk_rect(&g, 1);
+			char want[32];
+			int arm = r.h / 4 > 16 ? 16 : r.h / 4;
+			snprintf(want, sizeof want, "l%d %d", arm, arm);
+			ok(has(doc, want), "the arm is a quarter of the widget height, capped at 16");
+		}
+
+		/* And below a few pixels it is not drawn at all: a mark nobody can
+		   see is bytes re-parsed once per band for nothing. */
+		live[1].size = 8;
+		render_into(&g, doc, sizeof doc, 4096);
+		ok(!has(doc, "<path"), "a widget too small to show one is not given one");
+		live[1].size = 0;
 	}
 
 	/* ---- what it costs, for the record ---- */

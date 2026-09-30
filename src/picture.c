@@ -76,9 +76,9 @@ static void to_window(wsk_sink_t *s, const char *b, int n)
 }
 
 static const wsk_widget_t PANEL[] = {
-	{ WSK_LABEL,  "title",  "tap test", 0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "confirm", "CONFIRM", 0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "cancel",  "Cancel",  0, 0, WSK_INHERIT, WSK_INHERIT },
+	{ .kind = WSK_LABEL, .id = "title", .text = "tap test" },
+	{ .kind = WSK_BUTTON, .id = "confirm", .text = "CONFIRM" },
+	{ .kind = WSK_BUTTON, .id = "cancel", .text = "Cancel" },
 };
 
 int main(void)
@@ -132,6 +132,7 @@ int main(void)
 		int n;
 		live[1].fill = 0x8fd0ffu;
 		live[1].ink = 0x112233u;    /* dark on the pale fill, as flick does */
+		live[1].mark = WSK_MARK_CORNERS;
 		s.put = to_window; s.ctx = &dev; s.len = 0;
 		blits = 0;
 		n = wsk_render_clipped(&t, ids, 1, &s, 4096);
@@ -155,6 +156,7 @@ int main(void)
 	}
 	live[1].fill = WSK_INHERIT;
 	live[1].ink = WSK_INHERIT;
+	live[1].mark = 0;
 	s.put = to_window; s.ctx = &dev; s.len = 0;
 	wsk_render_clipped(&t, ids, 1, &s, 4096);
 	ok(at(1, 50) == scene_left, "and again after the release");

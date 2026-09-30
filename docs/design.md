@@ -278,6 +278,15 @@ both.
 There is no `clipPath` either, so **text is not clipped to its widget**: an
 overlong label runs out of its button and over its neighbour. whisker measures
 and truncates, which §2.1 makes exact.
+
+**What a flat substrate leaves for showing a state.** No shadow, no gradient,
+no opacity — so a pressed button changes colour, and that is one signal doing
+all the work. The panel is RGB565 and may be read at an angle, in sunlight, by
+somebody who is not looking directly at it. So iteration 1 gives a widget a
+second, geometric signal: **ticks driven inward from its four corners**, in the
+label's ink, as one `<path>` of four two-point subpaths. **95 bytes**, drawn
+only while the state is on — about 1.3 ms of C5 time against a 19 ms latency
+budget. Shape and colour, rather than colour alone.
 ### 2.5 What gBASIC already has (measured)
 
 Source: `~/development/gbasic`, read 2026-09-29.
@@ -675,6 +684,11 @@ button is 6 bands at 320×172 and 6 bands at 1024×600; grown to keep its
 proportion it is 21. **Let a bigger screen hold more widgets rather than bigger
 ones** — which is also what touch wants, since a target should be about a finger
 wide whatever the panel. (`rv9-answers.md` §4.)
+
+A widget also carries a **mark** — `WSK_MARK_CORNERS` today — which is how a
+pressed state is shown without the shadows and gradients §2.4 rules out. It is
+the caller's to set, because whisker holds no state: a press is something the
+host knows and the tree records, like the fill beside it.
 
 **Explicitly not in iteration 1:** `hit` (iteration 2), the gBASIC binding,
 focus, keyboard, scrolling, text entry, a grid, nesting.

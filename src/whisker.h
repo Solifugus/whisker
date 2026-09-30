@@ -55,7 +55,29 @@
 enum { WSK_LABEL = 1, WSK_BUTTON };
 enum { WSK_COL = 1, WSK_ROW };
 
-#define WSK_INHERIT   0xFF000000u    /* "whatever the tree says" */
+/*
+ * A mark on a widget, for the states a flat substrate has no other way to
+ * show. No shadow, no gradient, no opacity -- §2.4 -- so a pressed button
+ * changes colour, and that is one signal doing all the work. Ticks driven
+ * inward from the four corners are a second one, in the same ink as the
+ * label, costing four line segments in a single path.
+ */
+enum { WSK_MARK_CORNERS = 1 };
+
+/*
+ * "whatever the tree says", and it is zero on purpose.
+ *
+ * A panel is written with designated initialisers -- `{ .kind = WSK_BUTTON,
+ * .id = "ok", .text = "OK" }` -- so that adding a field to this struct does
+ * not break every caller, and so that -Wextra -Werror, which RV-9's module
+ * build uses, does not object to the ones left out. Everything omitted is
+ * zero, so zero has to mean inherit or the common case would come out black.
+ *
+ * The cost is that a widget cannot ask for pure black. On this hardware that
+ * costs nothing at all: the panel is RGB565, so #010101 and #000000 are the
+ * same pixel.
+ */
+#define WSK_INHERIT   0u
 
 typedef struct {
 	unsigned char kind;
@@ -65,6 +87,7 @@ typedef struct {
 	short         weight;        /* share of what is left over; 0 = fixed */
 	unsigned int  fill;          /* WSK_INHERIT to take the tree's accent */
 	unsigned int  ink;           /* WSK_INHERIT to take the tree's ink */
+	unsigned char mark;          /* WSK_MARK_CORNERS, or 0 */
 } wsk_widget_t;
 
 typedef struct {
@@ -264,6 +287,7 @@ static inline void wsk_clone(wsk_widget_t *dst, const wsk_widget_t *src, int n)
 		dst[i].weight = src[i].weight;
 		dst[i].fill   = src[i].fill;
 		dst[i].ink    = src[i].ink;
+		dst[i].mark   = src[i].mark;
 		wsk__scpy(dst[i].id, src[i].id, WSK_ID_MAX);
 		wsk__scpy(dst[i].text, src[i].text, WSK_TEXT_MAX);
 	}
@@ -448,6 +472,46 @@ static inline void wsk__rect(wsk_sink_t *s, const wsk_tree_t *t,
 }
 
 /*
+ * Ticks driven inward from the four corners.
+ *
+ * One path, four subpaths, and no `fill="none"`: a two-point contour has no
+ * area, so the <g>'s fill draws nothing and the attribute would be twelve
+ * bytes to say so. The arm is a quarter of the widget's height, capped, so
+ * the mark keeps its proportions on a seven-inch panel and its presence on a
+ * small one; below three pixels it is not drawn, because a mark nobody can
+ * see is bytes re-parsed once per band for nothing.
+ */
+static inline void wsk__corner(wsk_sink_t *s, int x, int y, int dx, int dy)
+{
+	wsk__s(s, "M");
+	wsk__n(s, x);
+	wsk__s(s, " ");
+	wsk__n(s, y);
+	wsk__s(s, "l");
+	wsk__n(s, dx);
+	wsk__s(s, " ");
+	wsk__n(s, dy);
+}
+
+static inline void wsk__marks(wsk_sink_t *s, const wsk_tree_t *t,
+                              const wsk_widget_t *w, wsk_rect_t r)
+{
+	int a = r.h / 4;
+
+	if (a > 16) a = 16;
+	if (a < 3) return;
+
+	wsk__s(s, "<path d=\"");
+	wsk__corner(s, r.x,        r.y,        a,  a);
+	wsk__corner(s, r.x + r.w,  r.y,       -a,  a);
+	wsk__corner(s, r.x,        r.y + r.h,  a, -a);
+	wsk__corner(s, r.x + r.w,  r.y + r.h, -a, -a);
+	wsk__s(s, "\" stroke=\"");
+	wsk__col(s, (w->ink != WSK_INHERIT) ? w->ink : t->ink);
+	wsk__s(s, "\" stroke-width=\"2\"/>");
+}
+
+/*
  * A label, centred in its widget, truncated to what fits.
  *
  * Truncated because there is no clipPath in the subset, so an overlong label
@@ -525,6 +589,7 @@ static inline void wsk__doc(const wsk_tree_t *t, int y0, int y1, wsk_sink_t *s)
 		wsk_rect_t r = wsk_rect(t, i);
 		if (r.y >= y1 || r.y + r.h <= y0) continue;      /* not in these rows */
 		if (w->kind == WSK_BUTTON) wsk__rect(s, t, w, r);
+		if (w->mark == WSK_MARK_CORNERS) wsk__marks(s, t, w, r);
 		wsk__text(s, t, w, r);
 	}
 

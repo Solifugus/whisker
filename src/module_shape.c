@@ -18,9 +18,9 @@
 
 /* rodata: inline text, no addresses, so this links (review §3.1). */
 static const wsk_widget_t PANEL[] = {
-	{ WSK_LABEL,  "title",   "tap test", 0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "confirm", "CONFIRM",  0, 0, WSK_INHERIT, WSK_INHERIT },
-	{ WSK_BUTTON, "cancel",  "Cancel",   0, 0, WSK_INHERIT, WSK_INHERIT },
+	{ .kind = WSK_LABEL, .id = "title", .text = "tap test" },
+	{ .kind = WSK_BUTTON, .id = "confirm", .text = "CONFIRM" },
+	{ .kind = WSK_BUTTON, .id = "cancel", .text = "Cancel" },
 };
 
 typedef struct { const rv9_mod_env_t *env; int path; } out_t;
