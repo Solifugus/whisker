@@ -1,8 +1,11 @@
 # whisker — design
 
-**Status:** Nothing implemented. **All six decisions in §4 are ratified**
-(Matthew, 2026-09-29) — `docs/decisions.md` is the ledger. Iteration 1 (§5) can
-start.
+**Status:** **Iteration 1 is built** (`src/whisker.h`, 2026-09-30) and every
+done-criterion in §5 passes — the suite, the XML check, the pixels through
+RV-9's own rasteriser, and the module build with its position-independence
+check. It has not run on the board. **All six decisions in §4 are ratified**
+(Matthew, 2026-09-29); `docs/decisions.md` is the ledger. `hit` is iteration 2,
+when the panel arrives.
 
 Revised 2026-09-29 against `docs/rv9-answers.md`, the RV-9 session's reply to
 `docs/rv9-review.md`. Thirteen of sixteen claims stood; the corrections are
@@ -62,6 +65,25 @@ Two design decisions in that driver matter here, both quoted from its own header
 **whisker adopts both.** They are not RV-9 quirks to work around; the second is
 the reason this project is small enough to finish, and the first is why there is
 no retained tree to keep in sync.
+
+**And the third thing it already has, which the renderer cannot be written
+without: text metrics that are exactly computable.** One fixed-width face, no
+families, and every number a layout needs is a constant in `font.h`
+(`review-2026-09-30.md` §3.5, measured against rendered ink):
+
+| | |
+|---|---|
+| advance per character | `font_size * RV9_GLYPH_W / RV9_GLYPH_H` — that is `font_size / 2` |
+| cell top, from the baseline `y` | `y - font_size * RV9_FONT_BASELINE / RV9_GLYPH_H` — `15/20` |
+| cell height | `font_size` |
+| glyphs that exist | 32..126; anything else advances a cell and draws nothing |
+| leading and trailing space | **stripped before measuring or anchoring**, so `"  OK  "` and `"OK"` are the same width |
+
+So whisker can size a label, centre it and truncate it to fit in 32-bit integer
+arithmetic, with no font API and no device. And `text-anchor="middle"` is
+honoured against that same advance box, so centring a button label costs **one
+attribute** rather than a computed `x` — which is also the cheaper thing to
+emit. RV-9's `reference.md` §9 is the citable form.
 
 ### 2.2 The performance already measured on the board
 
@@ -159,6 +181,9 @@ clipping as a future gain. So `rows(tree, ids)` should be able to become
   is refused with `RV9_IO_ERR_INVAL` rather than clamped. So `rows` need not be
   band-aligned, but a widget straddling a boundary repaints that whole band —
   **aligning widget heights to multiples of 8 is free and saves a band each.**
+- **The clip is one-shot.** `render()` sets `clip_y0 = clip_y1 = 0` after every
+  document, so the protocol is setstat-then-write, *every time*. A caller that
+  sets the range once and writes twice gets a full redraw the second time.
 
 **How much a row actually costs — measured, and less than this document
 assumed.** Three buttons as a column and as a row, each repainting one button
@@ -211,6 +236,19 @@ Treat it as a **device property to ask about, not a constant**: it will differ
 between the two boards. There is no getstat for it today; RV-9 has offered to add
 one, which is cheap to get right before there is a caller.
 
+**And going over it is not truncation — it is a lost picture, and it used to be
+a lost window.** Until 2026-09-30 a document past `SRC_MAX` wedged `/w0` for the
+life of the open path, silently: the bytes were dropped, so the `</svg>` that
+ends a document could never land in the buffer again (`review-2026-09-30.md`
+§3.2). RV-9 now drops the document and logs it, *"because half a picture is a
+silent wrong answer where an unchanged screen plus a log line is a legible
+one"*.
+
+**So `render` needs a byte budget and a refusal, not an assertion in a test that
+a realistic panel happens to fit.** A caller that adds a widget at runtime has to
+be told **before** the write, in a way it can act on. And whisker must be correct
+against an RV-9 older than that date too, because a whisker that only behaves on
+a fixed one is a whisker that wedges somebody's board.
 ### 2.4 What RV-9's window does *not* do
 
 Recorded as not done, in its own roadmap: font families and weights, rotated
@@ -221,6 +259,25 @@ visual design — shadows, gradient fills, translucent overlays — and the hone
 framing is that **whisker's look is flat because its substrate is**, not because
 flat is fashionable.
 
+**Nor does it decode entities, and that one reaches into the API.** `&lt;` draws
+as the four characters `&`, `l`, `t`, `;` on the panel — measured. So text
+**cannot be escaped**, only kept clean; and until 2026-09-30 a raw `<` in text
+content hung the driver outright, inside `write`, holding the lock, on one core
+(`review-2026-09-30.md` §3.3).
+
+So **a label is restricted at whisker's boundary, not at its emitter**: ASCII
+32..126, minus `<`, `&` and `>`. Bytes outside that range are the quiet version
+of the same problem — they advance a cell and draw nothing. The refusal belongs
+where the data arrives, because that is the only place that can say *which*
+label was wrong. Note also that a document which **parses** as XML and one which
+**draws** correctly are different documents the moment a `&` is in a label: the
+escaped form is well-formed and wrong on the glass, the raw form is right on the
+glass and not well-formed. Keeping such a label out is the only answer that is
+both.
+
+There is no `clipPath` either, so **text is not clipped to its widget**: an
+overlong label runs out of its button and over its neighbour. whisker measures
+and truncates, which §2.1 makes exact.
 ### 2.5 What gBASIC already has (measured)
 
 Source: `~/development/gbasic`, read 2026-09-29.
@@ -540,11 +597,21 @@ Header-only C (D1). The caller owns the tree (D5); the SVG `id` is the address
 space (D4).
 
 ```
-render(tree)            -> a complete SVG document
-render(tree, ids, n)    -> a complete document, same viewBox, containing only
-                           what intersects those widgets' rows, backing included
-rows(tree, ids, n)      -> the device row range to hand RV9_SVG_SS_ROWS
+render(tree, sink, ctx)            -> a complete SVG document
+render_clipped(tree, ids, n, sink, ctx)
+                                   -> a complete document, same viewBox,
+                                      containing only what intersects those
+                                      widgets' rows, backing included
+rows(tree, ids, n, device_h)       -> the device row range for RV9_SVG_SS_ROWS
 ```
+
+**Why a sink rather than a returned string.** `render(tree) -> text` implies a
+4 KB buffer, in a program budget of roughly 39 KB, with no allocator in
+`rv9_mod_env_t` and modules typically declaring 1.5–3 KB of stack. A sink costs
+nothing, keeps the buffer form for tests — a sink that appends to an array *is*
+the buffer form — lets §2.3's byte budget be enforced **during** emission rather
+than discovered after it, and is position-independent, because a function
+pointer *passed* is fine and only a stored table of them is not.
 
 **Note the set form.** `rows(tree, id)` taking one id cannot be retrofitted
 cheaply, because by then callers have written loops. A real interface changes
@@ -572,17 +639,28 @@ and the host got it from `getstat(RV9_GS_SIZE)` on `/w0`.
    rendering over a non-default `OPT_BG` and requiring the backing to be present.
    **This is not hypothetical**: RV-9's `flick` failed exactly this and shipped
    two black strips for months, because no geometric check sees it.
-   Assert too that the backing covers **the rows and not the screen**.
+   Assert too that the backing covers **the rows and not the screen**, and that
+   the rows are the **snapped** ones: asserted at a widget that is *not*
+   8-aligned, because an aligned one passes without exercising the rule
+   (`review-2026-09-30.md` §3.4).
 4. Widget heights **land on multiples of 8** where the caller does not say
    otherwise, since the clip snaps outward to 8-row bands and a straddling widget
-   costs a whole extra band for nothing (§2.2).
-5. It **compiles under RV-9's module rules** (§4.1), which is a test and not a
+   costs a whole extra band for nothing (§2.2). **The default button is 64
+   rows** — eight bands, band-aligned, and about 9 mm on the P4's ~170 dpi,
+   which is a finger. That number comes from the panel a person will touch, not
+   from the C5's proportions.
+5. `render` **refuses** a document it cannot fit in the caller's byte budget,
+   and says so before writing anything, rather than emitting a prefix (§2.3).
+   Asserted with the control that a panel one widget smaller is accepted.
+6. `render` **refuses a label** carrying `<`, `&`, `>` or a byte outside
+   32..126, naming the widget (§2.4). Control: the same label, legal, is drawn.
+7. It **compiles under RV-9's module rules** (§4.1), which is a test and not a
    build detail: build the iteration-1 source with `tools/build_modules.sh`'s
    flags and linker script, and let the double-link position-independence check
    run. A widget table that works on the host and is not position independent is
    the expected failure, and it should fail loudly in iteration 1 rather than
    quietly in iteration 3.
-6. Rendered through RV-9's own `tools/hosttest/render.c` to a PPM **that a person
+8. Rendered through RV-9's own `tools/hosttest/render.c` to a PPM **that a person
    looks at once** — because *"a picture can be geometrically perfect and still be
    wrong in a way only an eye catches"*, which is RV-9's own lesson, learned from
    circles that came out lumpy with the right radius and the right area, and

@@ -5,7 +5,10 @@
 *A cat's whiskers are how it reads a surface it cannot see. RV-9's mascot is an
 armoured robot cat; this is the part that feels where you touched.*
 
-**Status: nothing built, nothing blocked. Iteration 1 can start.**
+**Status: iteration 1 is built.** `src/whisker.h` renders a panel and repaints
+one band of it; `src/run.sh --module` runs all eight of `design.md` §5's
+done-criteria, including the pixels and the module build. Nothing has run on
+the board yet. `hit` is iteration 2, when the touch panel arrives.
 
 - `docs/decisions.md` — **read first.** Six decisions, all ratified 2026-09-29.
 - `docs/design.md` — the project, revised against the review.
@@ -13,8 +16,11 @@ armoured robot cat; this is the part that feels where you touched.*
   things the review did not think to ask.
 - `docs/rv9-review.md` — the questions as they were put. Historical.
 - `docs/review-2026-09-30.md` — the substrate run rather than read: five
-  findings, three of them live defects in RV-9. It changes §5's done-criteria
+  findings, three of them live defects in RV-9. It changed §5's done-criteria
   and the shape of the API. Evidence in `tools/evidence/`.
+- `docs/notation-sketch.md` — a compact way to write a panel down, prototyped
+  and measured in `tools/notation/`. Not a decision, and not the wire format.
+- `src/` — iteration 1. `whisker.h` is the whole library.
 
 **The question that blocked everything was answered by a purchase.** A Waveshare
 ESP32-P4-WIFI6-Touch-LCD-7B — 1024×600, five-point capacitive touch — was
