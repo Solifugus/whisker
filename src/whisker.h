@@ -95,7 +95,26 @@ typedef struct {
 	int           n;
 
 	unsigned char axis;          /* WSK_COL or WSK_ROW */
-	short         w, h;          /* the device, in pixels, from getstat */
+
+	/*
+	 * The device, in pixels, from getstat -- and the viewBox, which is why
+	 * it must stay the device. User units are then device rows and wsk_rows
+	 * needs no conversion; a document whose viewBox says anything else is
+	 * scaled onto the panel and every row number in it becomes a lie. Do
+	 * not set these to mean "the part of the screen I am using": that is
+	 * what the area below is for.
+	 */
+	short         w, h;
+
+	/*
+	 * Where the stack sits inside it. The whole device after wsk_init, and
+	 * wsk_area narrows it -- a toolbar across the top, a column down one
+	 * side. Iteration 1 lays out one stack; two stacks are two trees over
+	 * one device, each with its own area, which is also how a grid will
+	 * arrive without the widget model changing.
+	 */
+	short         ax, ay, aw, ah;
+
 	short         pad, gap;
 	short         font;          /* device pixels; the cell height */
 
@@ -310,6 +329,10 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->axis = (unsigned char)axis;
 	t->w = (short)dev_w;
 	t->h = (short)dev_h;
+	t->ax = 0;
+	t->ay = 0;
+	t->aw = (short)dev_w;
+	t->ah = (short)dev_h;
 	t->pad = 8;
 	t->gap = 8;
 	t->font = 16;
@@ -317,6 +340,15 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->ink = 0xffffffu;
 	t->accent = 0x2a6b8fu;
 	t->ids = 0;
+}
+
+/* The part of the device this stack lays out in. */
+static inline void wsk_area(wsk_tree_t *t, int x, int y, int w, int h)
+{
+	t->ax = (short)x;
+	t->ay = (short)y;
+	t->aw = (short)w;
+	t->ah = (short)h;
 }
 
 static inline int wsk__round_band(int v)
@@ -355,7 +387,7 @@ static inline int wsk__natural(const wsk_tree_t *t, int i)
 static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 {
 	wsk_rect_t r;
-	int span = (t->axis == WSK_COL ? t->h : t->w) - 2 * t->pad;
+	int span = (t->axis == WSK_COL ? t->ah : t->aw) - 2 * t->pad;
 	int used = 0, weights = 0, at, extra, given = 0;
 
 	for (int i = 0; i < t->n; i++) {
@@ -366,7 +398,7 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 	extra = span - used;
 	if (extra < 0) extra = 0;
 
-	at = t->pad;
+	at = (t->axis == WSK_COL ? t->ay : t->ax) + t->pad;
 	for (int i = 0; i < idx; i++) {
 		int e = wsk__natural(t, i);
 		if (weights > 0 && t->item[i].weight > 0) {
@@ -388,13 +420,13 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 			                   : (extra * t->item[idx].weight / weights);
 		}
 		if (t->axis == WSK_COL) {
-			r.x = t->pad;
-			r.w = (short)(t->w - 2 * t->pad);
+			r.x = (short)(t->ax + t->pad);
+			r.w = (short)(t->aw - 2 * t->pad);
 			r.y = (short)at;
 			r.h = (short)e;
 		} else {
-			r.y = t->pad;
-			r.h = (short)(t->h - 2 * t->pad);
+			r.y = (short)(t->ay + t->pad);
+			r.h = (short)(t->ah - 2 * t->pad);
 			r.x = (short)at;
 			r.w = (short)e;
 		}

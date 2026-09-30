@@ -685,6 +685,18 @@ proportion it is 21. **Let a bigger screen hold more widgets rather than bigger
 ones** — which is also what touch wants, since a target should be about a finger
 wide whatever the panel. (`rv9-answers.md` §4.)
 
+**The device and the area are two different numbers, and conflating them is
+the wrong-strip bug.** A tree carries the device size, which is the viewBox and
+must stay the viewBox: user units are then device rows and `rows` needs no
+conversion. Where the stack *sits* inside that is a separate rectangle,
+`wsk_area`, the whole device until it is narrowed. A toolbar across the top of
+a 172-row panel is an area of 84 rows, not a device of 84 rows — the second
+scales the document onto the glass and every row number in it becomes a lie.
+Found by drawing one and looking at it: the pressed button's lower two corner
+marks were outside the clip and simply absent, which no geometric check saw.
+It is also how a grid arrives later without the widget model changing: two
+stacks are two trees over one device, each with its own area.
+
 A widget also carries a **mark** — `WSK_MARK_CORNERS` today — which is how a
 pressed state is shown without the shadows and gradients §2.4 rules out. It is
 the caller's to set, because whisker holds no state: a press is something the

@@ -74,6 +74,12 @@ static const wsk_widget_t BIG[] = {
 	{ .kind = WSK_BUTTON, .id = "start", .text = "Start" },
 };
 
+static const wsk_widget_t TOOLBAR[] = {
+	{ .kind = WSK_BUTTON, .id = "back", .text = "Back",   .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "stop", .text = "Stop",   .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "go",   .text = "Go",     .weight = 1 },
+};
+
 /* Deliberately not band-aligned: 30 rows from an odd offset, so the clip has
    to snap and the backing has to follow it. */
 static const wsk_widget_t RAGGED[] = {
@@ -238,6 +244,85 @@ int main(void)
 		   "CONTROL: the same label, legal, is drawn");
 	}
 
+	/* ---- 4a. the other axis, which D3 ratified and nothing had exercised ---- */
+	{
+		wsk_tree_t g;
+		wsk_rect_t a, b, c;
+
+		wsk_init(&g, WSK_ROW, 320, 80);
+		g.pad = 4; g.gap = 4;
+		g.item = TOOLBAR; g.n = 3;
+
+		a = wsk_rect(&g, 0); b = wsk_rect(&g, 1); c = wsk_rect(&g, 2);
+		ok(a.y == 4 && a.h == 72 && b.y == a.y && c.y == a.y,
+		   "a row gives every widget the full height between the padding");
+		ok(a.x == 4 && b.x == a.x + a.w + 4 && c.x == b.x + b.w + 4,
+		   "and lays them out along the other axis, a gap apart");
+		ok(c.x + c.w == 320 - 4,
+		   "equal weights fill the width exactly, to the last pixel");
+		printf("     row of three: %d + %d + %d = %d of %d usable\n",
+		       a.w, b.w, c.w, a.w + b.w + c.w, 320 - 8 - 2 * 4);
+
+		/* Unequal weights, and the rounding has to go somewhere. */
+		{
+			wsk_widget_t live[3];
+			wsk_clone(live, TOOLBAR, 3);
+			live[1].weight = 2;
+			g.item = live;
+			a = wsk_rect(&g, 0); b = wsk_rect(&g, 1); c = wsk_rect(&g, 2);
+			ok(b.w > a.w && c.x + c.w == 320 - 4,
+			   "a heavier child takes more, and the row still ends on the padding");
+			g.item = TOOLBAR;
+		}
+
+		/* Sharing rows is what a row costs, and it is the whole of D3's
+		   argument: repainting one button repaints its neighbours too,
+		   because the clip is the full width of their rows. */
+		{
+			const char *ids[1];
+			int y0, y1, bytes;
+			ids[0] = "stop";
+			wsk_rows(&g, ids, 1, &y0, &y1);
+			bytes = clip_into(&g, ids, 1, clip, sizeof clip, 4096);
+			ok(has(clip, ">Back</text>") && has(clip, ">Go</text>"),
+			   "repainting one button in a row carries its neighbours -- they share its rows");
+			printf("     one of a row: %d bytes, rows %d..%d (the whole row)\n",
+			       bytes, y0, y1);
+		}
+	}
+
+	/* ---- 4a2. the area, and why it is not the device ---- */
+	{
+		wsk_tree_t bar, full;
+		wsk_rect_t in_bar, in_full;
+		int y0, y1;
+		const char *ids[1];
+
+		wsk_init(&bar, WSK_ROW, 320, 172);
+		bar.pad = 6; bar.gap = 6;
+		bar.item = TOOLBAR; bar.n = 3;
+		full = bar;                          /* the same stack, the whole screen */
+		wsk_area(&bar, 0, 0, 320, 84);       /* a toolbar across the top */
+
+		in_bar = wsk_rect(&bar, 1);
+		in_full = wsk_rect(&full, 1);
+		ok(in_bar.h == 84 - 12 && in_full.h == 172 - 12,
+		   "the area bounds the stack; CONTROL: without it the stack is the screen");
+
+		n = render_into(&bar, doc, sizeof doc, 4096);
+		ok(has(doc, "<svg viewBox=\"0 0 320 172\">"),
+		   "the viewBox is still the DEVICE, whatever the area says");
+		/* This is the one that matters. If the viewBox followed the area, the
+		   document would be scaled onto the panel and every number wsk_rows
+		   returns would be a lie -- the wrong strip repainted, silently,
+		   which is §2.2's warning and is how the bottom two corner marks
+		   went missing the first time this was drawn. */
+		ids[0] = "stop";
+		wsk_rows(&bar, ids, 1, &y0, &y1);
+		ok(y0 <= in_bar.y && y1 >= in_bar.y + in_bar.h && y1 <= 172,
+		   "and rows() reports device rows, which is what the setstat wants");
+	}
+
 	/* ---- 4b. the pressed mark ---- */
 	{
 		wsk_widget_t live[3];
@@ -294,6 +379,30 @@ int main(void)
 			printf("    one button repainted  %4d bytes   %2d bands (rows %d..%d)\n",
 			       one, (y1 - y0) / 8, y0, y1);
 		}
+	}
+
+	/* The price of a row, in whisker's own output rather than by argument.
+	   RV-9 measured a row repaint at 1.77x a column's on the rasteriser; this
+	   is where those extra bands and bytes come from. */
+	{
+		wsk_tree_t col, row;
+		const char *ids[1];
+		int cy0, cy1, ry0, ry1, cb, rb;
+
+		wsk_init(&col, WSK_COL, 320, 172);
+		col.pad = 4; col.gap = 4; col.item = TOOLBAR; col.n = 3;
+		wsk_init(&row, WSK_ROW, 320, 172);
+		row.pad = 4; row.gap = 4; row.item = TOOLBAR; row.n = 3;
+
+		ids[0] = "stop";
+		wsk_rows(&col, ids, 1, &cy0, &cy1);
+		wsk_rows(&row, ids, 1, &ry0, &ry1);
+		cb = clip_into(&col, ids, 1, clip, sizeof clip, 4096);
+		rb = clip_into(&row, ids, 1, doc, sizeof doc, 4096);
+		printf("\n  repainting one of three, 320x172:\n");
+		printf("    as a column  %3d bytes  %2d bands\n", cb, (cy1 - cy0) / 8);
+		printf("    as a row     %3d bytes  %2d bands   (%d of the 22 on screen)\n",
+		       rb, (ry1 - ry0) / 8, (ry1 - ry0) / 8);
 	}
 
 	/* Leave the documents where run.sh can hand them to a real XML parser. */

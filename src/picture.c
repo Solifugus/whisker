@@ -75,6 +75,13 @@ static void to_window(wsk_sink_t *s, const char *b, int n)
 	svgwin_write(dev, b, (size_t)n, &done);
 }
 
+static const wsk_widget_t TOOLBAR[] = {
+	{ .kind = WSK_BUTTON, .id = "back", .text = "Back", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "stop", .text = "STOP", .weight = 1,
+	  .fill = 0x8f2a2au },
+	{ .kind = WSK_BUTTON, .id = "go",   .text = "Go",   .weight = 1 },
+};
+
 static const wsk_widget_t PANEL[] = {
 	{ .kind = WSK_LABEL, .id = "title", .text = "tap test" },
 	{ .kind = WSK_BUTTON, .id = "confirm", .text = "CONFIRM" },
@@ -161,6 +168,46 @@ int main(void)
 	wsk_render_clipped(&t, ids, 1, &s, 4096);
 	ok(at(1, 50) == scene_left, "and again after the release");
 	ok(at(1, 20) == scene_left, "the title's rows were never touched");
+
+	/* The other axis, which nothing had drawn. A row of three, and one of
+	   them pressed -- the case where repainting one carries its neighbours,
+	   because they share its rows. */
+	{
+		wsk_widget_t bar[3];
+		wsk_tree_t rt;
+		int n;
+
+		wsk_clone(bar, TOOLBAR, 3);
+		wsk_init(&rt, WSK_ROW, PW, PH);
+		rt.pad = 6;
+		rt.gap = 6;
+		rt.bg = 0x10203au;
+		wsk_area(&rt, 0, 0, PW, 84);     /* a toolbar across the top, not a screen */
+		rt.item = bar;
+		rt.n = 3;
+
+		memset(screen, 0, sizeof screen);
+		s.put = to_window; s.ctx = &dev; s.len = 0;
+		blits = 0;
+		n = wsk_render(&rt, &s, 4096);
+		printf("  a row of three: %d bytes, %d bands\n", n, blits);
+
+		bar[1].mark = WSK_MARK_CORNERS;
+		bar[1].ink = 0xffe0e0u;
+		ids[0] = "stop";
+		wsk_rows(&rt, ids, 1, &y0, &y1);
+		{
+			uint32_t v = ((uint32_t)y0 << 16) | (uint32_t)y1;
+			svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		}
+		s.put = to_window; s.ctx = &dev; s.len = 0;
+		n = wsk_render_clipped(&rt, ids, 1, &s, 4096);
+		printf("  one of them pressed: %d bytes, rows %d..%d -- the whole row\n",
+		       n, y0, y1);
+		shot("panel_row.ppm");
+
+		ok(at(1, 40) != 0x0000, "the row's margin survived its repaint too");
+	}
 
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
