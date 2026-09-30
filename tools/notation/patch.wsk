@@ -1,0 +1,4 @@
+# What an update looks like: the lines that changed, and nothing else.
+..btn heater fill=#8fd0ff "Heater ON"
+..lbl title "Settings *"
+..btn fan h=40 "Fan"

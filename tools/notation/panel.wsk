@@ -1,0 +1,15 @@
+# A control panel, as a person would keep it in a file.
+# Dots are depth; a section ends where the next one starts.
+.col pad=4 gap=4 fill=#10203a
+..lbl title "Settings"
+..btn pump h=40 "Pump"
+..btn valve_a h=40 "Valve A"
+..btn valve_b h=40 "Valve B"
+..btn heater h=40 "Heater"
+..btn fan h=40 "Fan"
+..btn alarm h=40 "Alarm"
+..btn purge h=40 "Purge"
+..btn drain h=40 "Drain"
+..btn fill_ h=40 "Fill"
+..btn vent h=40 "Vent"
+..btn reset h=40 "Reset"
