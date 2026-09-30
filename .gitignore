@@ -3,6 +3,7 @@ build/
 *.o
 *.a
 *.ppm
+*.png
 
 # Editor and OS noise
 *.swp

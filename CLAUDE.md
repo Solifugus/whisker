@@ -56,10 +56,14 @@ when there is a panel to tap.
 3. `docs/rv9-answers.md` — the measurements and the four things the review did
    not think to ask. Read §2.5 before writing any C, and §4 before deciding how
    anything is sized.
-4. `docs/rv9-review.md` — the questions as they were put. Historical; kept so
+4. `docs/review-2026-09-30.md` — the substrate checked by running it. Five
+   findings; §7 lists what they change. Read it before §5, because two of them
+   change iteration 1's done-criteria and one changes what a tree may look
+   like. The programs behind every number are in `tools/evidence/`.
+5. `docs/rv9-review.md` — the questions as they were put. Historical; kept so
    question and answer stay separable.
-5. `~/development/Software-Development-Conventions.md` — the house conventions.
-6. For anything touching the substrate: `~/development/esp32/rv9` —
+6. `~/development/Software-Development-Conventions.md` — the house conventions.
+7. For anything touching the substrate: `~/development/esp32/rv9` —
    `components/rv9_io/src/drv_svgwin.c` (its header states two design decisions
    whisker adopts), `raster.c`, `modules/flick/flick.c` (the only working example
    of a clipped repaint, and the source of the timing figures), RV-9's

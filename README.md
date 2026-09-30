@@ -12,6 +12,9 @@ armoured robot cat; this is the part that feels where you touched.*
 - `docs/rv9-answers.md` — the RV-9 session's replies: the measurements, and four
   things the review did not think to ask.
 - `docs/rv9-review.md` — the questions as they were put. Historical.
+- `docs/review-2026-09-30.md` — the substrate run rather than read: five
+  findings, three of them live defects in RV-9. It changes §5's done-criteria
+  and the shape of the API. Evidence in `tools/evidence/`.
 
 **The question that blocked everything was answered by a purchase.** A Waveshare
 ESP32-P4-WIFI6-Touch-LCD-7B — 1024×600, five-point capacitive touch — was
