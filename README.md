@@ -5,19 +5,29 @@
 *A cat's whiskers are how it reads a surface it cannot see. RV-9's mascot is an
 armoured robot cat; this is the part that feels where you touched.*
 
-**Status: nothing built, and waiting on a review.**
+**Status: nothing built. The review is answered; the design needs revising
+against it.**
 
-- `docs/design.md` — the project. Read all of it first.
+- `docs/design.md` — the project. Read all of it first, then read the answers,
+  because ten of its claims need changing.
 - `docs/decisions.md` — what is settled (scope only; every design decision is
   still open).
-- `docs/rv9-review.md` — **with the RV-9 session.** 16 claims to check, 6
-  questions to answer, and 3 things this project already got wrong.
+- `docs/rv9-review.md` — the questions put to the RV-9 session.
+- `docs/rv9-answers.md` — **the replies, 2026-09-29.** Thirteen claims stand,
+  two need a correction, and one was right *and undiscovered* — checking it
+  found a live bug in RV-9, now fixed.
 
-**One question blocks the rest, and it is about hardware.** RV-9 has no input
-device: no touch driver among its 29, an ST7789 panel that is display-only, no
-local keyboard. It does have GPIO pins that can be read. So whether whisker's
-second function is `hit(tree, x, y)` or focus traversal depends on a part nobody
-has chosen — and they are two different libraries. See `docs/design.md` §4.0.
+**The question that blocked everything is answered, and by a purchase.** A
+Waveshare ESP32-P4-WIFI6-Touch-LCD-7B — 1024×600, five-point capacitive touch —
+was ordered 2026-09-27 and arrives in October. So the second function is
+`hit(tree, x, y)`. The ESP32-C5 stays the real-time target with `/gpio` buttons
+and probably never gets touch, so keep a focus order *possible* without building
+one. See `docs/rv9-answers.md` §2.1.
+
+**Two numbers in `docs/design.md` are now wrong.** A tap acknowledgement costs
+**38 ms against 56** for a full redraw, not 30 against 59 — the old figures were
+measured on a clipped repaint that left two black strips on the panel. See
+§1.3 of the answers.
 
 ---
 

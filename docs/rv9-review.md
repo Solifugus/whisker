@@ -14,6 +14,12 @@ This document asks for two things: **check §1, answer §2.** Nothing should be
 built here until §2.1 has an answer, because it decides what whisker's second
 function is.
 
+> **Answered 2026-09-29 — see `docs/rv9-answers.md`.** Thirteen of the sixteen
+> claims stand. Claim 7 was right *and* undiscovered: checking it found a live
+> bug in `flick`, which is why the tap figures in §1's claim 9 have changed.
+> This document is left as written, so the questions and the replies stay
+> separable.
+
 ---
 
 ## 1. Claims to check
