@@ -105,9 +105,13 @@ which also had the right radius and the right area.
 
 **Fixed in RV-9 today** (`modules/flick/flick.c`, revision 2), and the rule now
 sits on `RV9_SVG_SS_ROWS` in `module.h` where somebody reaching for the clip
-will read it. The fix is a backing rect across the clipped rows: **59 bytes**,
-and **for the rows only** — a full-screen background rect would be bytes
-re-parsed once per band for pixels outside the clip.
+will read it. The fix is a backing rect across the clipped rows: **59 bytes**.
+
+> **Corrected 2026-09-30 — see §7.** "For the rows only" is half right. The
+> clip snaps outward to a band boundary, so asking for rows 100..140 repaints
+> 96..143 and a backing over exactly 100..140 leaves a strip at each end.
+> It is **bands**, not rows. `flick` was correct only because it picks
+> band-aligned rows on purpose.
 
 **It costs, and claim 9's numbers move.** On the board, three runs each:
 
@@ -215,8 +219,10 @@ Answered in §1.3. Not deliberate, not latent-but-harmless: actually wrong on
 the board, fixed today, and the cost measured.
 
 The refinement worth carrying into the design: **the backing covers the
-clipped rows, not the screen.** 59 bytes rather than 70-odd, and more
-importantly it does not grow with screen height.
+bands the clip snaps out to** — not the widget's rows, and not the screen.
+Round out to multiples of 8, or choose band-aligned rows. It does not grow
+with screen height either way. (This said "the clipped rows" until
+2026-09-30; see §7.)
 
 ### 2.4 Is a column the right first shape? — **the row is cheaper than you think**
 
@@ -408,3 +414,129 @@ widgets, same 4 KB.
 Nothing here argues against the project. The thesis holds, the two functions
 are the right two, and the one claim that mattered most was both correct and
 worth more than a green tick — it found a bug.
+
+---
+
+## 7. Second round — 2026-09-30
+
+`docs/review-2026-09-30.md` did the same job by *running* RV-9 rather than
+reading it, and found five things. Three were RV-9's. **All three are now
+fixed in RV-9**, each verified on the board and not only on the host, and one
+of them corrected something I wrote in §2.3 above.
+
+### 3.1 — the link base. **Changed, and it changes what whisker may be.**
+
+Confirmed exactly, including the mechanism. At base 0 the linker relaxes the
+PC-relative pair `-mcmodel=medany` emits into `li s0,96` — an absolute address
+— because it fits in a 12-bit immediate. Reproduced in the disassembly:
+
+```
+linked at 0:        linked at 0x4000:
+  li   s0,96          auipc s0,0x0
+                      addi  s0,s0,92     # 406c <TREE>
+```
+
+So the shipped blob held the absolute address, and the check was right to
+refuse it while refusing the wrong thing. The proposal was the right fix.
+
+**Done.** `modules/module.ld` now links at `0x4000` and the probe at `0x8000`,
+through an `RV9_BASE` symbol overridable with `--defsym` — so the probe no
+longer needs a `sed`-patched copy of the script, which was a second place for
+the two to fall out of step. Reproduced their all-modules result independently:
+84 pass, 0 fail, **71,732 bytes under both schemes**, and the module store
+unchanged at 79,752. `--no-relax` costs 9.5%, which is why it is not the
+answer.
+
+**The check keeps its teeth**, which is the part that mattered before touching
+a safety mechanism. A `const char *` table added deliberately still stops the
+build (exit 1). What passes now are the shapes that hold no addresses at all.
+
+**So, concretely, for iteration 1:** a widget tree **may** be a
+`static const` array. Inline `char[N]` fields, or integer offsets into a
+string blob — both were measured passing. What is still refused is a table of
+`const char *` and a table of function pointers, because those hold real
+addresses in rodata. That is a narrower rule than `design.md` §4.1 currently
+states, and §4.1 should be narrowed to match: **it is addresses in rodata that
+break position independence, not constants.**
+
+### 3.2 and 3.3 — both fixed
+
+The overflow wedge and the `<` hang are gone, and `tools/hosttest/svgwin_test.c`
+now runs inside RV-9's `tools/hosttest/run.sh` as the regression that keeps
+them gone. It landed with its tabs converted to RV-9's four spaces and its
+header rewritten to say what is true now; check 3's control is untouched,
+because that is what makes the file worth having.
+
+Verified on the board as well as on the host — an infinite loop holding a
+driver lock is not something a host test can fully vouch for:
+
+```
+rv9> cat /r0/big > /w0            (4,195 bytes)
+W rv9-svgwin: document over 4096 bytes; dropped, screen unchanged
+rv9> cat /r0/lt.svg > /w0         (contains a raw '<')
+rv9> uptime
+up 1m 58s
+```
+
+An overflowed document is **dropped**, not half-drawn: half a picture is a
+silent wrong answer, an unchanged screen with a line in the log is a legible
+one. Getting the `<` document onto the board took `ed`, because the shell
+reads `<` as a redirect and has no escape for it — which is itself worth
+knowing if whisker ever wants a shell-driven test.
+
+**The entity point stands and is whisker's problem, not RV-9's.** `&lt;` is
+not decoded — it draws four characters. So a caller cannot escape text, only
+keep `<` out of it, and **whisker must reject or strip `<` in label data
+before it writes.** That belongs in iteration 1's done-criteria.
+
+### 3.4 — right, and it corrects §2.3 above
+
+Confirmed: clip 100..140 repaints 96..143, so a backing over exactly 100..140
+leaves a strip of device colour at each end. My rule of 2026-09-29 — "carry
+the backing for its rows" — was right only for band-aligned clips, which is
+the case `flick` happens to use. It is **bands, not rows**, and it is fixed in
+`module.h`, `reference.md` §9, `design.md` §56 and `flick`'s own header.
+
+Found by writing the rule down as a test with a control, which is a better way
+to discover a rule is half-right than reading it again.
+
+### 3.5 — verified, plus one detail it missed
+
+Every number checked out against the driver and then against rendered ink:
+
+```
+5 M at font-size 20, x=20     ink x  20..68    (advance box 20..69)
+the same at font-size 40      ink x  20..117   (advance box 20..119)
+CONFIRM anchor=middle x=160   ink x 126..193, centred on 159.5
+```
+
+**The detail it missed:** leading and trailing whitespace is **stripped before
+anything is measured or anchored**. `"  OK  "` and `"OK"` render identically,
+ink 21..39 both. A layout engine that pads a label to a column width and
+expects the padding to count will be wrong. Also: `\n` and `\t` become spaces
+and still advance, and the advance is in user units *after* any enclosing
+`transform`.
+
+All of it is now in RV-9's `reference.md` §9 under *Laying out text on `/w0`*,
+so whisker can cite a document instead of a measurement.
+
+### §5 — 19 ms, not 38. Taken.
+
+The sharpest point in the review, and it was about my wording rather than the
+board. `flick` times three draws; press is 19 ms, release is 19 ms, and the
+finger lifts between them. What a person waits for after touching is the
+press — the release repaint happens after they have gone.
+
+**So 19 ms is the latency budget and 38 ms is the cost budget**, and quoting
+38 against a perceived-response target is twice as pessimistic as the hardware
+deserves. Corrected in RV-9's roadmap and design §56. At 1024×600 that is
+about **33 ms perceived and 66 ms of work**.
+
+`design.md` §2.2 and `CLAUDE.md` should be narrowed the same way.
+
+### What was not touched
+
+The gBASIC item — `gui_addressability_design.md` §0.3 still quoting 30 ms
+against 59 ms and citing whisker's design for it — is left for whoever works
+that repository. It is now doubly wrong: the numbers moved, and they were the
+latency reading of a cost figure.

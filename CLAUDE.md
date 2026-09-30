@@ -94,8 +94,11 @@ Anything proposed here is priced against them:
   host, so a full 4 KB document costs ~2.5× a terse 1 KB one. It also does **not
   scale with the screen**, which makes it comfortable on the C5 and the binding
   constraint on the P4.
-- **~38 ms to acknowledge a tap** at 320×172, ~66 ms at 1024×600, against
-  ~56 ms and ~640 ms for a full redraw. A full re-render per interaction is
+- **~19 ms of latency and ~38 ms of work per tap** at 320×172 (~33 and ~66 at
+  1024×600), against ~56 ms and ~640 ms for a full redraw. Keep the two apart:
+  `flick`'s press is 19 ms and its release is 19 ms, and the finger lifts
+  between them — what a person waits for is the press. Quoting 38 as a latency
+  budget is twice as pessimistic as the hardware deserves. A full re-render per interaction is
   therefore **not** affordable and a banded one is. Note the wording: `flick`
   times three *draws*, and **nothing has yet measured a tap arriving** — that is
   iteration 2's first measurement.
@@ -133,7 +136,10 @@ quoting:
 **Read `docs/rv9-answers.md` §2.5 before writing any C.** A program on RV-9 *is*
 a module, so whisker inherits every rule a module obeys: no `.data`, no `.bss`,
 no libc, **no 64-bit division**, **no `static const` array of pointers**, no
-`switch` over string literals, no local array initialised from a literal. Each of
+`switch` over string literals, no local array initialised from a literal.
+**Plain `static const` data is fine** — a widget tree may be a static array
+with inline `char[N]` fields or integer offsets into a string blob; it may not
+be a table of pointers. It is addresses in rodata that break this. Each of
 the last three compiles to a table of absolute addresses and breaks position
 independence, which `tools/build_modules.sh` *proves* by linking each module
 twice at different bases and comparing the bytes.

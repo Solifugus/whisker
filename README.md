@@ -27,8 +27,10 @@ built.
 checking it found a live bug in RV-9's `flick`, which had shipped two black
 strips beside its button for months because a clipped repaint is cleared to the
 device background rather than the scene's. Fixed — and the budget moved with it.
-**A tap acknowledgement costs 38 ms against 56 for a full redraw**, not 30
-against 59. The old numbers were measured on a picture that was wrong.
+**A tap costs 38 ms of work against 56 for a full redraw**, not 30 against 59.
+The old numbers were measured on a picture that was wrong. And the *latency*
+is **19 ms** — the press alone — because the release repaint happens after the
+finger has lifted (`rv9-answers.md` §7).
 
 And one recommendation was overturned by measurement: a **row** of buttons costs
 1.77× a column, not something to avoid, so the layout model allows both.

@@ -69,8 +69,12 @@ From RV-9's `docs/roadmap.md`, *"Open — damage tracking, before the GUI direct
 measured with `tools/hosttest/scale.c` and on the C5 at 320×172:
 
 - full redraw **56 ms**; press **19 ms**; release **19 ms** — so **acknowledging**
-  a tap is **38 ms** against 56 for one full frame, with band clipping
-  (`RV9_SVG_SS_ROWS`).
+  a tap costs **38 ms of work** against 56 for one full frame, with band
+  clipping (`RV9_SVG_SS_ROWS`) — but the **latency** a finger waits for is
+  **19 ms**, the press alone. The release repaint happens after the finger has
+  lifted. **19 ms is the perceived-response budget; 38 ms is the cost budget**,
+  and spending 38 against a responsiveness target is twice as pessimistic as
+  the hardware deserves. At 1024×600: ~33 ms perceived, ~66 ms of work.
 
   **These were 59 / 15 / 15 and a 30 ms tap until 2026-09-29**, and the
   correction is worth more than the number. The old figures were measured on a
@@ -419,12 +423,21 @@ a module links inherits every rule a module obeys:
 - no libc: no `memcpy`, no `malloc`, no `printf`
 - **no 64-bit division** — `uint64_t / n` calls `__udivdi3` in libgcc, not linked
 - **no `static const` array of pointers**, and no `switch` over string literals:
-  both compile to a table of absolute addresses and break position independence
+  both compile to a table of absolute addresses and break position
+  independence. **Plain `static const` *data* is fine** — a byte table, a
+  string blob with integer offsets, a struct array of inline `char[N]`. It is
+  addresses in rodata that break this, not constants. (True since 2026-09-30:
+  modules used to link at base 0, where the linker relaxed the PC-relative
+  pair into an absolute load and *any* named `static const` object failed. See
+  `rv9-answers.md` §7.)
 - no local array initialised from a string literal — `char pre[] = "btn";`
   becomes a `memcpy` from rodata
 
 **A widget dispatch table is the natural design for this library and is exactly
-what that build refuses.** So is `static const char *kinds[] = {...}`. RV-9 hit
+what that build refuses.** So is `static const char *kinds[] = {...}`. But a
+`static const w_t TREE[] = {...}` with inline `char[N]` labels, or with
+integer offsets into a string blob, **does** link — both measured. A widget
+tree may be static data; it may not be a table of pointers. RV-9 hit
 this twice; the second time a working module needed rewriting, and `have` now
 walks a space-separated string with a helper instead of indexing an array of
 `const char *` — the array version was correct C, read better, and was not
