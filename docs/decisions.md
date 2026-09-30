@@ -6,23 +6,25 @@ argument that was merely persuasive. `docs/design.md` §4 holds the reasoning; t
 file holds the outcome, so that a later session does not reopen a settled
 question by reading the arguments and not the verdict.
 
-**Status of §4 as a whole: six open, none ratified.** D0 now has an *answer*
-from the RV-9 session (`docs/rv9-answers.md` §2.1) — touch, 1024×600,
-five-point, hardware bought — but an answer is not a ratification, and this
-table records outcomes only when Matthew has ratified them.
+**Status of §4 as a whole: all six ratified, 2026-09-29, by Matthew**, on the
+RV-9 session's replies in `docs/rv9-answers.md`. Iteration 1 (`docs/design.md`
+§5) can start.
 
-| id | Decision | Status | Outcome |
+| id | Decision | Status | Outcome, and the argument that settled it |
 |---|---|---|---|
-| **D0** | What is the input, and therefore what is the second function? (§4.0) | **answered, unratified** | *RV-9, 2026-09-29: touch. A 1024×600 five-point panel arrives in October, so `hit(tree, x, y)`. See `rv9-answers.md` §2.1.* |
-| **D1** | What language? (§4.1) | open | *recommended: C* |
-| **D2** | One implementation, or a specification and two? (§4.2) | open | *recommended: one* |
-| **D3** | How much layout, given no box model? (§4.3) | open | *recommended: single-axis stack, column preferred — but RV-9 measured a row at only 1.7x a column, so the recommendation is over-cautious; see `rv9-answers.md` §2.4* |
-| **D4** | Is the address space the SVG `id`? (§4.4) | open | *recommended: yes* |
-| **D5** | Who retains the tree? (§4.5) | open | *recommended: the caller; whisker is pure* |
+| **D0** | What is the input, and therefore what is the second function? (§4.0) | **ratified** | **`hit(tree, x, y)`.** Not a judgement call in the end: a Waveshare ESP32-P4-WIFI6-Touch-LCD-7B — 1024×600, five-point capacitive — was ordered 2026-09-27 and arrives in October. Five points available, whisker uses one. The C5 keeps `/gpio` and probably never gets touch, so declaration order is kept stable and a focus model stays *addable* without being built. |
+| **D1** | What language? (§4.1) | **ratified** | **C**, departing from the house preference for Zig with the departure made explicitly. RV-9 modules are built with a riscv32 gcc, a linker script asserting `.data`/`.bss` are empty, and a proof of position independence by double-linking. Teaching Zig all of that is a project before whisker's first line. **Build shape: header-only, like `modlib.h`** — and the module rules bind whisker's *code*, not only its build. |
+| **D2** | One implementation, or a specification and two? (§4.2) | **ratified** | **One.** Two representations of one declaration drift, and the failure would be a widget hit-tested in one place and drawn in another. A shared corpus makes drift visible, not impossible. |
+| **D3** | How much layout, given no box model? (§4.3) | **ratified** | **A single-axis stack, row *or* column**, per-child weight, padding as one number. **Changed by the review**: RV-9 measured a row at 1.77× a column at 320×172 and 1.55× at 1024×600 — a fraction of a frame either way, ~7 ms against ~12 ms on the C5 against a 38 ms budget. The original "column preferred, price the row" was right in kind and wrong in degree. A 2×2 grid is affordable when it comes; deep nesting is not. |
+| **D4** | Is the address space the SVG `id`? (§4.4) | **ratified** | **Yes.** Document-unique by the XML specification, and the same rule gBASIC's declarative `gui` ids already follow — so gBASIC's §0.3 tension resolves rather than being traded off. |
+| **D5** | Who retains the tree? (§4.5) | **ratified** | **The caller; whisker is pure.** The host already holds the SVG text and the application already holds its state; a retained tree inside whisker would be a third copy that can disagree with both. |
 
-The italicised column is a **recommendation, not an outcome.** A recommendation
-that has sat unratified for months is not a decision, and the difference is the
-whole reason this file is separate from the design.
+These are outcomes, not recommendations. `docs/design.md` §4 keeps the reasoning
+behind each, because a decision whose argument is lost gets reopened — but where
+the two disagree, **this file wins**.
+
+Two of the six were *changed* rather than confirmed by the review (D0 and D3),
+which is the return on having asked.
 
 ---
 

@@ -5,29 +5,30 @@
 *A cat's whiskers are how it reads a surface it cannot see. RV-9's mascot is an
 armoured robot cat; this is the part that feels where you touched.*
 
-**Status: nothing built. The review is answered; the design needs revising
-against it.**
+**Status: nothing built, nothing blocked. Iteration 1 can start.**
 
-- `docs/design.md` — the project. Read all of it first, then read the answers,
-  because ten of its claims need changing.
-- `docs/decisions.md` — what is settled (scope only; every design decision is
-  still open).
-- `docs/rv9-review.md` — the questions put to the RV-9 session.
-- `docs/rv9-answers.md` — **the replies, 2026-09-29.** Thirteen claims stand,
-  two need a correction, and one was right *and undiscovered* — checking it
-  found a live bug in RV-9, now fixed.
+- `docs/decisions.md` — **read first.** Six decisions, all ratified 2026-09-29.
+- `docs/design.md` — the project, revised against the review.
+- `docs/rv9-answers.md` — the RV-9 session's replies: the measurements, and four
+  things the review did not think to ask.
+- `docs/rv9-review.md` — the questions as they were put. Historical.
 
-**The question that blocked everything is answered, and by a purchase.** A
-Waveshare ESP32-P4-WIFI6-Touch-LCD-7B — 1024×600, five-point capacitive touch —
-was ordered 2026-09-27 and arrives in October. So the second function is
+**The question that blocked everything was answered by a purchase.** A Waveshare
+ESP32-P4-WIFI6-Touch-LCD-7B — 1024×600, five-point capacitive touch — was
+ordered 2026-09-27 and arrives in October. So the second function is
 `hit(tree, x, y)`. The ESP32-C5 stays the real-time target with `/gpio` buttons
-and probably never gets touch, so keep a focus order *possible* without building
-one. See `docs/rv9-answers.md` §2.1.
+and probably never gets touch, so a focus order stays *possible* without being
+built.
 
-**Two numbers in `docs/design.md` are now wrong.** A tap acknowledgement costs
-**38 ms against 56** for a full redraw, not 30 against 59 — the old figures were
-measured on a clipped repaint that left two black strips on the panel. See
-§1.3 of the answers.
+**Asking for the review paid twice.** One claim was right *and undiscovered*:
+checking it found a live bug in RV-9's `flick`, which had shipped two black
+strips beside its button for months because a clipped repaint is cleared to the
+device background rather than the scene's. Fixed — and the budget moved with it.
+**A tap acknowledgement costs 38 ms against 56 for a full redraw**, not 30
+against 59. The old numbers were measured on a picture that was wrong.
+
+And one recommendation was overturned by measurement: a **row** of buttons costs
+1.77× a column, not something to avoid, so the layout model allows both.
 
 ---
 
@@ -35,8 +36,9 @@ measured on a clipped repaint that left two black strips on the panel. See
 
 Two pure functions over a description of a user interface:
 
-1. given a widget tree, **produce SVG**
-2. given a point, **say which widget was hit**
+1. given a widget tree, **produce SVG** — iteration 1
+2. given a point, **say which widget was hit** — iteration 2, when the touch
+   panel arrives
 
 That is the whole surface. Everything else — drawing, text, rasterising,
 clipping, getting the tap from the hardware — is already done by the host, and
@@ -55,20 +57,32 @@ whisker never touches a framebuffer.
   drew, for the same reason: a style language means a cascade, a selector engine
   and a box model.
 
-## The two hosts
+## Two hosts, three surfaces
 
 whisker exists because the same layer is missing in two places at once, and
 neither should own it.
 
 | | |
 |---|---|
-| **RV-9** (`~/development/esp32/rv9`) | Has the surface — `/w0`, plus a row-range setstat for banded repaint — and **not** the input. Its roadmap heads a section *"Open — damage tracking, before the GUI direction."* A quarter of a megabyte of RAM, one RISC-V core at 240 MHz. **The harder constraint, so it sets the budget.** |
+| **RV-9** (`~/development/esp32/rv9`) | Has the surface — `/w0`, plus a row-range setstat for banded repaint. A quarter of a megabyte of RAM, one RISC-V core at 240 MHz. **The harder constraint, so it sets the budget.** |
 | **gBASIC** (`~/development/gbasic`) | Already emits deterministic SVG from pure gBASIC (`stdlib/chart.bas`, 1,612 lines, zero dependencies). Wants an addressable widget tree; see its `docs/gui_addressability_design.md` §0.3. |
 
-A layer that satisfies RV-9 will satisfy a Linux host. The reverse is not true,
-which is why the small target is the one to build against — the same argument
-gBASIC made for measuring its Windows port with a real cross-compiler instead of
-estimating it.
+But RV-9 runs on **two boards that differ where it matters**, so the contract
+faces three surfaces, not two (`docs/design.md` §2.7):
+
+- **ESP32-C5** — ST7789 panel that holds its own framebuffer, no touch, `/gpio`
+  only. The real-time target, and the one the budget is measured on.
+- **ESP32-P4** (October) — 1024×600 five-point touch, MIPI-DSI with **no
+  framebuffer of its own**, so RV-9 owns the pixels in PSRAM and horizontal
+  clipping becomes possible. The personal-computing target.
+- **Linux** — everything, which is why it must not be the one that defines the
+  contract.
+
+A layer that satisfies the C5 will satisfy the other two. The reverse is not
+true, which is why the small target is the one to build against — the same
+argument gBASIC made for measuring its Windows port with a real cross-compiler
+instead of estimating it. **But do not bake the C5's limits into the model**:
+the machine that will actually run a seven-inch touch interface is the P4.
 
 ## Why it is a separate project
 

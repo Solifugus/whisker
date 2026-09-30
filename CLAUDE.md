@@ -14,7 +14,8 @@ It serves two hosts and belongs to neither:
 - **RV-9** — `~/development/esp32/rv9`. A small modular OS for RISC-V on an
   ESP32-C5: one core at 240 MHz, ~¼ MB of RAM, no PSRAM. It already has the
   surface (`/w0`, write SVG to it), the rasteriser (`raster.c`, no ESP
-  dependencies), text (`font.c`) and touch. Its roadmap heads a section
+  dependencies) and text (`font.c`). It has **no touch** — that arrives on the
+  P4 board in October (see Status). Its roadmap heads a section
   *"Open — damage tracking, before the GUI direction."*
 - **gBASIC** — `~/development/gbasic`. A C11 BASIC-family interpreter. Already
   emits deterministic SVG from pure gBASIC (`stdlib/chart.bas`, zero
@@ -27,40 +28,42 @@ while nothing is invested.
 
 ## Status
 
-**Nothing is built, and it is gated twice.**
+**Nothing is built. Both gates are open — start iteration 1.**
 
-1. **`docs/rv9-review.md` is waiting on the RV-9 session.** Every claim this
-   project makes about RV-9 was *read*, in one sitting, by someone who has never
-   run it on hardware — and **three of the first claims were wrong**, listed in
-   that document's §3 as a calibration on the rest. The review checks 16 claims
-   and asks 6 questions.
-2. **`docs/design.md` §4 names six decisions and none is ratified.**
-   `docs/decisions.md` is the ledger; it is empty of outcomes on purpose.
+1. **The RV-9 review is answered** (`docs/rv9-answers.md`, 2026-09-29). Thirteen
+   of sixteen claims stood. One of them was right *and undiscovered*: checking it
+   found a live bug in RV-9's `flick`, now fixed, which is why the tap budget
+   moved.
+2. **All six decisions are ratified** (Matthew, 2026-09-29). `docs/decisions.md`
+   is the ledger and wins wherever it disagrees with the design's §4 reasoning.
 
-**§4.0 blocks everything and is not ours to answer.** RV-9 has **no input
-device** — no touch driver among its 29 drivers, an ST7789 panel that is
-display-only, and no local keyboard. What it has is GPIO pins that can be read.
-So whether whisker's second function is `hit(tree, x, y)` or `focus_next` /
-`activate` depends on hardware nobody has chosen yet, and those are two
-different libraries with two different test suites. Building the pointing
-version and then meeting a rotary encoder means discarding the half that took
-the work.
+**D0 was settled by a purchase**: a Waveshare ESP32-P4-WIFI6-Touch-LCD-7B —
+1024×600, five-point capacitive touch — arrives in October, so the second
+function is `hit(tree, x, y)`. The C5 keeps `/gpio` and probably never gets
+touch, so keep declaration order stable and a focus model stays addable without
+being built.
 
-`render` is common to all three input futures, which is why **iteration 1 is the
-renderer alone** (§5). That much can be built as soon as D0..D5 are settled.
+**Iteration 1 is the renderer alone** (`docs/design.md` §5): labels and buttons
+in a single-axis stack, column *or* row, header-only C. `hit` is iteration 2,
+when there is a panel to tap.
 
 ## Read before working
 
-1. `docs/design.md` — all of it. It is the whole project.
-2. `docs/decisions.md` — what is actually settled, as against what is merely
-   recommended. Read this *before* the design's §4, or you will mistake a
-   recommendation for a verdict.
-3. `docs/rv9-review.md` — what is still unverified, and what I already got wrong.
-4. `~/development/Software-Development-Conventions.md` — the house conventions.
-5. For anything touching the substrate: `~/development/esp32/rv9` —
+1. `docs/decisions.md` — six ratified outcomes, one screen. **First**, so that
+   the design's §4 arguments read as history rather than as open questions.
+2. `docs/design.md` — all of it. It is the whole project, and it has been
+   revised against the review, so it and the answers no longer disagree.
+3. `docs/rv9-answers.md` — the measurements and the four things the review did
+   not think to ask. Read §2.5 before writing any C, and §4 before deciding how
+   anything is sized.
+4. `docs/rv9-review.md` — the questions as they were put. Historical; kept so
+   question and answer stay separable.
+5. `~/development/Software-Development-Conventions.md` — the house conventions.
+6. For anything touching the substrate: `~/development/esp32/rv9` —
    `components/rv9_io/src/drv_svgwin.c` (its header states two design decisions
    whisker adopts), `raster.c`, `modules/flick/flick.c` (the only working example
-   of a clipped repaint, and the source of the timing figures), and
+   of a clipped repaint, and the source of the timing figures), RV-9's
+   `docs/reference.md` §9 for `RV9_SVG_SS_ROWS` and §5 for the module rules, and
    `tools/hosttest/run.sh`, which builds the renderer natively and writes a PPM.
 
 ## Conventions
@@ -70,7 +73,7 @@ here:
 
 - **Design document first**, updated before each iteration.
 - **Iterations are working products**, not layers of scaffolding. The first is
-  labels and buttons in one vertical stack; see §5.
+  labels and buttons in one single-axis stack, column or row; see `design.md` §5.
 - **Few to no dependencies**, and mature ones where unavoidable. whisker's whole
   argument is that the layer beneath it is already done.
 - **Tabs for indentation.**
@@ -82,20 +85,28 @@ Both are measured on real hardware and recorded in `docs/design.md` §2.2–§2.
 Anything proposed here is priced against them:
 
 - **4 KB of SVG** (`SRC_MAX`) is the ceiling on how much interface fits on a
-  screen. Verbose output hits this long before it hits the frame budget, so
-  terse emission is a requirement rather than an optimisation.
-- **~30 ms to acknowledge a tap** at 320×172, ~52 ms at 1024×600, against
-  ~59 ms and ~640 ms for a full redraw. A full re-render per interaction is
+  screen. It is *raisable in one line*, so respect it for the right reason: the
+  cost is **time, paid once per band**, roughly 0.34 ms + 0.00036 ms/byte on the
+  host, so a full 4 KB document costs ~2.5× a terse 1 KB one. It also does **not
+  scale with the screen**, which makes it comfortable on the C5 and the binding
+  constraint on the P4.
+- **~38 ms to acknowledge a tap** at 320×172, ~66 ms at 1024×600, against
+  ~56 ms and ~640 ms for a full redraw. A full re-render per interaction is
   therefore **not** affordable and a banded one is. Note the wording: `flick`
-  times three *draws*, and with no input device nothing has ever measured a tap
-  arriving.
+  times three *draws*, and **nothing has yet measured a tap arriving** — that is
+  iteration 2's first measurement.
+
+  *These were 30 ms and 59 ms until 2026-09-29.* The old figures were measured on
+  a clipped repaint that left two black strips on the panel. Do not quote the old
+  ones from any document that still carries them.
 
   The mechanism is **not** a fragment of XML — `RV9_SVG_SS_ROWS` takes a row
   range and you write a **complete** document containing only what intersects
-  those rows. And the clip is **vertical only**, so a repaint covers the full
-  width of its rows and the band is cleared to the *device* background, not to
-  what the scene drew. Both facts are in §2.2 and both constrain the layout
-  model more than §4.3 does.
+  those rows, **carrying the backing for those rows** or the scene's background
+  disappears from them. The range is in **device rows, not viewBox units**, and
+  snaps outward to 8-row bands. The clip is **vertical only** *today*, which is a
+  software choice rather than a hardware limit — so do not let the layout model
+  depend on it.
 
 ## Evidence standards
 
@@ -112,6 +123,21 @@ quoting:
 - **A picture can be geometrically perfect and still be wrong in a way only an
   eye catches.** RV-9's own lesson, from circles that came out lumpy with the
   right radius and the right area. Render to a PPM and look at it.
+
+## The module rules bind the code, not just the build
+
+**Read `docs/rv9-answers.md` §2.5 before writing any C.** A program on RV-9 *is*
+a module, so whisker inherits every rule a module obeys: no `.data`, no `.bss`,
+no libc, **no 64-bit division**, **no `static const` array of pointers**, no
+`switch` over string literals, no local array initialised from a literal. Each of
+the last three compiles to a table of absolute addresses and breaks position
+independence, which `tools/build_modules.sh` *proves* by linking each module
+twice at different bases and comparing the bytes.
+
+**A widget dispatch table is the natural design here and is exactly what that
+build refuses.** RV-9 hit this twice; the second time cost a working module a
+rewrite. Iteration 1's done-criteria include compiling under those flags, so the
+failure happens loudly now rather than quietly in iteration 3.
 
 ## What whisker must never require
 
