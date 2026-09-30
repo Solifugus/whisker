@@ -8,9 +8,11 @@
  *     ./run.sh            all of it
  *     ./run.sh 3          one section, by number
  *
- * Section 3 contains a document that does not return: a raw '<' in text
- * content hangs the driver, so it is drawn in a child process that the
- * parent gives three seconds before killing it.
+ * Two of these were defects when this was written, and RV-9 fixed both on
+ * 2026-09-30 (rv9-answers.md §7). The programme is kept, and reports what it
+ * finds rather than what it found: against an older tree it still says
+ * "wedged", and section 3's document still never returns -- which is why that
+ * one is drawn in a child process the parent gives three seconds.
  */
 #include "drv_svgwin.c"
 
@@ -90,19 +92,30 @@ static void s1_overflow(rv9_dev_t *dev)
 		              "<rect x=\"1\" y=\"1\" width=\"9\" height=\"9\" fill=\"#abc\"/>");
 	n += snprintf(big + n, sizeof big - n, "</svg>");
 
-	blits = 0;
-	svgwin_write(dev, big, (size_t)n, &done);
-	printf("     the oversized document (%d bytes):   %d blits\n", n, blits);
-
 	const char *ok = "<svg viewBox=\"0 0 320 172\">"
 	                 "<rect width=\"320\" height=\"172\" fill=\"#123456\"/></svg>";
-	blits = 0; svgwin_write(dev, ok, strlen(ok), &done);
-	printf("     a valid document written after it:   %d blits\n", blits);
-	blits = 0; svgwin_write(dev, ok, strlen(ok), &done);
-	printf("     and again:                           %d blits\n", blits);
-	puts("     -- past SRC_MAX the bytes are dropped, so the </svg> that ends a");
-	puts("        document can never land in the buffer again. The window is");
-	puts("        wedged for the life of the open path, and nothing is logged.");
+	int after, again;
+
+	blits = 0;
+	svgwin_write(dev, big, (size_t)n, &done);
+	printf("     the oversized document (%d bytes):   %d bands\n", n, blits);
+
+	blits = 0; svgwin_write(dev, ok, strlen(ok), &done); after = blits;
+	printf("     a valid document written after it:   %d bands\n", after);
+	blits = 0; svgwin_write(dev, ok, strlen(ok), &done); again = blits;
+	printf("     and again:                           %d bands\n", again);
+
+	if (after > 0 && again > 0) {
+		puts("     -- the window still answers. An overflowed document is dropped");
+		puts("        and logged, which is what RV-9 changed on 2026-09-30.");
+		puts("        whisker still needs a byte budget: what it may not do is");
+		puts("        discover the ceiling by writing past it.");
+	} else {
+		puts("     -- WEDGED. Past SRC_MAX the bytes were dropped, so the </svg>");
+		puts("        that ends a document could never land in the buffer again,");
+		puts("        for the life of the open path, and nothing was logged.");
+		puts("        Fixed in RV-9 on 2026-09-30; this is an older tree.");
+	}
 }
 
 static void s2_text_metrics(rv9_dev_t *dev)
@@ -142,6 +155,30 @@ static void s2_text_metrics(rv9_dev_t *dev)
 			if (screen[y * PW + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
 	printf("     \"CONFIRM\" anchored middle at x=160: ink %d..%d, centred on %d\n",
 	       x0, x1, (x0 + x1) / 2);
+
+	/* Leading and trailing space is stripped before anything is measured or
+	   anchored, so a label padded to a column width is not the width it was
+	   padded to. Caught by the RV-9 session reading this back; see
+	   rv9-answers.md §7 and RV-9's reference.md §9. */
+	draw(dev, "<svg viewBox=\"0 0 320 172\">"
+	          "<text x=\"20\" y=\"40\" font-size=\"20\" fill=\"#ffffff\">  OK  </text></svg>");
+	x0 = PW; x1 = -1;
+	for (int y = 0; y < PH; y++)
+		for (int x = 0; x < PW; x++)
+			if (screen[y * PW + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
+	draw(dev, "<svg viewBox=\"0 0 320 172\">"
+	          "<text x=\"20\" y=\"40\" font-size=\"20\" fill=\"#ffffff\">OK</text></svg>");
+	{
+		int a = PW, b = -1;
+		for (int y = 0; y < PH; y++)
+			for (int x = 0; x < PW; x++)
+				if (screen[y * PW + x]) { if (x < a) a = x; if (x > b) b = x; }
+		printf("     \"  OK  \" ink %d..%d against \"OK\" ink %d..%d  --  %s\n",
+		       x0, x1, a, b,
+		       (a == x0 && b == x1) ? "identical: padding is stripped, not measured"
+		                            : "different");
+	}
+
 	puts("     -- one fixed-width face; a label can be sized, centred and");
 	puts("        truncated with 32-bit arithmetic and no font API.");
 }

@@ -10,14 +10,19 @@
 # The documents said "no static const array of pointers". This says what is
 # actually refused, and under which of three link schemes:
 #
-#   today      both links as RV-9 builds them: shipped at 0, probe at 0x4000
+#   zerobase   what RV-9 did until 2026-09-30: shipped at 0, probe at 0x4000
 #   norelax    the same, with -Wl,--no-relax
-#   nonzero    shipped at 0x4000, probe at 0x8000 -- neither link at zero
+#   now        what RV-9 does since: shipped at 0x4000, probe at 0x8000,
+#              through the RV9_BASE symbol modules/module.ld now takes
 #
-# The difference is not academic. At base 0 the linker relaxes an
-# auipc/addi pair into a single `li s0,96` -- an absolute address -- because
-# the address fits in an immediate. That is what fails the check, and it
-# fails for shapes that hold no pointer at all.
+# The difference is not academic. At base 0 the linker relaxes the auipc/addi
+# pair into a single `li s0,96` -- an absolute address -- because it fits in a
+# 12-bit immediate, so the *shipped* blob was the one holding it. That is what
+# failed the check, and it failed for shapes that hold no pointer at all.
+#
+# RV-9 changed the base on 2026-09-30 (rv9-answers.md §7). The zerobase column
+# is kept because it is the evidence for why, and because it is the column
+# that still refuses a pointer table -- the check did not lose its teeth.
 #
 # Needs the IDF toolchain. Point $TOOLS elsewhere if yours is installed
 # somewhere else.
@@ -53,29 +58,29 @@ CFLAGS=(
 
 W="$(mktemp -d)"
 trap 'rm -rf "$W"' EXIT
-base()  { sed "s/^    \\. = 0;\$/    . = $1;/" "$RV9/modules/module.ld"; }
-base 0x0000 > "$W/zero.ld"
-base 0x4000 > "$W/probe.ld"
-base 0x8000 > "$W/far.ld"
+# modules/module.ld takes its base from RV9_BASE, so every scheme is two
+# --defsym values against the one script -- no patched copy to keep in step.
+LD="$RV9/modules/module.ld"
 
-# scheme -> shipped linker script, probe linker script, extra link flags
+# scheme -> shipped base, probe base, extra link flags
 link_pair()
 {
 	case "$1" in
-	today)   echo "$RV9/modules/module.ld|$W/probe.ld|" ;;
-	norelax) echo "$RV9/modules/module.ld|$W/probe.ld|-Wl,--no-relax" ;;
-	nonzero) echo "$W/probe.ld|$W/far.ld|" ;;
+	zerobase) echo "0x0|0x4000|" ;;
+	norelax)  echo "0x0|0x4000|-Wl,--no-relax" ;;
+	now)      echo "0x4000|0x8000|" ;;
 	esac
 }
 
 check()   # $1 source, $2 scheme -> prints a verdict
 {
-	local src="$1" n="${1%.c}" spec ld1 ld2 extra
+	local src="$1" spec b1 b2 extra
 	spec="$(link_pair "$2")"
-	ld1="${spec%%|*}"; spec="${spec#*|}"
-	ld2="${spec%%|*}"; extra="${spec#*|}"
+	b1="${spec%%|*}"; spec="${spec#*|}"
+	b2="${spec%%|*}"; extra="${spec#*|}"
 
-	if ! "$CC" "${CFLAGS[@]}" -nostdlib -nostartfiles -T"$ld1" -Wl,--gc-sections \
+	if ! "$CC" "${CFLAGS[@]}" -nostdlib -nostartfiles -T"$LD" \
+		-Wl,--defsym,RV9_BASE="$b1" -Wl,--gc-sections \
 		${extra:+$extra} -o "$W/a.elf" "$src" 2>"$W/err"; then
 		if grep -q "undefined reference" "$W/err"; then
 			printf 'link failed: %s' "$(grep -o "undefined reference to .*" "$W/err" | head -1)"
@@ -84,7 +89,8 @@ check()   # $1 source, $2 scheme -> prints a verdict
 		fi
 		return
 	fi
-	"$CC" "${CFLAGS[@]}" -nostdlib -nostartfiles -T"$ld2" -Wl,--gc-sections \
+	"$CC" "${CFLAGS[@]}" -nostdlib -nostartfiles -T"$LD" \
+		-Wl,--defsym,RV9_BASE="$b2" -Wl,--gc-sections \
 		${extra:+$extra} -o "$W/b.elf" "$src" 2>/dev/null
 	"$OBJCOPY" -O binary "$W/a.elf" "$W/a.bin"
 	"$OBJCOPY" -O binary "$W/b.elf" "$W/b.bin"
@@ -95,27 +101,29 @@ check()   # $1 source, $2 scheme -> prints a verdict
 	fi
 }
 
-printf '%-22s  %-22s  %-14s  %s\n' shape today norelax nonzero
-printf '%-22s  %-22s  %-14s  %s\n' ---------------------- ---------------------- -------------- -------
+printf '%-22s  %-16s  %-16s  %s\n' shape 'zerobase (was)' norelax 'now'
+printf '%-22s  %-16s  %-16s  %s\n' ---------------------- ---------------- ---------------- ----------------
 for f in "$HERE"/*.c; do
-	printf '%-22s  %-22s  %-14s  %s\n' "$(basename "${f%.c}")" \
-		"$(check "$f" today)" "$(check "$f" norelax)" "$(check "$f" nonzero)"
+	printf '%-22s  %-16s  %-16s  %s\n' "$(basename "${f%.c}")" \
+		"$(check "$f" zerobase)" "$(check "$f" norelax)" "$(check "$f" now)"
 done
 
 # And the same three schemes over every real RV-9 module, which is what makes
 # the nonzero column a proposal rather than a guess.
 if [[ "${1:-}" == "--all-modules" ]]; then
-	for scheme in today norelax nonzero; do
+	for scheme in zerobase norelax now; do
 		pass=0; fail=0; failed=""; total=0
 		for dir in "$RV9"/modules/*/; do
 			[[ -f "$dir/descriptor.conf" ]] && continue
 			srcs=("$dir"*.c); [[ -e "${srcs[0]}" ]] || continue
 			spec="$(link_pair "$scheme")"
-			ld1="${spec%%|*}"; spec="${spec#*|}"
-			ld2="${spec%%|*}"; extra="${spec#*|}"
-			"$CC" "${CFLAGS[@]}" -nostdlib -nostartfiles -T"$ld1" -Wl,--gc-sections \
+			b1="${spec%%|*}"; spec="${spec#*|}"
+			b2="${spec%%|*}"; extra="${spec#*|}"
+			"$CC" "${CFLAGS[@]}" -nostdlib -nostartfiles -T"$LD" \
+				-Wl,--defsym,RV9_BASE="$b1" -Wl,--gc-sections \
 				${extra:+$extra} -o "$W/a.elf" "${srcs[@]}" 2>/dev/null || continue
-			"$CC" "${CFLAGS[@]}" -nostdlib -nostartfiles -T"$ld2" -Wl,--gc-sections \
+			"$CC" "${CFLAGS[@]}" -nostdlib -nostartfiles -T"$LD" \
+				-Wl,--defsym,RV9_BASE="$b2" -Wl,--gc-sections \
 				${extra:+$extra} -o "$W/b.elf" "${srcs[@]}" 2>/dev/null
 			"$OBJCOPY" -O binary "$W/a.elf" "$W/a.bin"
 			"$OBJCOPY" -O binary "$W/b.elf" "$W/b.bin"
@@ -123,7 +131,7 @@ if [[ "${1:-}" == "--all-modules" ]]; then
 			if cmp -s "$W/a.bin" "$W/b.bin"; then pass=$((pass+1))
 			else fail=$((fail+1)); failed="$failed $(basename "$dir")"; fi
 		done
-		printf '\nevery RV-9 module, %-8s pass %d, fail %d%s; %d bytes in all\n' \
+		printf '\nevery RV-9 module, %-9s pass %d, fail %d%s; %d bytes in all\n' \
 			"$scheme:" "$pass" "$fail" "${failed:+ --$failed}" "$total"
 	done
 fi
