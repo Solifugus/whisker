@@ -287,6 +287,29 @@ second, geometric signal: **ticks driven inward from its four corners**, in the
 label's ink, as one `<path>` of four two-point subpaths. **95 bytes**, drawn
 only while the state is on — about 1.3 ms of C5 time against a 19 ms latency
 budget. Shape and colour, rather than colour alone.
+
+**Confirmed on the glass, 2026-09-30.** This was the one question a rendered
+PPM could not answer, and Matthew watched `wflick` run on the board: the
+pressed button reads well, ticks included. Worth keeping the arithmetic beside
+the verdict, because it is what says the mark will survive the move to the P4:
+
+| | C5 (1.47″, 247 PPI) | P4 (7″, 170 PPI) |
+|---|---|---|
+| tick length, 16 px | 1.64 mm — 9.4′ at arm's length | 2.40 mm — 13.7′ |
+| tick stroke, 2 px | 0.21 mm — **1.2′** | 0.30 mm — 1.7′ |
+| button height, 64 px | 6.6 mm | 9.6 mm |
+
+20/20 acuity resolves about 1 arcmin, so 2 px is close to the floor on the C5
+and reads anyway — which means it has margin on the bigger, coarser panel
+rather than less. The 3 px stroke that was going to be suggested is not
+needed.
+
+The same table carries a separate warning that has nothing to do with marks:
+a 64-row button is **6.6 mm** on the C5 against a ~10 mm fingertip. That panel
+is not a touch target whatever is drawn on it. On the P4 the same 64 rows are
+**9.6 mm**, right at the usual minimum — so widget heights in pixels want
+checking against millimetres once, per panel, and 64 is the floor rather than
+a comfortable choice.
 ### 2.5 What gBASIC already has (measured)
 
 Source: `~/development/gbasic`, read 2026-09-29.
