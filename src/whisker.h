@@ -115,6 +115,19 @@ typedef struct {
 	 */
 	short         ax, ay, aw, ah;
 
+	/*
+	 * How wide a widget may get across the stack, 0 for no limit.
+	 *
+	 * The sizing rule says a widget's extent ALONG the axis is pixels rather
+	 * than a proportion, so a bigger screen holds more widgets instead of
+	 * bigger ones. Across the axis there was no rule, and a column takes the
+	 * whole area -- which at 1024 wide is a 1016x64 button, a sixteen-to-one
+	 * letterbox that no finger is shaped like. Capping it and centring what
+	 * is left is what lets one tree be sensible on both panels without every
+	 * caller doing the arithmetic from the device size it just read.
+	 */
+	short         cross_max;
+
 	short         pad, gap;
 	short         font;          /* device pixels; the cell height */
 
@@ -333,6 +346,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->ay = 0;
 	t->aw = (short)dev_w;
 	t->ah = (short)dev_h;
+	t->cross_max = 0;
 	t->pad = 8;
 	t->gap = 8;
 	t->font = 16;
@@ -420,13 +434,17 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 			                   : (extra * t->item[idx].weight / weights);
 		}
 		if (t->axis == WSK_COL) {
-			r.x = (short)(t->ax + t->pad);
-			r.w = (short)(t->aw - 2 * t->pad);
+			int cw = t->aw - 2 * t->pad;
+			if (t->cross_max > 0 && cw > t->cross_max) cw = t->cross_max;
+			r.w = (short)cw;
+			r.x = (short)(t->ax + (t->aw - cw) / 2);
 			r.y = (short)at;
 			r.h = (short)e;
 		} else {
-			r.y = (short)(t->ay + t->pad);
-			r.h = (short)(t->ah - 2 * t->pad);
+			int ch = t->ah - 2 * t->pad;
+			if (t->cross_max > 0 && ch > t->cross_max) ch = t->cross_max;
+			r.h = (short)ch;
+			r.y = (short)(t->ay + (t->ah - ch) / 2);
 			r.x = (short)at;
 			r.w = (short)e;
 		}

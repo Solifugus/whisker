@@ -323,6 +323,39 @@ int main(void)
 		   "and rows() reports device rows, which is what the setstat wants");
 	}
 
+	/* ---- 4a3. across the axis, which had no rule until the P4 was drawn ---- */
+	{
+		wsk_tree_t wide;
+		wsk_rect_t r;
+
+		wsk_init(&wide, WSK_COL, 1024, 600);
+		wide.pad = 4; wide.gap = 4;
+		wide.item = SETTINGS; wide.n = 3;
+
+		r = wsk_rect(&wide, 1);
+		ok(r.w == 1024 - 8 && r.x == 4,
+		   "CONTROL: with no cap a column takes the whole width -- 1016x64, a letterbox");
+
+		wide.cross_max = 480;
+		r = wsk_rect(&wide, 1);
+		ok(r.w == 480, "a cap holds the widget to a shape a finger is");
+		ok(r.x == (1024 - 480) / 2, "and centres what is left, without the caller computing it");
+		ok(wsk_rect(&wide, 0).x == r.x && wsk_rect(&wide, 2).x == r.x,
+		   "every widget in the stack lines up on the same edge");
+
+		/* It only ever narrows: a cap wider than the screen changes nothing,
+		   so the same tree is still right on the small panel. */
+		{
+			wsk_tree_t small;
+			wsk_init(&small, WSK_COL, 320, 172);
+			small.pad = 4; small.gap = 4;
+			small.cross_max = 480;
+			small.item = SETTINGS; small.n = 3;
+			ok(wsk_rect(&small, 1).w == 320 - 8 && wsk_rect(&small, 1).x == 4,
+			   "and a cap wider than the panel does nothing at all");
+		}
+	}
+
 	/* ---- 4b. the pressed mark ---- */
 	{
 		wsk_widget_t live[3];

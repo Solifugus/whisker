@@ -725,6 +725,17 @@ pressed state is shown without the shadows and gradients §2.4 rules out. It is
 the caller's to set, because whisker holds no state: a press is something the
 host knows and the tree records, like the fill beside it.
 
+**And the half of the sizing rule that was missing.** The rule above is about
+the extent *along* the axis. Across it, a column simply took the whole area —
+which at 1024 wide is a **1016×64 button, sixteen to one**, a letterbox no
+finger is shaped like. Found by rendering the same tree at the P4's size and
+looking at it, which is the first time whisker's own output had been seen
+anywhere but the C5. So a tree carries a **cross-axis cap**: the widget is held
+to it and centred in what is left, and a cap wider than the panel does nothing
+at all — so one tree is sensible on both boards without every caller doing the
+arithmetic from the device size it has just read. That is §2.7's instruction
+not to bake the C5's limits into the model, pointing the other way for once.
+
 **Explicitly not in iteration 1:** `hit` (iteration 2), the gBASIC binding,
 focus, keyboard, scrolling, text entry, a grid, nesting.
 
