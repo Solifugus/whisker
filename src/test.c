@@ -394,6 +394,139 @@ int main(void)
 		live[1].size = 0;
 	}
 
+	/* ---- iteration 2: hit ---- */
+	{
+		wsk_tree_t g;
+		int misses, hits;
+
+		wsk_init(&g, WSK_COL, 320, 172);
+		g.pad = 4; g.gap = 4;
+		g.item = SETTINGS; g.n = 3;
+
+		/* 1. every widget, at its centre and at all four of its corners. */
+		{
+			int all = 1;
+			for (int i = 0; i < g.n; i++) {
+				wsk_rect_t r = wsk_rect(&g, i);
+				if (wsk_hit(&g, r.x + r.w / 2, r.y + r.h / 2) != i) all = 0;
+				if (wsk_hit(&g, r.x, r.y) != i) all = 0;
+				if (wsk_hit(&g, r.x + r.w - 1, r.y) != i) all = 0;
+				if (wsk_hit(&g, r.x, r.y + r.h - 1) != i) all = 0;
+				if (wsk_hit(&g, r.x + r.w - 1, r.y + r.h - 1) != i) all = 0;
+			}
+			ok(all, "every widget answers at its centre and at all four corners");
+		}
+
+		ok(wsk_hit_id(&g, 160, wsk_rect(&g, 1).y + 10) != 0
+		   && wsk__same(wsk_hit_id(&g, 160, wsk_rect(&g, 1).y + 10), "ok"),
+		   "and by name, which is the form the contract names");
+
+		/*
+		 * 2. THE CONTROL. Without this the whole suite is satisfied by
+		 * "always return the first widget" -- which is a hit test that makes
+		 * every gap into the thing above it, and which a person discovers by
+		 * pressing one control and watching another light up.
+		 */
+		misses = 0;
+		for (int i = 0; i + 1 < g.n; i++) {
+			wsk_rect_t a = wsk_rect(&g, i), b = wsk_rect(&g, i + 1);
+			for (int y = a.y + a.h; y < b.y; y++)
+				if (wsk_hit(&g, 160, y) == WSK_E_NOTFOUND) misses++;
+				else { printf("     a gap row %d answered %d\n", y, wsk_hit(&g, 160, y)); }
+		}
+		ok(misses == (g.gap) * (g.n - 1),
+		   "CONTROL: every row of every gap is nothing at all");
+
+		{
+			wsk_rect_t first = wsk_rect(&g, 0);
+			ok(wsk_hit(&g, 160, first.y - 1) == WSK_E_NOTFOUND
+			   && wsk_hit(&g, first.x - 1, first.y + 2) == WSK_E_NOTFOUND,
+			   "CONTROL: so is the padding above it and beside it");
+			ok(wsk_hit(&g, -1, -1) == WSK_E_NOTFOUND
+			   && wsk_hit(&g, 320, 86) == WSK_E_NOTFOUND
+			   && wsk_hit(&g, 160, 172) == WSK_E_NOTFOUND
+			   && wsk_hit_id(&g, 400, 400) == 0,
+			   "CONTROL: and so is everywhere off the panel");
+		}
+
+		/* 3. half-open edges: with no gap, the shared pixel row belongs to
+		   exactly one of them, and neither row is orphaned. */
+		{
+			wsk_tree_t tight = g;
+			wsk_rect_t a, b;
+			tight.gap = 0;
+			a = wsk_rect(&tight, 0);
+			b = wsk_rect(&tight, 1);
+			ok(b.y == a.y + a.h, "with no gap the widgets touch");
+			ok(wsk_hit(&tight, 160, a.y + a.h - 1) == 0
+			   && wsk_hit(&tight, 160, b.y) == 1,
+			   "and the pixel they share belongs to exactly one of them");
+		}
+
+		/* An exhaustive sweep: every row of the panel is either one widget or
+		   nothing, and never two. */
+		hits = 0; misses = 0;
+		for (int y = 0; y < g.h; y++) {
+			int found = WSK_E_NOTFOUND, count = 0;
+			for (int i = 0; i < g.n; i++) {
+				wsk_rect_t r = wsk_rect(&g, i);
+				if (160 >= r.x && 160 < r.x + r.w && y >= r.y && y < r.y + r.h)
+					{ found = i; count++; }
+			}
+			if (count > 1) { printf("     row %d is in two widgets\n", y); fails++; }
+			if (wsk_hit(&g, 160, y) != found) { printf("     row %d disagrees\n", y); fails++; }
+			if (found == WSK_E_NOTFOUND) misses++; else hits++;
+		}
+		ok(hits > 0 && misses > 0,
+		   "swept every row of the panel: it agrees, and both answers occur");
+		printf("     %d rows are a widget, %d rows are nothing\n", hits, misses);
+
+		/* 6. the cap moves every widget sideways, and a hit test that ignored
+		   it would be wrong only on the board that has touch. */
+		{
+			wsk_tree_t wide;
+			wsk_rect_t r;
+			wsk_init(&wide, WSK_COL, 1024, 600);
+			wide.pad = 4; wide.gap = 4; wide.cross_max = 480;
+			wide.item = SETTINGS; wide.n = 3;
+			r = wsk_rect(&wide, 1);
+			ok(wsk_hit(&wide, r.x + 10, r.y + 10) == 1,
+			   "a capped column still answers inside the widget at 1024x600");
+			ok(wsk_hit(&wide, 20, r.y + 10) == WSK_E_NOTFOUND,
+			   "CONTROL: and nothing in the margin the cap created");
+		}
+
+		/* and the other axis */
+		{
+			wsk_tree_t row;
+			wsk_rect_t a, b;
+			wsk_init(&row, WSK_ROW, 320, 80);
+			row.pad = 4; row.gap = 4;
+			row.item = TOOLBAR; row.n = 3;
+			a = wsk_rect(&row, 0);
+			b = wsk_rect(&row, 1);
+			ok(wsk_hit(&row, a.x + 2, 40) == 0 && wsk_hit(&row, b.x + 2, 40) == 1,
+			   "a row answers along the other axis");
+			ok(wsk_hit(&row, a.x + a.w, 40) == WSK_E_NOTFOUND,
+			   "CONTROL: and its gaps are nothing too");
+		}
+
+		/* 4. the loop closes: a point becomes a name, the name becomes rows. */
+		{
+			const char *id = wsk_hit_id(&g, 160, wsk_rect(&g, 1).y + 5);
+			const char *ids[1];
+			int y0, y1;
+			wsk_rect_t r = wsk_rect(&g, 1);
+			ids[0] = id;
+			ok(id != 0 && wsk_rows(&g, ids, 1, &y0, &y1) == WSK_OK
+			   && y0 <= r.y && y1 >= r.y + r.h,
+			   "a point becomes a name, and the name becomes the rows to repaint");
+			n = clip_into(&g, ids, 1, clip, sizeof clip, 4096);
+			ok(n > 0 && has(clip, ">OK</text>") && !has(clip, ">Cancel</text>"),
+			   "and the document that comes back holds that widget and not its neighbour");
+		}
+	}
+
 	/* ---- what it costs, for the record ---- */
 	{
 		wsk_tree_t g = t;

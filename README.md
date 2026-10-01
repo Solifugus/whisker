@@ -5,11 +5,12 @@
 *A cat's whiskers are how it reads a surface it cannot see. RV-9's mascot is an
 armoured robot cat; this is the part that feels where you touched.*
 
-**Status: iteration 1 is done.** `src/whisker.h` renders a panel and repaints
-one band of it; `src/run.sh --module` runs all eight of `design.md` §5's
-done-criteria — 57 checks, the pixels through RV-9's own rasteriser, the module
-build, and a person looking at the pictures. Nothing has run on the board yet:
-`wflick` is staged in RV-9's tree for that. `hit` is iteration 2.
+**Status: both functions are built.** `src/whisker.h` renders a panel, repaints
+one band of it, and says which widget is under a point. `src/run.sh --module`
+runs every done-criterion in `design.md` §5 and §5b — **74 checks**, the pixels
+through RV-9's own rasteriser, the module build, and a person looking at the
+pictures. Nothing has run on the board: `wflick` is staged in RV-9's tree for
+that, and `hit` is waiting on a touch driver that does not exist yet.
 
 - `docs/decisions.md` — **read first.** Six decisions, all ratified 2026-09-29.
 - `docs/design.md` — the project, revised against the review.

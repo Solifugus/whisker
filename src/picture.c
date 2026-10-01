@@ -126,8 +126,18 @@ int main(void)
 	scene_left = at(1, 50);
 	ok(scene_left != 0x0000, "the scene painted the margin beside the buttons");
 
-	/* Press: the same tree, one fill changed, one clipped document. */
-	ids[0] = "confirm";
+	/*
+	 * A tap, resolved rather than assumed. This is the loop: a point from
+	 * the panel becomes a name, the name becomes a row range, the range
+	 * becomes one clipped document. Nothing else in whisker is involved and
+	 * nothing in it holds state.
+	 */
+	{
+		const char *tapped = wsk_hit_id(&t, PW / 2, 60);
+		ok(tapped != 0 && tapped[0] == 'c' && tapped[1] == 'o',
+		   "a point inside the button resolves to its name");
+		ids[0] = tapped;
+	}
 	wsk_rows(&t, ids, 1, &y0, &y1);
 	{
 		uint32_t v = ((uint32_t)y0 << 16) | (uint32_t)y1;
@@ -168,6 +178,34 @@ int main(void)
 	wsk_render_clipped(&t, ids, 1, &s, 4096);
 	ok(at(1, 50) == scene_left, "and again after the release");
 	ok(at(1, 20) == scene_left, "the title's rows were never touched");
+
+	/*
+	 * And the tap that lands in a gap. There is no name, so there is no row
+	 * range and nothing is written -- which has to be true at the pixels and
+	 * not only in the return value, because a repaint of "nothing" would
+	 * still clear its bands to the device colour.
+	 */
+	{
+		static uint16_t before[PW * PH];
+		int same = 1;
+		wsk_rect_t a = wsk_rect(&t, 1);
+
+		for (int i = 0; i < PW * PH; i++) before[i] = screen[i];
+		blits = 0;
+		{
+			const char *nothing = wsk_hit_id(&t, PW / 2, a.y + a.h + 1);
+			ok(nothing == 0, "a point in the gap resolves to no name at all");
+			if (nothing != 0) {
+				const char *miss[1];
+				miss[0] = nothing;
+				s.put = to_window; s.ctx = &dev; s.len = 0;
+				wsk_render_clipped(&t, miss, 1, &s, 4096);
+			}
+		}
+		for (int i = 0; i < PW * PH; i++) if (screen[i] != before[i]) { same = 0; break; }
+		ok(blits == 0 && same,
+		   "so nothing was written and not one pixel moved -- at the pixels, not the return value");
+	}
 
 	/* The other axis, which nothing had drawn. A row of three, and one of
 	   them pressed -- the case where repainting one carries its neighbours,

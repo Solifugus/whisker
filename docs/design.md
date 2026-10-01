@@ -1,13 +1,21 @@
 # whisker — design
 
-**Status:** **Iteration 1 is done** (`src/whisker.h`, 2026-09-30). All eight
+**Status:** **Both functions are built** (`src/whisker.h`, 2026-09-30).
+Iteration 1 is done. All eight
 done-criteria in §5 pass — the suite, the XML check, the pixels through RV-9's
 own rasteriser, the module build with its position-independence check, and the
 last one, which is a person looking at the pictures: Matthew, 2026-09-30, on
 the column, the pressed button and the row. **It has not run on the board**;
 `wflick` is staged in RV-9's tree for that, and the result is confirmation
 rather than a gate — every criterion is met on the host, which is what the two
-pure functions were chosen for. **All six decisions in §4 are ratified**
+pure functions were chosen for.
+
+**Iteration 2's `hit` is built too** (§5b), and for the reason §5b gives: it
+needs no panel either, and board time in October is the scarce thing. Its six
+criteria pass, including the one the others are worthless without — a point in
+a gap is nothing at all, asserted at the pixels as well as in the return value.
+What is left of iteration 2 is not whisker's: **an RV-9 touch driver, which
+does not exist**, and then the measurement nobody has taken. **All six decisions in §4 are ratified**
 (Matthew, 2026-09-29); `docs/decisions.md` is the ledger. `hit` is iteration 2,
 when the panel arrives.
 
@@ -748,12 +756,54 @@ drawn, and repainted a band at a time within RV-9's budgets, in code that a
 module can legally link. It proves nothing about interaction, and until the P4
 arrives nothing here can.
 
-### Iteration 2, named now so iteration 1 does not foreclose it
+## 5b. Iteration 2 — `hit`, built before the panel arrives
 
-`hit(tree, x, y, device_h)`, against the touch panel, plus **the measurement
-nobody has taken**: finger-down to pixel-changed, end to end. That number
-includes an I²C controller, an interrupt, a process wakeup and a repaint, and
-the 38 ms of §2.2 is only the last of those.
+**Scope:** `wsk_hit(tree, x, y)` → the widget at that point, or nothing. One
+point; the panel reports five and whisker uses one (§2.6). No gestures, no
+velocity, no stream — the host decides what a sequence of points means.
+
+The point is in **device pixels**, which costs nothing because the viewBox is
+the device (§5): a tap arrives in the same units `rows` returns.
+
+**Why now rather than in October.** §5 deferred this because `render` was the
+half that could be finished without a panel on the desk. That was true and is
+not the whole argument: §1 says *both* functions are testable with no hardware
+— a point in, a name out — and the real gate was D0, which is settled. What
+will actually be scarce when the board arrives is **board time**, so the hit
+test is better written now and the panel spent on the measurement nobody has
+taken.
+
+**Done means:**
+
+1. For **every** widget, a point at its centre and at each of its corners
+   returns that widget.
+2. **It returns nothing in the gaps, nothing in the padding, and nothing
+   outside the area.** This is the criterion the others are worthless without:
+   *"`hit` returning an id is satisfied by 'always return the first widget'
+   unless a point in the gaps is asserted to return nothing"* — the house
+   evidence standard, written for exactly this function.
+3. Edges are **half-open**, so two widgets with no gap between them never both
+   claim the pixel they share, and no pixel between them belongs to neither.
+4. **The loop closes**: a point becomes an id, the id becomes a row range, and
+   the clipped document repaints that widget and no other. Asserted end to end
+   through RV-9's rasteriser, at the pixels, because that is the whole of what
+   an interaction is.
+5. It compiles under the module rules and is position independent, as in §5.
+6. The same tree hits correctly at both panel sizes and under a cross-axis cap,
+   since the cap moves every widget sideways and a hit test that ignored it
+   would be wrong only on the board that has touch.
+
+**Explicitly not in iteration 2:** a focus model, gestures, multiple contacts,
+and **touch slop** — the question of whether a tap two pixels into a gap should
+count. That one is deliberately left open, because the right tolerance depends
+on how accurate the controller's centroid actually is, and nobody has measured
+it. Exact rectangles today, and a number after the board says what it needs.
+
+**And the measurement nobody has taken**: finger-down to pixel-changed, end to
+end. That number includes an I²C controller, an interrupt, a process wakeup and
+a repaint, and the 19 ms of §2.2 is only the last of those. It is the first
+thing to do when the panel is on the desk, and it needs an RV-9 touch driver,
+which does not exist yet (§2.6).
 
 ---
 

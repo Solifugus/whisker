@@ -460,6 +460,57 @@ static inline int wsk_find(const wsk_tree_t *t, const char *id)
 }
 
 /* ------------------------------------------------------------------ */
+/* Hit: a point, and the name of what is under it                      */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Which widget is at this point, or WSK_E_NOTFOUND.
+ *
+ * The point is in device pixels, which costs nothing because the viewBox is
+ * the device: a tap arrives in the same units wsk_rows hands back.
+ *
+ * Edges are half-open -- a widget owns [x, x+w) by [y, y+h) -- so two
+ * widgets with no gap between them never both claim the pixel they share,
+ * and no pixel between them belongs to neither.
+ *
+ * NOTHING is under a point in the padding, in a gap, or outside the area,
+ * and saying so is most of what this function is for. A hit test that
+ * always answered would pass every test that only ever asks about the
+ * middle of a button, and would make the gaps into whichever widget came
+ * first -- which a person discovers by pressing one thing and watching
+ * another light up.
+ *
+ * There is no slop: a tap two pixels into a gap misses. Whether it should
+ * depends on how accurate the touch controller's centroid is, and nobody
+ * has measured that yet (§5b).
+ *
+ * A label is returned like anything else. whisker does not know which
+ * widgets are interactive -- it has no state and no event model -- so the
+ * caller reads `kind` and decides. In a single-axis stack nothing overlaps,
+ * so there is never a second answer to choose between.
+ */
+static inline int wsk_hit(const wsk_tree_t *t, int x, int y)
+{
+	for (int i = 0; i < t->n; i++) {
+		wsk_rect_t r = wsk_rect(t, i);
+		if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+			return i;
+	}
+	return WSK_E_NOTFOUND;
+}
+
+/*
+ * The same thing as the address rather than the index: `hit(tree, x, y)`
+ * returns the id, which is the form §1 names and the one a host hands back
+ * to its application. Null when nothing is there.
+ */
+static inline const char *wsk_hit_id(const wsk_tree_t *t, int x, int y)
+{
+	int i = wsk_hit(t, x, y);
+	return (i < 0) ? 0 : t->item[i].id;
+}
+
+/* ------------------------------------------------------------------ */
 /* Rows: what a repaint costs, in the units the setstat wants          */
 /* ------------------------------------------------------------------ */
 
