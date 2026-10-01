@@ -1,9 +1,13 @@
 # whisker — design
 
-**Status:** **Iteration 1 is built** (`src/whisker.h`, 2026-09-30) and every
-done-criterion in §5 passes — the suite, the XML check, the pixels through
-RV-9's own rasteriser, and the module build with its position-independence
-check. It has not run on the board. **All six decisions in §4 are ratified**
+**Status:** **Iteration 1 is done** (`src/whisker.h`, 2026-09-30). All eight
+done-criteria in §5 pass — the suite, the XML check, the pixels through RV-9's
+own rasteriser, the module build with its position-independence check, and the
+last one, which is a person looking at the pictures: Matthew, 2026-09-30, on
+the column, the pressed button and the row. **It has not run on the board**;
+`wflick` is staged in RV-9's tree for that, and the result is confirmation
+rather than a gate — every criterion is met on the host, which is what the two
+pure functions were chosen for. **All six decisions in §4 are ratified**
 (Matthew, 2026-09-29); `docs/decisions.md` is the ledger. `hit` is iteration 2,
 when the panel arrives.
 
