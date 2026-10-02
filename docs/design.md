@@ -693,6 +693,20 @@ and the host got it from `getstat(RV9_GS_SIZE)` on `/w0`.
    rows** — eight bands, band-aligned, and about 9 mm on the P4's ~170 dpi,
    which is a finger. That number comes from the panel a person will touch, not
    from the C5's proportions.
+
+   **Checked against a finger, 2026-10-01, rather than left as arithmetic.**
+   48, 64 and 80 rows were drawn at matched *physical* size on a 102 dpi
+   monitor — 7.2, 9.6 and 12.0 mm, which is 29, 39 and 48 pixels there — and
+   judged by touching them. **64 was the comfortable one**, so the default
+   stands, on evidence rather than on a calculation.
+   `tools/evidence/finger_size` is the card, and will redraw it for any target
+   size on any screen. The pressed state was drawn too, so the corner marks
+   were seen at the 2.4 mm they will really be.
+
+   What that does **not** settle is touch *slop* (§5b), which needs a real
+   capacitive surface and is still open — and it is one person's finger on a
+   surrogate screen, which is worth more than arithmetic and less than the
+   panel itself.
 5. `render` **refuses** a document it cannot fit in the caller's byte budget,
    and says so before writing anything, rather than emitting a prefix (§2.3).
    Asserted with the control that a panel one widget smaller is accepted.

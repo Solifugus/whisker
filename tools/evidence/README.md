@@ -33,6 +33,25 @@ links, and a table of `const char *` or of function pointers still does not.
 The `zerobase` column is kept because it is the evidence for why the base
 moved, and because it shows the check never lost its teeth.
 
+## `finger_size/`
+
+Is a 64-row button a finger? The default came from arithmetic — 9 mm at the
+P4's ~170 dpi — and arithmetic cannot say whether a target is comfortable. This
+draws three candidate heights at matched **physical** size on a screen you do
+have, so a fingertip can answer before the panel arrives.
+
+```
+./run.sh                 writes card.ppm, and prints the millimetres
+gwenview -f card.ppm     full screen, 1:1, on the screen you measured
+```
+
+It needs **no touch input at all** — the question is millimetres and a finger,
+not events, which is how it got answered on a monitor whose touch frame was
+enumerating and reporting nothing. Change `MON_*` and `TGT_*` for another
+screen or another device; every number in the labels is computed.
+
+Answered 2026-10-01: 64 rows, the middle one. The default stands.
+
 ## `svgwin_facts/`
 
 Four questions for `/w0` itself, and the byte budget.
