@@ -189,6 +189,15 @@ static const wsk_widget_t KEYS_4[] = {
 	{ .kind = WSK_BUTTON, .id = "k_tab", .text = "TAB", .weight = 1 },
 };
 
+/* A field and the things around it (design.md §5d). The text is set at
+   runtime, because a field's characters belong to the caller -- which is the
+   whole of D5 showing up in a panel declaration. */
+static const wsk_widget_t FORM[] = {
+	{ .kind = WSK_LABEL, .id = "prompt", .text = "Name", .size = 28 },
+	{ .kind = WSK_FIELD, .id = "name", .text = "", .size = 44 },
+	{ .kind = WSK_BUTTON, .id = "save", .text = "Save", .size = 44 },
+};
+
 /* Deliberately not band-aligned: 30 rows from an odd offset, so the clip has
    to snap and the backing has to follow it. */
 static const wsk_widget_t RAGGED[] = {
@@ -814,6 +823,139 @@ int main(void)
 			{
 				FILE *f = fopen("/tmp/wsk_compose.svg", "wb");
 				fputs(doc, f); fclose(f);
+			}
+		}
+	}
+
+	/* ---- §5d. a field: left-aligned, tail-scrolled, caret on request ---- */
+	printf("\n-- §5d  input\n");
+	{
+		wsk_widget_t form[3];
+		wsk_tree_t f;
+		wsk_rect_t r;
+		int adv, room, from;
+
+		wsk_clone(form, FORM, 3);
+		wsk_init(&f, WSK_COL, 320, 172);
+		f.pad = 6; f.gap = 6; f.ids = 1; f.font = 16;
+		f.item = form; f.n = 3;
+
+		r = wsk_rect(&f, 1);
+		adv = wsk_advance(f.font);
+
+		/* 1. left-aligned, and the caret where the next character goes */
+		{
+			char want[64];
+			wsk__scpy(form[1].text, "Ada", WSK_TEXT_MAX);
+			form[1].mark = WSK_MARK_CARET;
+			n = render_into(&f, doc, sizeof doc, 4096);
+			ok(n > 0, "a field renders");
+			ok(has(doc, "text-anchor=\"start\""),
+			   "its text is anchored to the start, not centred like a label");
+			sprintf(want, "x=\"%d\"", r.x + WSK_FIELD_PAD);
+			ok(has(doc, want), "and starts one padding in from the trough");
+			ok(has(doc, ">Ada</text>"), "with what the caller put there");
+			sprintf(want, "width=\"%d\" height=", WSK_CARET_W);
+			ok(has(doc, want), "and a caret after it");
+			ok(count(doc, "<rect") == 4,
+			   "four rects: the backing, the trough, the caret and the button");
+		}
+
+		/* CONTROL: no mark, no caret -- focus is the caller's, not ours */
+		{
+			char want[64];
+			form[1].mark = 0;
+			n = render_into(&f, doc, sizeof doc, 4096);
+			sprintf(want, "width=\"%d\" height=", WSK_CARET_W);
+			ok(n > 0 && !has(doc, want),
+			   "CONTROL: unmarked, there is no caret at all");
+			ok(count(doc, "<rect") == 3, "and one fewer rect");
+			ok(has(doc, ">Ada</text>"), "though the text is still there");
+			form[1].mark = WSK_MARK_CARET;
+		}
+
+		/* 2. it shows the tail, not the head.
+		 *
+		 * At font 16 this field holds 36 characters and WSK_TEXT_MAX is 32,
+		 * so it CANNOT overflow -- which is worth knowing and is why the
+		 * scroll is exercised at a touch-sized font instead. A field holds
+		 * 31 characters and a NUL, full stop; the tail matters when the font
+		 * is large or the field is narrow, which on a touch panel is both. */
+		{
+			room = wsk_field_view(&f, &form[1], r, &from);
+			ok(from == 0 && room == 3,
+			   "a string that fits is not scrolled at all");
+			ok((r.w - 2 * WSK_FIELD_PAD - WSK_CARET_W) / adv >= WSK_TEXT_MAX - 1,
+			   "and at font 16 this field cannot overflow: it outruns WSK_TEXT_MAX");
+			printf("     a %d-wide field holds %d characters at font %d,"
+			       " %d at font 24; a field carries %d\n",
+			       r.w, (r.w - 2 * WSK_FIELD_PAD - WSK_CARET_W) / adv, f.font,
+			       (r.w - 2 * WSK_FIELD_PAD - WSK_CARET_W) / wsk_advance(24),
+			       WSK_TEXT_MAX - 1);
+
+			f.font = 24;
+			adv = wsk_advance(f.font);
+			wsk__scpy(form[1].text, "abcdefghijklmnopqrstuvwxyz0123", WSK_TEXT_MAX);
+			room = wsk_field_view(&f, &form[1], r, &from);
+			ok(from > 0, "at a touch-sized font the same string is scrolled");
+			n = render_into(&f, doc, sizeof doc, 4096);
+			ok(n > 0 && has(doc, "0123</text>"),
+			   "the TAIL is what is shown -- the characters just typed");
+			ok(!has(doc, ">abcdefg"),
+			   "and the head has scrolled off, which a label would have kept");
+			printf("     %d characters, showing the last %d from offset %d\n",
+			       wsk__len(form[1].text), room, from);
+		}
+
+		/* 3. the caret stays inside the trough however long the text is */
+		{
+			int cx;
+			n = render_into(&f, doc, sizeof doc, 4096);
+			cx = r.x + WSK_FIELD_PAD + room * adv;
+			ok(n > 0 && cx + WSK_CARET_W <= r.x + r.w,
+			   "the caret is still inside the trough on a full field");
+			ok(has(doc, "fill=\"#081620\""),
+			   "and the trough is not the accent, so it is not a button");
+		}
+
+		/* 5. a field and a whole keyboard, together, under SRC_MAX */
+		{
+			wsk_widget_t fld[1];
+			wsk_tree_t kb[5];
+			comp_t k;
+
+			wsk_clone(fld, FORM + 1, 1);
+			wsk__scpy(fld[0].text, "the quick brown fox jumps over", WSK_TEXT_MAX);
+			fld[0].mark = WSK_MARK_CARET;
+
+			wsk_init(&kb[0], WSK_COL, 1024, 600);
+			kb[0].pad = 8; kb[0].gap = 8; kb[0].ids = 1;
+			wsk_area(&kb[0], 0, 260, 1024, 70);
+			kb[0].item = fld; kb[0].n = 1;
+
+			for (int i = 0; i < 4; i++) {
+				wsk_init(&kb[i + 1], WSK_ROW, 1024, 600);
+				kb[i + 1].pad = 4; kb[i + 1].gap = 4; kb[i + 1].ids = 1;
+				wsk_area(&kb[i + 1], 0, 336 + i * 66, 1024, 62);
+			}
+			kb[1].item = KEYS_1; kb[1].n = 10;
+			kb[2].item = KEYS_2; kb[2].n = 10;
+			kb[3].item = KEYS_3; kb[3].n = 9;
+			kb[4].item = KEYS_4; kb[4].n = 7;
+
+			wsk_doc_init(&k.d, &kb[0]);
+			k.part = kb; k.n = 5;
+			n = compose_into(&k, doc, sizeof doc, 4096);
+			printf("\n  a field and 36 keys at 1024x600: %d bytes, %d under SRC_MAX\n",
+			       n, 4096 - n);
+			ok(n > 0, "a field and a full keyboard compose");
+			ok(n <= 4096, "and they fit in SRC_MAX together");
+			ok(has(doc, ">SPACE</text>") && has(doc, "text-anchor=\"start\""),
+			   "with the keyboard and the field both in one document");
+
+			{
+				FILE *fp = fopen("/tmp/wsk_input.svg", "wb");
+				fputs(doc, fp); fclose(fp);
 			}
 		}
 	}

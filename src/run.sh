@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Every done-criterion in design.md §5 (the renderer), §5b (hit) and
-# §5c (composition).
+# Every done-criterion in design.md §5 (the renderer), §5b (hit),
+# §5c (composition) and §5d (input).
 #
 #   ./run.sh              the suite, the picture, and the XML check
 #   ./run.sh --module     and the module build, which is criterion 7
@@ -47,7 +47,7 @@ FLAGS=(-march=rv32imac_zicsr_zifencei_zaamo_zalrsc -mabi=ilp32 -mcmodel=medany -
        -ffunction-sections -fdata-sections -Wall -Wextra -Werror
        -I"$RV9/components/rv9_module/include" -I"$RV9/modules" -I"$HERE")
 LINK=(-nostdlib -nostartfiles -T"$RV9/modules/module.ld" -Wl,--gc-sections)
-for SRC in module_shape.c module_compose.c; do
+for SRC in module_shape.c module_compose.c module_input.c; do
 	"$CC9" "${FLAGS[@]}" "${LINK[@]}" -o "$W/m.elf" "$SRC"
 	"$CC9" "${FLAGS[@]}" "${LINK[@]}" -Wl,--defsym,RV9_BASE=0x8000 -o "$W/m2.elf" "$SRC"
 	"$OBJCOPY" -O binary "$W/m.elf" "$W/m.bin"
@@ -61,4 +61,7 @@ for SRC in module_shape.c module_compose.c; do
 done
 echo "      no libc, no .data, no .bss -- the linker script asserts the last two"
 echo "      module_compose.c is where the function pointer wsk_compose takes,"
-echo "      and the array of trees it walks, get checked rather than assumed"
+echo "      and the array of trees it walks, get checked rather than assumed;"
+echo "      module_input.c is the field, which is the first thing whisker emits"
+echo "      out of RAM rather than rodata. It is not staged in RV-9's tree: D6"
+echo "      keeps input off the C5, and the link check is the point of it."

@@ -52,6 +52,29 @@ static void ok(int cond, const char *what)
 	if (!cond) fails++;
 }
 
+/* The leftmost and rightmost pixel of a given colour inside a rectangle.
+   Used to ask where a field's text actually landed, which is the only way to
+   tell "left-aligned" from "centred and happens to be long". */
+static int span(wsk_rect_t r, uint16_t want, int *lo, int *hi)
+{
+	uint16_t sw = (uint16_t)((want >> 8) | (want << 8));
+	int found = 0;
+	*lo = PW; *hi = -1;
+	for (int y = r.y; y < r.y + r.h && y < PH; y++)
+		for (int x = r.x; x < r.x + r.w && x < PW; x++)
+			if (screen[y * PW + x] == sw) {
+				if (x < *lo) *lo = x;
+				if (x > *hi) *hi = x;
+				found++;
+			}
+	return found;
+}
+
+static uint16_t pix565(unsigned int c)
+{
+	return (uint16_t)(((c >> 8) & 0xF800) | ((c >> 5) & 0x07E0) | ((c >> 3) & 0x001F));
+}
+
 static void shot(const char *name)
 {
 	FILE *o = fopen(name, "wb");
@@ -373,6 +396,102 @@ int main(void)
 			   "the band came back carrying the scene, not the device background");
 		}
 
+	}
+
+	/*
+	 * §5d. A field, at the pixels.
+	 *
+	 * Every claim here is one the document would pass while the picture was
+	 * wrong: "left-aligned" is indistinguishable from "centred" in an
+	 * attribute if the text happens to fill the trough, and a caret is two
+	 * columns of pixels that an assertion on <rect> cannot place.
+	 */
+	{
+		wsk_widget_t form[3];
+		wsk_tree_t f;
+		wsk_rect_t r;
+		wsk_sink_t fs;
+		uint16_t ink = pix565(0xffffffu);
+		int lo, hi, lo2, hi2, nc, n;
+
+		wsk_clone(form, PANEL, 3);
+		form[0].kind = WSK_LABEL;
+		wsk__scpy(form[0].text, "Name", WSK_TEXT_MAX);
+		form[1].kind = WSK_FIELD;
+		wsk__scpy(form[1].text, "Ada", WSK_TEXT_MAX);
+		form[1].fill = WSK_INHERIT;
+		form[1].ink = WSK_INHERIT;
+		form[1].mark = 0;
+		wsk__scpy(form[2].text, "Save", WSK_TEXT_MAX);
+
+		wsk_init(&f, PW >= 600 ? WSK_COL : WSK_COL, PW, PH);
+		f.pad = 6; f.gap = 6; f.font = 20;
+		f.bg = 0x10203au;
+		f.item = form; f.n = 3;
+		r = wsk_rect(&f, 1);
+
+		memset(screen, 0, sizeof screen);
+		fs.put = to_window; fs.ctx = &dev; fs.len = 0;
+		n = wsk_render(&f, &fs, 4096);
+		span(r, ink, &lo, &hi);
+		shot("field_plain.ppm");
+
+		/* 1. left-aligned: the text starts where the padding puts it, not in
+		   the middle of the trough. A centred "Ada" would start near r.w/2. */
+		ok(n > 0 && lo >= r.x && lo < r.x + WSK_FIELD_PAD + 2 * wsk_advance(f.font),
+		   "the field's text starts at its left padding, not centred");
+		ok(hi < r.x + r.w / 2,
+		   "and all of it is in the left half, which centred text would not be");
+		printf("  field text ink spans x %d..%d of a trough %d..%d\n",
+		       lo, hi, r.x, r.x + r.w);
+
+		/* 3. the caret, at the pixels, and only when marked */
+		nc = span(r, ink, &lo, &hi);
+		form[1].mark = WSK_MARK_CARET;
+		memset(screen, 0, sizeof screen);
+		fs.put = to_window; fs.ctx = &dev; fs.len = 0;
+		wsk_render(&f, &fs, 4096);
+		{
+			int want = r.x + WSK_FIELD_PAD + 3 * wsk_advance(f.font);
+			wsk_rect_t at;
+			at.x = (short)(want - 1); at.y = r.y;
+			at.w = (short)(WSK_CARET_W + 2); at.h = r.h;
+			ok(span(at, ink, &lo2, &hi2) > 0,
+			   "marked, the caret is drawn just past the last character");
+			printf("  caret found at x %d..%d, three characters in from %d\n",
+			       lo2, hi2, r.x + WSK_FIELD_PAD);
+			span(r, ink, &lo2, &hi2);
+			ok(hi2 > hi, "and it adds ink to the right of the text");
+
+			form[1].mark = 0;
+			memset(screen, 0, sizeof screen);
+			fs.put = to_window; fs.ctx = &dev; fs.len = 0;
+			wsk_render(&f, &fs, 4096);
+			at.x = (short)(want - 1);
+			ok(span(at, ink, &lo2, &hi2) == 0,
+			   "CONTROL: unmarked, there is nothing at all where the caret was");
+			ok(span(r, ink, &lo2, &hi2) == nc,
+			   "and the field is back to exactly the ink the text alone makes");
+			form[1].mark = WSK_MARK_CARET;
+		}
+
+		/* 2. the tail, at the pixels: a long string reaches the right edge */
+		wsk__scpy(form[1].text, "abcdefghijklmnopqrstuvwxyz0123", WSK_TEXT_MAX);
+		memset(screen, 0, sizeof screen);
+		fs.put = to_window; fs.ctx = &dev; fs.len = 0;
+		n = wsk_render(&f, &fs, 4096);
+		span(r, ink, &lo2, &hi2);
+		shot("field_full.ppm");
+		ok(n > 0 && hi2 > r.x + r.w * 3 / 4,
+		   "a full field reaches its right-hand end");
+		ok(hi2 < r.x + r.w,
+		   "and the caret has not run out of the trough");
+		{
+			int from, vis = wsk_field_view(&f, &form[1], r, &from);
+			printf("  %d characters typed, the last %d shown, ink to x %d of %d\n",
+			       wsk__len(form[1].text), vis, hi2, r.x + r.w);
+			ok(from > 0, "and it is the tail that is shown, not the head");
+		}
 	}
 
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);

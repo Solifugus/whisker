@@ -38,10 +38,14 @@ while nothing is invested.
 - **§5c — composition.** Several stacks in one document. Done. Chosen because
   §6's gBASIC measurement said the remaining gap is `input`, and drawing the
   keyboard that needs found that two stacks could not share a screen.
+- **§5d — `input`.** A text field: left-aligned, tail-scrolled, caret on
+  request. Done, and it is the last widget — nothing after it has a caller
+  (`gbasic-gap.md`).
 
-`src/run.sh --module` is the whole of it: **106 checks**, the pixels through
-RV-9's own rasteriser, the module build with the double-link, and a person
-looking at the pictures.
+`src/run.sh --module` is the whole of it: **135 checks**, the pixels through
+RV-9's own rasteriser, three module builds with the double-link, and a person
+looking at the pictures. `host/linux/run.sh --test` adds 19, including the
+typing loop end to end; `--input` is the same loop with a person in it.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one
@@ -54,11 +58,19 @@ the tap budget. **All six decisions are ratified** (Matthew, 2026-09-29);
 and probably never gets touch, so keep declaration order stable and a focus model
 stays addable without being built.
 
-**Open, and in this order of readiness:** the board run (`wflick` and
-`wcompose` are shaped for it); touch *slop*, deliberately unanswered until a
-real capacitive surface measures centroid scatter (§5b); whether `tools/notation`
-ships at all (`notation-sketch.md` §6 — Matthew's call); and `input` itself,
-which is the last thing between whisker and gBASIC's declarative `gui`.
+**D6 and D7 (2026-10-02)** bound what comes next. `input` goes only to hosts
+with an input device, so **not the C5** — not on bytes, which turned out to be
+half the budget rather than 94 %, but because the C5 has nothing to press a key
+with. And the **mouse on Linux stands in for touch** until the P4 arrives: a
+click is one point, which is all `hit` takes.
+
+**Open, and in this order of readiness:** the board run (`wflick` and `wcompose`
+are staged in RV-9's tree for it); touch *slop*, deliberately unanswered until a
+real capacitive surface measures centroid scatter (§5b); the gBASIC binding
+itself, now that every widget `gui` names exists; whether the compact keyboard
+form is worth building into whisker (`tools/evidence/keyboard/` prices it at
+1,746 bytes); and whether `tools/notation` ships at all
+(`notation-sketch.md` §6 — Matthew's call).
 
 ## Read before working
 

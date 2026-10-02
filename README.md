@@ -5,21 +5,30 @@
 *A cat's whiskers are how it reads a surface it cannot see. RV-9's mascot is an
 armoured robot cat; this is the part that feels where you touched.*
 
-**Status: both functions are built, and more than one stack fits on a screen.**
+**Status: whisker does everything gBASIC's declarative `gui` asks for.**
 `src/whisker.h` renders a panel, repaints one band of it, says which widget is
-under a point, and composes several stacks into one document. `src/run.sh
---module` runs every done-criterion in `design.md` §5, §5b and §5c — **106
-checks**, the pixels through RV-9's own rasteriser, the module build, and a
-person looking at the pictures. Nothing has run on the board: `wflick` is staged
-in RV-9's tree for that, and `hit` is waiting on a touch driver that does not
-exist yet.
+under a point, composes several stacks into one document, and draws a text
+field you can type into. `src/run.sh --module` runs every done-criterion in
+`design.md` §5, §5b, §5c and §5d — **135 checks**, the pixels through RV-9's own
+rasteriser, three module builds with the double-link, and a person looking at
+the pictures. `host/linux/run.sh --test` adds **19** more.
 
-**Iteration 3 was chosen by a measurement rather than by taste.** The gap to
-gBASIC's declarative `gui` is one widget — `input` — and on RV-9 that means an
+**You can type on it now.** `host/linux/run.sh --input` puts a field and a
+36-key keyboard on screen; click the keys and the characters appear. The touch
+monitor on this desk enumerates and reports nothing, but a mouse click is a
+single point, which is exactly what `hit` takes and exactly what the P4's panel
+will deliver — so the whole loop was finished and watched rather than waited for
+(D7). Typing one character costs 314 bytes and repaints four bands.
+
+**The last three iterations were each chosen by a measurement.** The gap to
+gBASIC's `gui` turned out to be one widget, `input`, and on RV-9 that means an
 on-screen keyboard. Drawing one found that two stacks could not share a screen
-at all: each render backed the whole device, so four keyboard rows came out as
-one. Composing is also what makes the keyboard fit — 3,775 bytes against 4,186
-as separate documents, where `SRC_MAX` is 4,096.
+at all — each render backed the whole device, so four keyboard rows came out as
+one. Composing fixed that and is also what makes the keyboard fit. Then the
+keyboard's cost was measured three ways, which found an undocumented
+`MAX_CONTOURS` of 16 that silently drops everything past the sixteenth subpath
+of a path. Then the field itself, which is **115 bytes under `SRC_MAX`** with a
+full keyboard beside it.
 
 - `docs/decisions.md` — **read first.** Six decisions, all ratified 2026-09-29.
 - `docs/design.md` — the project, revised against the review.

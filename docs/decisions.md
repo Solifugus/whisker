@@ -7,8 +7,12 @@ file holds the outcome, so that a later session does not reopen a settled
 question by reading the arguments and not the verdict.
 
 **Status of §4 as a whole: all six ratified, 2026-09-29, by Matthew**, on the
-RV-9 session's replies in `docs/rv9-answers.md`. Iteration 1 (`docs/design.md`
-§5) can start.
+RV-9 session's replies in `docs/rv9-answers.md`.
+
+**D6 and D7 came later** (2026-10-02) and are not part of §4: they are what
+`gbasic-gap.md`'s measurement and a dead touch monitor forced a choice about.
+They are here rather than in a document of their own because the rule is one
+ledger.
 
 | id | Decision | Status | Outcome, and the argument that settled it |
 |---|---|---|---|
@@ -18,6 +22,9 @@ RV-9 session's replies in `docs/rv9-answers.md`. Iteration 1 (`docs/design.md`
 | **D3** | How much layout, given no box model? (§4.3) | **ratified** | **A single-axis stack, row *or* column**, per-child weight, padding as one number. **Changed by the review**: RV-9 measured a row at 1.77× a column at 320×172 and 1.55× at 1024×600 — a fraction of a frame either way, ~7 ms against ~12 ms on the C5 against a 38 ms budget. The original "column preferred, price the row" was right in kind and wrong in degree. A 2×2 grid is affordable when it comes; deep nesting is not. |
 | **D4** | Is the address space the SVG `id`? (§4.4) | **ratified** | **Yes.** Document-unique by the XML specification, and the same rule gBASIC's declarative `gui` ids already follow — so gBASIC's §0.3 tension resolves rather than being traded off. |
 | **D5** | Who retains the tree? (§4.5) | **ratified** | **The caller; whisker is pure.** The host already holds the SVG text and the application already holds its state; a retained tree inside whisker would be a third copy that can disagree with both. |
+
+| **D6** | Which hosts get `input`, given that a keyboard is half the byte budget? (`gbasic-gap.md` §3) | **ratified 2026-10-02** | **Only hosts that have an input device.** Matthew: *"input is definitely not going to be on devices that have no input like the ESP32 C5."* So `gbasic-gap.md`'s option 1 holds for the C5 — a panel there displays and commands, and text arrives over the terminal as RV-9 already arranges — and option 2 holds for the P4 and Linux. This is a **hardware** criterion, not a byte one: the measurement (`tools/evidence/keyboard/`) found a keyboard costs half the budget rather than 94 % of it, so bytes stopped being the argument; what remains is that the C5 has nothing to press a key with, and that a key on its panel is about 4 × 4.8 mm against the 9 mm a finger wants. **A whisker binding must therefore report which widgets its host supports** rather than drawing a keyboard that cannot be used. |
+| **D7** | What stands in for touch until the P4 arrives? (§2.6) | **ratified 2026-10-02** | **The mouse on Linux.** Matthew: *"even if we cannot get touch to work on this linux computer, the mouse does work."* A click is a single point, which is exactly `hit`'s input and exactly what the panel will deliver (five contacts, whisker uses one), so the whole interaction loop — point, name, band, repaint — is exercisable **now** rather than in October. It does not stand in for the one thing only the panel can answer: touch **slop**, which stays open (§5b), because a mouse has no centroid scatter to measure. |
 
 These are outcomes, not recommendations. `docs/design.md` §4 keeps the reasoning
 behind each, because a decision whose argument is lost gets reopened — but where

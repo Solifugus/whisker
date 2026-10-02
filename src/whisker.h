@@ -1,8 +1,8 @@
 /*
  * whisker -- a widget layer for a window you write SVG to.
  *
- * Labels and buttons in single-axis stacks, column or row. All pure, none
- * of them touching a device:
+ * Labels, buttons and a text field in single-axis stacks, column or row.
+ * All pure, none of them touching a device:
  *
  *     wsk_render(tree, sink, budget)                  one stack, whole screen
  *     wsk_rows(tree, ids, n, &y0, &y1)                which device rows moved
@@ -52,9 +52,11 @@
 #define WSK_TEXT_MAX  32
 
 #define WSK_BAND      8          /* RV-9 rasterises in 8-row bands */
+#define WSK_FIELD_PAD 6          /* a field's text, in from its trough */
+#define WSK_CARET_W   2          /* and the caret after it */
 #define WSK_BTN_ROWS  64         /* 8 bands, and about a finger at 170 dpi */
 
-enum { WSK_LABEL = 1, WSK_BUTTON };
+enum { WSK_LABEL = 1, WSK_BUTTON, WSK_FIELD };
 enum { WSK_COL = 1, WSK_ROW };
 
 /*
@@ -64,7 +66,10 @@ enum { WSK_COL = 1, WSK_ROW };
  * inward from the four corners are a second one, in the same ink as the
  * label, costing four line segments in a single path.
  */
-enum { WSK_MARK_CORNERS = 1 };
+enum {
+	WSK_MARK_CORNERS = 1,        /* a button, pressed */
+	WSK_MARK_CARET   = 2         /* a field, taking input */
+};
 
 /*
  * "whatever the tree says", and it is zero on purpose.
@@ -142,6 +147,11 @@ typedef struct {
 	unsigned int  bg;            /* the scene behind everything */
 	unsigned int  ink;           /* text */
 	unsigned int  accent;        /* a button */
+	unsigned int  trough;        /* a field: darker than bg, so it reads as a
+	                                well rather than a button. On a flat
+	                                substrate colour is the only signal there
+	                                is (§2.4), so a field must not inherit the
+	                                accent or it is a button with words in. */
 
 	unsigned char ids;           /* emit id= attributes: 1 yes, 0 no */
 } wsk_tree_t;
@@ -362,6 +372,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->bg = 0x102030u;
 	t->ink = 0xffffffu;
 	t->accent = 0x2a6b8fu;
+	t->trough = 0x081620u;
 	t->ids = 0;
 }
 
@@ -586,7 +597,8 @@ static inline void wsk__rect(wsk_sink_t *s, const wsk_tree_t *t,
                              const wsk_widget_t *w, wsk_rect_t r)
 {
 	wsk__box(s, (w != 0 && t->ids) ? w->id : 0, r,
-	         (w->fill != WSK_INHERIT) ? w->fill : t->accent);
+	         (w->fill != WSK_INHERIT) ? w->fill
+	         : (w->kind == WSK_FIELD) ? t->trough : t->accent);
 }
 
 /*
@@ -662,6 +674,69 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
 	wsk__s(s, "\">");
 	wsk__w(s, w->text, chars);
 	wsk__s(s, "</text>");
+}
+
+/*
+ * How many characters of a field are visible, and which ones.
+ *
+ * The TAIL, not the head -- the opposite of a label. A label that overflows
+ * is truncated because the part you can read is the part that identifies it;
+ * a field that did the same would hide the characters just typed, which are
+ * the only ones anybody is looking at. So the window slides, and `from` is
+ * where it starts.
+ */
+static inline int wsk_field_view(const wsk_tree_t *t, const wsk_widget_t *w,
+                                 wsk_rect_t r, int *from)
+{
+	int chars = wsk__len(w->text);
+	int room = (r.w - 2 * WSK_FIELD_PAD - WSK_CARET_W) / wsk_advance(t->font);
+
+	if (room < 0) room = 0;
+	*from = (chars > room) ? chars - room : 0;
+	return chars - *from;
+}
+
+/*
+ * A field's text, left-aligned, and the caret where the next character goes.
+ *
+ * text-anchor="start" is spelled here rather than on the <g>, because the <g>
+ * centres everything else and a field is the only thing that must not move
+ * sideways as it grows. The caret is a filled box two pixels wide -- there is
+ * no stroke-dasharray, no animation and no blink in the subset (§2.4), and a
+ * blink would cost a document per frame anyway.
+ */
+static inline void wsk__field(wsk_sink_t *s, const wsk_tree_t *t,
+                              const wsk_widget_t *w, wsk_rect_t r)
+{
+	int from, n = wsk_field_view(t, w, r, &from);
+	int x = r.x + WSK_FIELD_PAD;
+	int top = r.y + (r.h - t->font) / 2;
+	unsigned int ink = (w->ink != WSK_INHERIT) ? w->ink : t->ink;
+
+	if (n > 0) {
+		wsk__s(s, "<text text-anchor=\"start\" x=\"");
+		wsk__n(s, x);
+		wsk__s(s, "\" y=\"");
+		wsk__n(s, wsk_baseline_of(top, t->font));
+		if (w->ink != WSK_INHERIT) {
+			wsk__s(s, "\" fill=\"");
+			wsk__col(s, w->ink);
+		}
+		wsk__s(s, "\">");
+		wsk__w(s, w->text + from, n);
+		wsk__s(s, "</text>");
+	}
+
+	if (w->mark == WSK_MARK_CARET) {
+		wsk_rect_t c;
+		c.x = (short)(x + n * wsk_advance(t->font));
+		c.y = (short)(top + t->font / 8);
+		c.w = WSK_CARET_W;
+		c.h = (short)(t->font - t->font / 4);
+		if (c.h < 4) c.h = 4;
+		if (c.x + c.w > r.x + r.w) c.x = (short)(r.x + r.w - c.w);
+		wsk__box(s, 0, c, ink);
+	}
 }
 
 /* ------------------------------------------------------------------ */
@@ -798,9 +873,10 @@ static inline int wsk_part(const wsk_doc_t *d, const wsk_tree_t *t,
 		const wsk_widget_t *w = &t->item[i];
 		wsk_rect_t r = wsk_rect(t, i);
 		if (r.y >= d->y1 || r.y + r.h <= d->y0) continue;  /* not in these rows */
-		if (w->kind == WSK_BUTTON) wsk__rect(s, t, w, r);
+		if (w->kind == WSK_BUTTON || w->kind == WSK_FIELD) wsk__rect(s, t, w, r);
 		if (w->mark == WSK_MARK_CORNERS) wsk__marks(s, t, w, r);
-		wsk__text(s, t, w, r);
+		if (w->kind == WSK_FIELD) wsk__field(s, t, w, r);
+		else wsk__text(s, t, w, r);
 	}
 
 	if (nested) wsk__s(s, "</g>");

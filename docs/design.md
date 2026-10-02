@@ -962,6 +962,102 @@ the pictures set sizes that fit.
 
 ---
 
+## 5d. Iteration 4 — `input`, which is the last widget
+
+**Scope:** a text field. One widget kind, `WSK_FIELD`: a trough, its text, and
+a caret where the next character goes. Nothing else — no selection, no cursor
+keys, no scrolling by drag, no clipboard.
+
+**Why it is the last one.** §6's measurement says gBASIC's declarative `gui`
+accepts three component kinds, whisker had two, and the third is this. Nothing
+after it has a caller at all (`gbasic-gap.md`). That is the whole argument for
+building it and the whole argument for stopping afterwards.
+
+**Two decisions arrived before it did.** **D6**: `input` goes only to hosts with
+an input device, so the C5 is out — not on bytes, which turned out to be half
+the budget rather than 94 % of it, but because the C5 has nothing to press a key
+with and a key on its panel is 4 mm against the 9 mm a finger wants. **D7**: the
+mouse stands in for touch until October. A click is one point, which is exactly
+what `hit` takes and exactly what the panel will deliver, so the loop — point,
+name, band, repaint — can be finished and watched now.
+
+**What whisker supplies and what it does not.** whisker is pure (D5), so it
+holds no text. The field's characters live in the widget the *caller* owns, and
+the caller appends to them: whisker says which key was hit and draws what the
+caller put there. There is no key-to-character map in here, because a layout is
+an application's business and a shifted layout is just a different set of
+labels. The on-screen keyboard is not a new widget either — it is button stacks
+and §5c, which is why §5c came first.
+
+**Three things a field does that a label does not**, and each is a real
+difference rather than a style:
+
+1. **It is left-aligned.** A label is centred by the document's `<g>`; a field
+   spells `text-anchor="start"`, because text being typed must not move under
+   the finger as it grows.
+2. **It shows the tail, not the head.** A label truncates what overflows; a
+   field that did would hide what you just typed. The last characters that fit
+   are the visible ones.
+3. **It carries a caret, and only when told to.** `WSK_MARK_CARET` beside
+   `WSK_MARK_CORNERS` — the caller's to set, like the pressed fill, because
+   focus is state and whisker has none.
+
+**Done means:**
+
+1. The text is **left-aligned in the trough** and the caret sits where the next
+   character will land — asserted at the pixels, not only in the document.
+2. Text longer than the field shows its **tail**, and the caret stays inside
+   the trough. Control: a string that fits is not scrolled, and the two cases
+   are both asserted to occur.
+3. The caret is drawn **only when marked**. Control: the same field unmarked
+   has none, checked at the pixels — a caret is two columns and an assertion
+   on the document would pass on a caret drawn in the wrong place.
+4. **The loop closes with a real pointing device.** On `host/linux`, clicking a
+   key appends a character and repaints **only the field's band**: pixels
+   inside it change, none outside. That is D7 being spent on something.
+5. A **field and a full keyboard together fit `SRC_MAX`** at 1024×600, measured
+   and recorded — and if they do not, that is the finding and the compact form
+   in `tools/evidence/keyboard/` is what it buys.
+6. Module rules and the double-link, as §5 criterion 7.
+7. A person looks at it, as §5 criterion 8.
+
+**Explicitly not in iteration 4:** a key-to-character map, shift state, a
+cursor that moves, selection, multi-line text, scrolling, password masking, and
+any notion of focus beyond the caller setting a mark.
+
+### What it came to, 2026-10-02
+
+Built, all seven criteria met. **135 checks** in the suite and **19** on the
+host, where §5c left 106 and 12.
+
+**The loop closes, and it closed with a mouse.** `host/linux/selftest.c` pushes
+a click on a key, `wsk_hit` names it, the application copies that key's own
+label into the field, and the repaint that follows changes **83 pixels, all of
+them inside the field's four bands** — nothing outside, asserted with a control.
+`./run.sh --input` is the same loop with a person in it.
+
+**It all fits, and barely.** A field and 36 keys at 1024×600 compose to **3,981
+bytes, 115 under `SRC_MAX`**. That is enough to be true and not enough to build
+on: a panel behind the keyboard, a second field, or a title would not fit. The
+compact form in `tools/evidence/keyboard/` is worth 1,746 bytes and is what
+buys the room, when something needs it.
+
+**A field holds 31 characters and a NUL**, because that is `WSK_TEXT_MAX`. Found
+by writing the tail-scroll test and discovering it could not scroll: a 308-wide
+field at font 16 holds **36** characters, so it outruns the buffer before it
+outruns the trough. The tail matters at touch-sized fonts and in narrow fields,
+which is where a field on a panel actually lives — at font 24 the same field
+holds 24, and the test exercises it there. Raising the cap is one line and costs
+every widget in RAM; nothing needs it yet, and a field that silently stopped
+accepting characters would be worse than one that says 31.
+
+**What a person sees**, and it is the check two of these criteria needed: the
+text is hard left in the trough, the caret sits immediately after the last
+character, the leading characters have scrolled off, and the trough reads as a
+well rather than as a button beside the one next to it.
+
+---
+
 ---
 
 ## 6. What would have to be true before gBASIC took this
