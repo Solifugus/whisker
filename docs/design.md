@@ -743,8 +743,13 @@ a 172-row panel is an area of 84 rows, not a device of 84 rows — the second
 scales the document onto the glass and every row number in it becomes a lie.
 Found by drawing one and looking at it: the pressed button's lower two corner
 marks were outside the clip and simply absent, which no geometric check saw.
-It is also how a grid arrives later without the widget model changing: two
-stacks are two trees over one device, each with its own area.
+It was also meant to be how a grid arrives later — two stacks as two trees over
+one device, each with its own area — and **that part is not true as built**
+(`gbasic-gap.md` §4): a full render paints its backing across the whole device,
+so the second tree erases the first. `wsk_area` bounds where a stack lays out,
+which is what fixed the toolbar; making two trees *compose* needs a tree that
+paints no background, and then an answer for whose backing a clipped repaint
+carries. That belongs to whichever iteration wants a grid.
 
 A widget also carries a **mark** — `WSK_MARK_CORNERS` today — which is how a
 pressed state is shown without the shadows and gradients §2.4 rules out. It is
