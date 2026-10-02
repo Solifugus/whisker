@@ -829,8 +829,12 @@ argued later when something is:
 - whisker runs a real RV-9 interface on real hardware, and somebody uses it.
 - The two functions are stable enough that gBASIC's renderer seam can be written
   against them without a version negotiation.
-- A Linux host for the contract exists and is small — if it needs a toolkit
-  underneath, whisker has bought gBASIC nothing, because gBASIC already has one.
+- ~~A Linux host for the contract exists and is small~~ — **done, 2026-10-01**:
+  `host/linux`, **276 lines**, of which 62 are the contract. A window, a blit
+  and a point, over RV-9's own rasteriser, so what it draws is what the board
+  draws. It needs SDL2 for the window and nothing else; no toolkit, and no
+  widget on that side of the seam. The bar was that it be small, and 276 lines
+  is the number rather than the adjective.
 
 If those are not true, the right answer is that whisker served RV-9 and gBASIC
 kept GTK. That is a success, not a failure: the reason for a separate project is

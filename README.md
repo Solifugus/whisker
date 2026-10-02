@@ -22,7 +22,9 @@ that, and `hit` is waiting on a touch driver that does not exist yet.
   and the shape of the API. Evidence in `tools/evidence/`.
 - `docs/notation-sketch.md` — a compact way to write a panel down, prototyped
   and measured in `tools/notation/`. Not a decision, and not the wire format.
-- `src/` — iteration 1. `whisker.h` is the whole library.
+- `src/` — the library. `whisker.h` is the whole of it.
+- `host/linux/` — whisker running: a window, a blit, a point. 276 lines over
+  RV-9's own rasteriser, so what it draws is what the board draws.
 
 **The question that blocked everything was answered by a purchase.** A Waveshare
 ESP32-P4-WIFI6-Touch-LCD-7B — 1024×600, five-point capacitive touch — was
