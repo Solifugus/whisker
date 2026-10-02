@@ -123,6 +123,18 @@ belongs to whichever iteration wants a grid, not to a sentence in §5.
 
 Corrected there; recorded here because the sentence had been read as a promise.
 
+**Answered, 2026-10-02 (`design.md` §5c).** The background belongs to the
+document and never to a stack: `wsk_open` paints it, `wsk_part` paints widgets
+only, and `wsk_compose` runs the caller's body twice so the `SRC_MAX` refusal
+survives. A clipped repaint is then a document over the band's rows that offers
+itself to every stack, so the band comes out complete whichever stack was
+tapped — which is the question above, dissolved rather than traded off.
+
+**And the keyboard is the reason it had to be, not an illustration of it.**
+Measured: 36 keys as four documents are **4,186 bytes** and erase each other;
+as one composite, **3,775**, which is 321 under the ceiling. The three framings
+composing drops are **411**. The keyboard does not fit without it.
+
 ---
 
 ## What this changes

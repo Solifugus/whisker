@@ -824,6 +824,128 @@ a repaint, and the 19 ms of §2.2 is only the last of those. It is the first
 thing to do when the panel is on the desk, and it needs an RV-9 touch driver,
 which does not exist yet (§2.6).
 
+## 5c. Iteration 3 — composition, because the keyboard asked for it
+
+**Scope:** more than one stack over one device, in one document. Nothing else:
+no nesting, no box model, no second axis inside a stack.
+
+**Why this and not another widget.** §6's measurement (`gbasic-gap.md`) says the
+distance to gBASIC's declarative `gui` is one widget, `input`, and that on RV-9
+an input field means an on-screen keyboard. Drawing one is what found the defect
+below. So this iteration is not a widget at all — it is the thing the only
+remaining widget needs, and it was discovered by trying to build that widget
+rather than by deciding what ought to come next.
+
+**The defect, stated plainly.** §5 promised a grid as *"two stacks are two trees
+over one device, each with its own area"*. It does not work: `wsk_render` emits a
+backing rect across the whole device, so the second tree erases the first. Four
+keyboard rows came out as one. A picture showed it at once and no assertion would
+have — the geometry of every row was right.
+
+**The answer, and it is one sentence: the background belongs to the document,
+never to a stack.** That is the question §5 left open — *whose backing does a
+clipped repaint carry* — and it dissolves once the document is a thing with a
+name. The document owns the device size, the background, and the rows being
+painted. A stack contributes widgets and no background at all. A clipped repaint
+is then a document over the band's rows that offers itself to every stack in
+turn, and each contributes only what intersects: the band comes out complete
+whichever stack the tapped widget was in, and no stack has to know another
+exists.
+
+**Shape.** The emitter splits where it already had a seam:
+
+```
+wsk_open(doc, sink)        <svg>, the backing for doc's rows, the shared <g>
+wsk_part(doc, tree, sink)  that stack's widgets, clipped to doc's rows
+wsk_shut(sink)             </g></svg>
+```
+
+`wsk_render` becomes exactly `open` + `part` + `shut`, so the single-stack path
+and the composite path **are** the same code and cannot drift — D2's reason,
+applied to the emitter rather than to the two functions.
+
+The two-pass refusal survives: `wsk_compose(body, ctx, sink, budget)` runs the
+caller's body once against a counting sink and once for real, so a composite
+over `SRC_MAX` is refused before a byte, as §5's criterion 5 demands of a single
+tree. The body is a function pointer **in a parameter**, which is already how
+the sink works and is position independent; it is a stored *table* of them the
+module rules forbid (§4.1). The body must emit the same bytes twice — it is
+called twice — which is a real constraint on the caller and is why it takes a
+`ctx` rather than closing over anything.
+
+A stack with its own `font` or `ink` gets a nested `<g>`; one that matches the
+document's gets nothing, so the common case costs zero bytes.
+
+**Done means:**
+
+1. Two stacks over one device **both appear, at the pixels**, through RV-9's
+   rasteriser, in a picture a person looks at. The control is the same two
+   rendered the old way, where the second is asserted to have erased the first —
+   without it this criterion is satisfied by a harness that drew one stack.
+2. A **banded** repaint of a widget in one stack carries the other stack's
+   widgets that intersect that band, and the control is a band intersecting
+   nothing of the second stack, which must not carry it.
+3. It **refuses** over budget before writing a byte, like §5's criterion 5, and
+   the control is a composite one widget smaller being accepted.
+4. A stack whose device differs from the document's is **refused**
+   (`WSK_E_DEVICE`) rather than laid out against the wrong size. That is the
+   wrong-strip bug's family (§5) and the one mistake this API newly makes
+   possible.
+5. **Byte-exact against the existing goldens.** The refactor is supposed to move
+   nothing, and the whole §5 and §5b suite re-run is the assertion that it did
+   not.
+6. Module rules and the double-link, as §5 criterion 7.
+7. **Measured, not assumed: what composition costs or saves.** Four keyboard
+   rows as four documents pay four framings; as one composite they pay one. The
+   number goes in the gap document beside the 3,848 it corrects.
+
+**What this does not fix.** Not the keyboard's bytes — 36 keys were 94 % of
+`SRC_MAX` and one framing back is a few per cent, not an order. Composition is
+the structural half; the byte half is still the three options in
+`gbasic-gap.md` §3, and still nobody's to decide today.
+
+**Explicitly not in iteration 3:** nesting a stack in a stack, a real grid
+layout that computes cells (the caller places areas), focus, scrolling, and
+`input` itself.
+
+### What it came to, 2026-10-02
+
+Built, and all eight criteria met. 106 checks where §5 and §5b left 74.
+
+**The measurement turned out to be the point.** 36 keys at 1024×600:
+
+| | bytes |
+|---|---|
+| as four documents, one per row | **4,186** — and they erase each other |
+| as one composite | **3,775**, 321 under `SRC_MAX` |
+| the three framings composition drops | **411** |
+
+411 is larger than 321. So a 36-key keyboard **does not fit without
+composing** — this is a correctness iteration twice over, once in what
+reaches the glass and once in what fits the ceiling. The 3,848 in
+`gbasic-gap.md` was the same keyboard measured before it had ids and a TAB
+key; the shape of the conclusion is unchanged and the number is now the
+measured one.
+
+**And a control that was not a control.** Criterion 6 asks whether the
+function pointer `wsk_compose` takes links in a module. With one body, gcc
+const-propagated it: `jal comp_body` inside `wsk_compose.constprop.0`, no
+address ever materialised, and the double-link proved **nothing at all** about
+the construct the criterion exists for — while passing. Found by disassembling
+the module rather than by trusting that it had been tested. `module_compose.c`
+now chooses between two bodies on a number only the window knows, which forces
+`auipc`/`addi` into a register and an indirect call, and *that* is what the two
+link bases now compare. The house rule about controls turns out to apply to
+builds as well as to assertions.
+
+**One thing seen in the pictures and deliberately not fixed:** a stack does not
+clamp to its area. Two 64-row buttons in a 112-row area simply run off the
+bottom of the panel. That is true of iteration 1 and is not composition's to
+change; it is noted here so it is a known behaviour rather than a surprise, and
+the pictures set sizes that fit.
+
+---
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

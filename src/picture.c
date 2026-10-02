@@ -75,6 +75,24 @@ static void to_window(wsk_sink_t *s, const char *b, int n)
 	svgwin_write(dev, b, (size_t)n, &done);
 }
 
+/* Composition (design.md §5c): the body wsk_compose runs twice. `part` is an
+   array of trees rather than of pointers to them, which is the module rule
+   doing its job even here, where nothing links as a module. */
+typedef struct { wsk_doc_t d; const wsk_tree_t *part; int n; } comp_t;
+
+static int comp_body(wsk_sink_t *s, void *ctx)
+{
+	comp_t *c = (comp_t *)ctx;
+
+	wsk_open(&c->d, s);
+	for (int i = 0; i < c->n; i++) {
+		int e = wsk_part(&c->d, &c->part[i], s);
+		if (e != WSK_OK) return e;
+	}
+	wsk_shut(s);
+	return WSK_OK;
+}
+
 static const wsk_widget_t TOOLBAR[] = {
 	{ .kind = WSK_BUTTON, .id = "back", .text = "Back", .weight = 1 },
 	{ .kind = WSK_BUTTON, .id = "stop", .text = "STOP", .weight = 1,
@@ -245,6 +263,116 @@ int main(void)
 		shot("panel_row.ppm");
 
 		ok(at(1, 40) != 0x0000, "the row's margin survived its repaint too");
+	}
+
+	/*
+	 * §5c. Two stacks over one device -- the keyboard's problem in
+	 * miniature: a toolbar across the top and a pair of buttons below.
+	 *
+	 * Drawn the WRONG way first, deliberately, because the control for
+	 * "both stacks appear" is a picture in which one of them does not.
+	 * That is the whole finding: every rect in both stacks is in the right
+	 * place and the toolbar is simply not on the glass.
+	 */
+	{
+		wsk_widget_t bar[3], pair[2];
+		wsk_tree_t part[2];
+		comp_t c;
+		wsk_rect_t rs, rc;
+		int sx, sy, cx, cy, n;
+		uint16_t wrong_stop, wrong_bg, right_stop, right_confirm;
+
+		wsk_clone(bar, TOOLBAR, 3);
+		wsk_init(&part[0], WSK_ROW, PW, PH);
+		part[0].pad = 6; part[0].gap = 6; part[0].bg = 0x10203au;
+		wsk_area(&part[0], 0, 0, PW, 60);
+		part[0].item = bar; part[0].n = 3;
+
+		wsk_clone(pair, PANEL + 1, 2);              /* CONFIRM and Cancel */
+		/* 112 rows of area, 6 of padding each end, 6 of gap: two of 47.
+		   Sized rather than defaulted because a stack does NOT clamp to its
+		   area -- two 64-row buttons simply run off the bottom of the panel,
+		   which is true today and is not §5c's to change. */
+		pair[0].size = 47;
+		pair[1].size = 47;
+		wsk_init(&part[1], WSK_COL, PW, PH);
+		part[1].pad = 6; part[1].gap = 6; part[1].bg = 0x10203au;
+		wsk_area(&part[1], 0, 60, PW, PH - 60);
+		part[1].item = pair; part[1].n = 2;
+
+		rs = wsk_rect(&part[0], 1);                 /* STOP, in the toolbar */
+		rc = wsk_rect(&part[1], 0);                 /* CONFIRM, below it */
+		sx = rs.x + rs.w / 2; sy = rs.y + rs.h / 2;
+		cx = rc.x + rc.w / 2; cy = rc.y + rc.h / 2;
+
+		/* the way §5 promised: two documents, each backing the whole screen */
+		memset(screen, 0, sizeof screen);
+		s.put = to_window; s.ctx = &dev; s.len = 0;
+		wsk_render(&part[0], &s, 4096);
+		s.put = to_window; s.ctx = &dev; s.len = 0;
+		wsk_render(&part[1], &s, 4096);
+		wrong_stop = at(sx, sy);
+		wrong_bg = at(1, sy);
+		shot("compose_wrong.ppm");
+		ok(wrong_stop == wrong_bg,
+		   "CONTROL: rendered as two documents, the toolbar is gone -- the "
+		   "second backing erased it");
+
+		/* and composed */
+		memset(screen, 0, sizeof screen);
+		wsk_doc_init(&c.d, &part[0]);
+		c.part = part; c.n = 2;
+		s.put = to_window; s.ctx = &dev; s.len = 0;
+		blits = 0;
+		n = wsk_compose(comp_body, &c, &s, 4096);
+		right_stop = at(sx, sy);
+		right_confirm = at(cx, cy);
+		printf("  two stacks composed: %d bytes, %d bands\n", n, blits);
+		shot("compose_right.ppm");
+		ok(n > 0 && right_stop != wrong_bg,
+		   "composed, the toolbar button is on the glass");
+		ok(right_confirm != wrong_bg,
+		   "and so is the stack below it, in the same document");
+		ok(at(1, sy) != 0x0000 && at(1, cy) != 0x0000,
+		   "with one scene behind both, not the device's black");
+
+		/* a banded repaint of a widget in one stack, with the other stack
+		   still in the document: the band must come back complete, and
+		   nothing outside it may move */
+		{
+			static uint16_t before[PW * PH];
+			const char *who[1];
+			int moved_outside = 0;
+
+			memcpy(before, screen, sizeof before);
+			bar[1].mark = WSK_MARK_CORNERS;
+			bar[1].ink = 0xffe0e0u;
+			who[0] = "stop";
+			ok(wsk_doc_rows(&c.d, &part[0], who, 1) == WSK_OK,
+			   "the pressed widget gives the document its rows");
+			{
+				uint32_t v = ((uint32_t)c.d.y0 << 16) | (uint32_t)c.d.y1;
+				svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+			}
+			s.put = to_window; s.ctx = &dev; s.len = 0;
+			blits = 0;
+			n = wsk_compose(comp_body, &c, &s, 4096);
+			printf("  pressed, through the clip: %d bytes, rows %d..%d, %d bands\n",
+			       n, c.d.y0, c.d.y1, blits);
+			shot("compose_pressed.ppm");
+
+			for (int y = 0; y < PH; y++) {
+				if (y >= c.d.y0 && y < c.d.y1) continue;
+				for (int x = 0; x < PW; x++)
+					if (screen[y * PW + x] != before[y * PW + x]) moved_outside = 1;
+			}
+			ok(n > 0 && at(sx, sy) != right_stop, "the press is visible");
+			ok(!moved_outside,
+			   "and not one pixel outside the band moved -- the stack below is intact");
+			ok(at(1, sy) != 0x0000,
+			   "the band came back carrying the scene, not the device background");
+		}
+
 	}
 
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);

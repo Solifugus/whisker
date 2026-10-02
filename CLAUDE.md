@@ -28,24 +28,37 @@ while nothing is invested.
 
 ## Status
 
-**Nothing is built. Both gates are open — start iteration 1.**
+**Three iterations are built; nothing has run on the board.**
 
-1. **The RV-9 review is answered** (`docs/rv9-answers.md`, 2026-09-29). Thirteen
-   of sixteen claims stood. One of them was right *and undiscovered*: checking it
-   found a live bug in RV-9's `flick`, now fixed, which is why the tap budget
-   moved.
-2. **All six decisions are ratified** (Matthew, 2026-09-29). `docs/decisions.md`
-   is the ledger and wins wherever it disagrees with the design's §4 reasoning.
+- **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
+  row. Done.
+- **§5b — `hit`.** A point becomes an id. Done, built early so that board time in
+  October is spent on the measurement nobody has taken (finger-down to
+  pixel-changed) rather than on writing a hit test.
+- **§5c — composition.** Several stacks in one document. Done. Chosen because
+  §6's gBASIC measurement said the remaining gap is `input`, and drawing the
+  keyboard that needs found that two stacks could not share a screen.
+
+`src/run.sh --module` is the whole of it: **106 checks**, the pixels through
+RV-9's own rasteriser, the module build with the double-link, and a person
+looking at the pictures.
+
+Settled before any of that: **the RV-9 review is answered**
+(`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one
+was right *and undiscovered*, which found a live bug in RV-9's `flick` and moved
+the tap budget. **All six decisions are ratified** (Matthew, 2026-09-29);
+`docs/decisions.md` is the ledger and wins wherever it disagrees with §4.
 
 **D0 was settled by a purchase**: a Waveshare ESP32-P4-WIFI6-Touch-LCD-7B —
-1024×600, five-point capacitive touch — arrives in October, so the second
-function is `hit(tree, x, y)`. The C5 keeps `/gpio` and probably never gets
-touch, so keep declaration order stable and a focus model stays addable without
-being built.
+1024×600, five-point capacitive touch — arrives in October. The C5 keeps `/gpio`
+and probably never gets touch, so keep declaration order stable and a focus model
+stays addable without being built.
 
-**Iteration 1 is the renderer alone** (`docs/design.md` §5): labels and buttons
-in a single-axis stack, column *or* row, header-only C. `hit` is iteration 2,
-when there is a panel to tap.
+**Open, and in this order of readiness:** the board run (`wflick` and
+`wcompose` are shaped for it); touch *slop*, deliberately unanswered until a
+real capacitive surface measures centroid scatter (§5b); whether `tools/notation`
+ships at all (`notation-sketch.md` §6 — Matthew's call); and `input` itself,
+which is the last thing between whisker and gBASIC's declarative `gui`.
 
 ## Read before working
 

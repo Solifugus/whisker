@@ -1,12 +1,14 @@
 /*
  * whisker -- a widget layer for a window you write SVG to.
  *
- * Iteration 1: labels and buttons in a single-axis stack, column or row.
- * Three calls, all pure, none of which touches a device:
+ * Labels and buttons in single-axis stacks, column or row. All pure, none
+ * of them touching a device:
  *
- *     wsk_render(tree, sink, ctx)                     the whole screen
+ *     wsk_render(tree, sink, budget)                  one stack, whole screen
  *     wsk_rows(tree, ids, n, &y0, &y1)                which device rows moved
- *     wsk_render_clipped(tree, ids, n, sink, ctx)     just those rows
+ *     wsk_render_clipped(tree, ids, n, sink, budget)  one stack, those rows
+ *     wsk_hit(tree, x, y)                             which widget is there
+ *     wsk_compose(body, ctx, sink, budget)            several stacks at once
  *
  * The host writes what the sink collected to /w0, having first told the
  * window which rows to repaint:
@@ -109,9 +111,15 @@ typedef struct {
 	/*
 	 * Where the stack sits inside it. The whole device after wsk_init, and
 	 * wsk_area narrows it -- a toolbar across the top, a column down one
-	 * side. Iteration 1 lays out one stack; two stacks are two trees over
-	 * one device, each with its own area, which is also how a grid will
-	 * arrive without the widget model changing.
+	 * side.
+	 *
+	 * This bounds where the stack LAYS OUT. It does not on its own make two
+	 * trees share a screen: wsk_render paints a background across the whole
+	 * device, so a second one rendered after the first erases it. Giving
+	 * each its own area is necessary and was not sufficient, which four
+	 * keyboard rows coming out as one row showed (design.md §5c). Two
+	 * stacks over one device is wsk_compose, below, where the background
+	 * belongs to the document and a stack has none.
 	 */
 	short         ax, ay, aw, ah;
 
@@ -149,7 +157,8 @@ enum {
 	WSK_E_TEXT      = -1,        /* a label the window cannot draw */
 	WSK_E_BUDGET    = -2,        /* it will not fit in the bytes allowed */
 	WSK_E_NOTFOUND  = -3,        /* no widget by that id */
-	WSK_E_EMPTY     = -4         /* an empty row range: nothing to repaint */
+	WSK_E_EMPTY     = -4,        /* an empty row range: nothing to repaint */
+	WSK_E_DEVICE    = -5         /* a stack sized for a different screen */
 };
 
 /* ------------------------------------------------------------------ */
@@ -557,19 +566,27 @@ static inline int wsk_rows(const wsk_tree_t *t, const char *const *ids, int n,
 /* Render                                                              */
 /* ------------------------------------------------------------------ */
 
-static inline void wsk__rect(wsk_sink_t *s, const wsk_tree_t *t,
-                             const wsk_widget_t *w, wsk_rect_t r)
+/* A filled rectangle, optionally named. x and y are omitted when zero, which
+   is most backings and every widget in a column. */
+static inline void wsk__box(wsk_sink_t *s, const char *id, wsk_rect_t r,
+                            unsigned int col)
 {
 	wsk__s(s, "<rect");
-	if (w != 0 && t->ids) { wsk__s(s, " id=\""); wsk__s(s, w->id); wsk__s(s, "\""); }
+	if (id != 0) { wsk__s(s, " id=\""); wsk__s(s, id); wsk__s(s, "\""); }
 	if (r.x != 0) { wsk__s(s, " x=\""); wsk__n(s, r.x); wsk__s(s, "\""); }
 	if (r.y != 0) { wsk__s(s, " y=\""); wsk__n(s, r.y); wsk__s(s, "\""); }
 	wsk__s(s, " width=\""); wsk__n(s, r.w);
 	wsk__s(s, "\" height=\""); wsk__n(s, r.h);
 	wsk__s(s, "\" fill=\"");
-	wsk__col(s, (w != 0 && w->fill != WSK_INHERIT) ? w->fill
-	          : (w != 0 ? t->accent : t->bg));
+	wsk__col(s, col);
 	wsk__s(s, "\"/>");
+}
+
+static inline void wsk__rect(wsk_sink_t *s, const wsk_tree_t *t,
+                             const wsk_widget_t *w, wsk_rect_t r)
+{
+	wsk__box(s, (w != 0 && t->ids) ? w->id : 0, r,
+	         (w->fill != WSK_INHERIT) ? w->fill : t->accent);
 }
 
 /*
@@ -647,54 +664,165 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
 	wsk__s(s, "</text>");
 }
 
+/* ------------------------------------------------------------------ */
+/* The document: one device, one background, any number of stacks      */
+/* ------------------------------------------------------------------ */
+
 /*
- * The document.
+ * What a stack is drawn INTO.
  *
- * `y0`/`y1` bound what is drawn: the whole screen when they are 0 and t->h,
- * a clipped repaint otherwise. Either way it is a COMPLETE document with the
- * same viewBox -- there is no such thing as a fragment here -- and it
- * carries the backing for its own rows, because a band is cleared to the
- * device colour before anything is drawn into it.
+ * `y0`/`y1` bound what is painted: the whole screen when they are 0 and h, a
+ * clipped repaint otherwise. Either way it is a COMPLETE document with the
+ * same viewBox -- there is no such thing as a fragment here -- and it carries
+ * the backing for its own rows, because a band is cleared to the device
+ * colour before anything is drawn into it.
  *
  * The viewBox is the device, deliberately: user units are then device rows
  * and wsk_rows needs no conversion. A whisker that assumed that instead of
  * arranging it works at 320x172 and clips the wrong strip at 1024x600.
+ *
+ * THE BACKGROUND BELONGS HERE AND NOWHERE ELSE. That is the whole of what
+ * makes two stacks able to share a screen (design.md §5c): a stack
+ * contributes widgets and no backing, so a second one cannot erase the
+ * first, and the question of whose background a clipped repaint carries has
+ * one answer instead of one per stack.
  */
-static inline void wsk__doc(const wsk_tree_t *t, int y0, int y1, wsk_sink_t *s)
+typedef struct {
+	short        w, h;           /* the device, and the viewBox */
+	short        y0, y1;         /* the device rows this document paints */
+	unsigned int bg;
+	unsigned int ink;            /* the shared <g>: text, and marks */
+	short        font;           /* the shared <g>: cell height in pixels */
+} wsk_doc_t;
+
+/*
+ * Take the device and the defaults from a stack -- which is a copy and not a
+ * relationship. The document does not belong to that tree and the tree is
+ * not privileged by having been asked; any of a composite's stacks will do,
+ * and the caller is free to overwrite any field afterwards.
+ */
+static inline void wsk_doc_init(wsk_doc_t *d, const wsk_tree_t *t)
+{
+	d->w = t->w;
+	d->h = t->h;
+	d->y0 = 0;
+	d->y1 = t->h;
+	d->bg = t->bg;
+	d->ink = t->ink;
+	d->font = t->font;
+}
+
+/*
+ * Narrow the document to the rows those widgets occupy, band-snapped, so the
+ * same range can go to RV9_SVG_SS_ROWS. Replaces whatever range the document
+ * had; wsk_doc_union widens it, which is how a repaint spanning two stacks is
+ * built -- rows from the first, union with each of the rest.
+ */
+static inline int wsk_doc_rows(wsk_doc_t *d, const wsk_tree_t *t,
+                               const char *const *ids, int n)
+{
+	int y0, y1, e = wsk_rows(t, ids, n, &y0, &y1);
+	if (e != WSK_OK) return e;
+	d->y0 = (short)y0;
+	d->y1 = (short)y1;
+	return WSK_OK;
+}
+
+static inline int wsk_doc_union(wsk_doc_t *d, const wsk_tree_t *t,
+                                const char *const *ids, int n)
+{
+	int y0, y1, e = wsk_rows(t, ids, n, &y0, &y1);
+	if (e != WSK_OK) return e;
+	if (y0 < d->y0) d->y0 = (short)y0;
+	if (y1 > d->y1) d->y1 = (short)y1;
+	return WSK_OK;
+}
+
+/* <svg>, the backing for this document's rows, and the shared <g>.
+ *
+ * font-size, anchor and ink go on one <g>: measured at 44 % more interface
+ * under SRC_MAX than spelling them on every element, and re-parsed once per
+ * band either way. */
+static inline void wsk_open(const wsk_doc_t *d, wsk_sink_t *s)
 {
 	wsk_rect_t back;
 
 	wsk__s(s, "<svg viewBox=\"0 0 ");
-	wsk__n(s, t->w);
+	wsk__n(s, d->w);
 	wsk__s(s, " ");
-	wsk__n(s, t->h);
+	wsk__n(s, d->h);
 	wsk__s(s, "\">");
 
 	back.x = 0;
-	back.y = (short)y0;
-	back.w = t->w;
-	back.h = (short)(y1 - y0);
-	wsk__rect(s, t, 0, back);
+	back.y = d->y0;
+	back.w = d->w;
+	back.h = (short)(d->y1 - d->y0);
+	wsk__box(s, 0, back, d->bg);
 
-	/* font-size, anchor and ink on one <g>: measured at 44 % more interface
-	   under SRC_MAX than spelling them on every element, and re-parsed once
-	   per band either way. */
 	wsk__s(s, "<g font-size=\"");
-	wsk__n(s, t->font);
+	wsk__n(s, d->font);
 	wsk__s(s, "\" text-anchor=\"middle\" fill=\"");
-	wsk__col(s, t->ink);
+	wsk__col(s, d->ink);
 	wsk__s(s, "\">");
+}
+
+/*
+ * One stack's widgets, clipped to the document's rows. No <svg>, no backing.
+ *
+ * A stack whose device differs from the document's is refused rather than
+ * laid out against the wrong size: every rect in it would be placed by one
+ * screen and clipped by another, which is the wrong-strip bug's family
+ * (design.md §5) and the one new mistake this API makes possible.
+ *
+ * A stack with its own font or ink gets a nested <g>; one that matches the
+ * document pays nothing, which is the common case.
+ */
+static inline int wsk_part(const wsk_doc_t *d, const wsk_tree_t *t,
+                           wsk_sink_t *s)
+{
+	int nested;
+
+	if (t->w != d->w || t->h != d->h) return WSK_E_DEVICE;
+	if (wsk_check(t, 0) != WSK_OK) return WSK_E_TEXT;
+
+	nested = (t->font != d->font || t->ink != d->ink);
+	if (nested) {
+		wsk__s(s, "<g font-size=\"");
+		wsk__n(s, t->font);
+		wsk__s(s, "\" fill=\"");
+		wsk__col(s, t->ink);
+		wsk__s(s, "\">");
+	}
 
 	for (int i = 0; i < t->n; i++) {
 		const wsk_widget_t *w = &t->item[i];
 		wsk_rect_t r = wsk_rect(t, i);
-		if (r.y >= y1 || r.y + r.h <= y0) continue;      /* not in these rows */
+		if (r.y >= d->y1 || r.y + r.h <= d->y0) continue;  /* not in these rows */
 		if (w->kind == WSK_BUTTON) wsk__rect(s, t, w, r);
 		if (w->mark == WSK_MARK_CORNERS) wsk__marks(s, t, w, r);
 		wsk__text(s, t, w, r);
 	}
 
-	wsk__s(s, "</g></svg>");
+	if (nested) wsk__s(s, "</g>");
+	return WSK_OK;
+}
+
+static inline void wsk_shut(wsk_sink_t *s) { wsk__s(s, "</g></svg>"); }
+
+/* One stack, which is open + part + shut and is deliberately nothing else:
+   the single-stack path and the composite path are the same code, so they
+   cannot come to disagree about what a document looks like (D2). */
+static inline void wsk__doc(const wsk_tree_t *t, int y0, int y1, wsk_sink_t *s)
+{
+	wsk_doc_t d;
+
+	wsk_doc_init(&d, t);
+	d.y0 = (short)y0;
+	d.y1 = (short)y1;
+
+	wsk_open(&d, s);
+	(void)wsk_part(&d, t, s);    /* d came from t: it cannot be refused here */
+	wsk_shut(s);
 }
 
 /*
@@ -743,5 +871,72 @@ static inline int wsk_render_clipped(const wsk_tree_t *t, const char *const *ids
 	if (e != WSK_OK) return e;
 	return wsk__emit(t, y0, y1, sink, budget);
 }
+
+/*
+ * Several stacks over one device, in one document.
+ *
+ * The caller's body does the emitting -- wsk_open, a wsk_part per stack,
+ * wsk_shut -- and this runs it TWICE: once against a counting sink, once for
+ * real. So a composite that will not fit is refused before a byte of it is
+ * written, which is the same guarantee wsk_render gives a single stack and
+ * for the same reason (§2.3): past SRC_MAX the window drops the document, and
+ * a half-written picture is the one answer that helps nobody.
+ *
+ * THE BODY MUST EMIT THE SAME BYTES BOTH TIMES. It is called twice; if it
+ * reads state that changes in between, the count it was refused or accepted
+ * on is a lie about the document that got written. That is why it takes a
+ * ctx instead of closing over anything -- there is nothing to close over in
+ * C, and a body that reaches for a mutable global is the mistake this
+ * sentence exists to name.
+ *
+ * Passing a function pointer as an argument is position independent; it is a
+ * stored table of them that a module cannot link (§4.1), and the sink has
+ * worked this way from the start.
+ *
+ *     static int keyboard(wsk_sink_t *s, void *ctx)
+ *     {
+ *         kb_t *k = (kb_t *)ctx;
+ *         int e;
+ *         wsk_open(&k->doc, s);
+ *         for (int i = 0; i < 4; i++)
+ *             if ((e = wsk_part(&k->doc, &k->row[i], s)) != WSK_OK) return e;
+ *         wsk_shut(s);
+ *         return WSK_OK;
+ *     }
+ *
+ *     int n = wsk_compose(keyboard, &kb, sink, 4096);
+ *
+ * Returns the bytes written, or a negative WSK_E_* -- including whatever the
+ * body returned, so a WSK_E_DEVICE from one stack reaches the caller rather
+ * than producing a document missing a row.
+ */
+typedef int (*wsk_body_t)(wsk_sink_t *s, void *ctx);
+
+static inline int wsk_compose(wsk_body_t body, void *ctx, wsk_sink_t *sink,
+                              int budget)
+{
+	wsk_sink_t dry;
+	int e;
+
+	dry.put = 0;
+	dry.ctx = 0;
+	dry.len = 0;
+	e = body(&dry, ctx);
+	if (e < 0) return e;
+	if (budget > 0 && dry.len > budget) return WSK_E_BUDGET;
+
+	e = body(sink, ctx);
+	if (e < 0) return e;
+	return dry.len;
+}
+
+/*
+ * Which widget is at that point, across a composite.
+ *
+ * There is no wsk_compose_hit, because there is nothing for it to do that the
+ * caller cannot: loop the stacks and take the first that answers. Stacks do
+ * not overlap by construction -- the caller gave them areas -- so the order
+ * is the caller's and whisker has no opinion about it (D5).
+ */
 
 #endif /* WHISKER_H */

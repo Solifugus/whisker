@@ -51,6 +51,49 @@ static int clip_into(const wsk_tree_t *t, const char *const *ids, int n,
 
 static int has(const char *hay, const char *needle) { return strstr(hay, needle) != 0; }
 
+static int count(const char *hay, const char *needle)
+{
+	int k = 0;
+	for (const char *p = hay; (p = strstr(p, needle)) != 0; p++) k++;
+	return k;
+}
+
+/*
+ * Composition (design.md §5c). The body emits and does nothing else -- it
+ * reads the context and never writes it, which is the constraint wsk_compose
+ * names, since it is called twice and the count has to describe the document
+ * that actually gets written.
+ *
+ * `part` is an array of trees, not of pointers to them: a table of addresses
+ * in rodata is what a module cannot link (§4.1), and composition must not be
+ * the thing that reintroduces one.
+ */
+typedef struct { wsk_doc_t d; const wsk_tree_t *part; int n; } comp_t;
+
+static int comp_body(wsk_sink_t *s, void *ctx)
+{
+	comp_t *c = (comp_t *)ctx;
+
+	wsk_open(&c->d, s);
+	for (int i = 0; i < c->n; i++) {
+		int e = wsk_part(&c->d, &c->part[i], s);
+		if (e != WSK_OK) return e;
+	}
+	wsk_shut(s);
+	return WSK_OK;
+}
+
+static int compose_into(comp_t *c, char *out, int cap, int budget)
+{
+	buf_t o; wsk_sink_t s;
+	o.b = out; o.cap = cap;
+	s.put = to_buf; s.ctx = &o; s.len = 0;
+	out[0] = '\0';
+	int r = wsk_compose(comp_body, c, &s, budget);
+	out[(r > 0 && r < cap) ? r : 0] = '\0';
+	return r;
+}
+
 /* ---- the panels ---- */
 
 static const wsk_widget_t SETTINGS[] = {
@@ -80,6 +123,72 @@ static const wsk_widget_t TOOLBAR[] = {
 	{ .kind = WSK_BUTTON, .id = "go",   .text = "Go",     .weight = 1 },
 };
 
+/* Two stacks that share one 320x172 screen: a menu down the left, readouts
+   down the right. The sizes are chosen so that one band intersects both
+   stacks and another intersects only the menu -- §5c criterion 2 needs both
+   cases to occur, and a layout where they cannot is a test that proves
+   nothing. */
+static const wsk_widget_t MENU[] = {
+	{ .kind = WSK_BUTTON, .id = "m_run",  .text = "Run",  .size = 48 },
+	{ .kind = WSK_BUTTON, .id = "m_stop", .text = "Stop", .size = 48 },
+	{ .kind = WSK_BUTTON, .id = "m_quit", .text = "Quit", .size = 48 },
+};
+
+static const wsk_widget_t SIDE[] = {
+	{ .kind = WSK_LABEL, .id = "s_volts", .text = "12.4 V", .size = 40 },
+	{ .kind = WSK_LABEL, .id = "s_temp",  .text = "41 C",   .size = 40 },
+};
+
+/* A keyboard, which is why §5c exists: 36 keys were 94 % of SRC_MAX as four
+   separate documents (gbasic-gap.md). One row per stack, four stacks. */
+static const wsk_widget_t KEYS_1[] = {
+	{ .kind = WSK_BUTTON, .id = "k_q", .text = "Q", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_w", .text = "W", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_e", .text = "E", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_r", .text = "R", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_t", .text = "T", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_y", .text = "Y", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_u", .text = "U", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_i", .text = "I", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_o", .text = "O", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_p", .text = "P", .weight = 1 },
+};
+
+static const wsk_widget_t KEYS_2[] = {
+	{ .kind = WSK_BUTTON, .id = "k_a", .text = "A", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_s", .text = "S", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_d", .text = "D", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_f", .text = "F", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_g", .text = "G", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_h", .text = "H", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_j", .text = "J", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_k", .text = "K", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_l", .text = "L", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_ent", .text = "ENT", .weight = 1 },
+};
+
+static const wsk_widget_t KEYS_3[] = {
+	{ .kind = WSK_BUTTON, .id = "k_z", .text = "Z", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_x", .text = "X", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_c", .text = "C", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_v", .text = "V", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_b", .text = "B", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_n", .text = "N", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_m", .text = "M", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_dot", .text = ".", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_del", .text = "DEL", .weight = 1 },
+};
+
+static const wsk_widget_t KEYS_4[] = {
+	{ .kind = WSK_BUTTON, .id = "k_sh", .text = "SHIFT", .weight = 2 },
+	{ .kind = WSK_BUTTON, .id = "k_num", .text = "123", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_spc", .text = "SPACE", .weight = 4 },
+	{ .kind = WSK_BUTTON, .id = "k_lt", .text = "-", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_gt", .text = "+", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_esc", .text = "ESC", .weight = 1 },
+	{ .kind = WSK_BUTTON, .id = "k_tab", .text = "TAB", .weight = 1 },
+};
+
 /* Deliberately not band-aligned: 30 rows from an odd offset, so the clip has
    to snap and the backing has to follow it. */
 static const wsk_widget_t RAGGED[] = {
@@ -90,7 +199,7 @@ static const wsk_widget_t RAGGED[] = {
 
 int main(void)
 {
-	static char doc[8192], clip[8192];
+	static char doc[8192], clip[8192], other[8192];
 	wsk_tree_t t;
 	int n;
 
@@ -544,6 +653,168 @@ int main(void)
 			wsk_rows(&g, ids, 1, &y0, &y1);
 			printf("    one button repainted  %4d bytes   %2d bands (rows %d..%d)\n",
 			       one, (y1 - y0) / 8, y0, y1);
+		}
+	}
+
+	/* ---- §5c. composition: more than one stack over one device ---- */
+	printf("\n-- §5c  composition\n");
+	{
+		wsk_tree_t part[2];
+		comp_t c;
+
+		wsk_init(&part[0], WSK_COL, 320, 172);
+		part[0].pad = 4; part[0].gap = 4; part[0].ids = 1;
+		wsk_area(&part[0], 0, 0, 200, 172);
+		part[0].item = MENU; part[0].n = 3;
+
+		wsk_init(&part[1], WSK_COL, 320, 172);
+		part[1].pad = 4; part[1].gap = 4; part[1].ids = 1;
+		wsk_area(&part[1], 208, 0, 112, 172);
+		part[1].item = SIDE; part[1].n = 2;
+
+		wsk_doc_init(&c.d, &part[0]);
+		c.part = part; c.n = 2;
+
+		/* 1. both stacks appear, and there is one background */
+		n = compose_into(&c, doc, sizeof doc, 4096);
+		ok(n > 0, "two stacks compose into one document");
+		ok(has(doc, ">Run</text>") && has(doc, ">Stop</text>") &&
+		   has(doc, ">Quit</text>") && has(doc, "12.4 V") && has(doc, "41 C"),
+		   "and every widget of both stacks is in it");
+		ok(count(doc, "width=\"320\" height=\"172\"") == 1,
+		   "one backing for the device, not one per stack");
+
+		/* CONTROL, and it is the defect §5c exists for: rendered the way
+		   §5 promised, the second document OPENS with a backing across the
+		   whole device, which is what erases the first on the glass. The
+		   suite sees the mechanism; picture.c sees the erasure. */
+		{
+			int b = render_into(&part[1], other, sizeof other, 4096);
+			const char *back = strstr(other, "width=\"320\" height=\"172\"");
+			const char *first = strstr(other, "12.4 V");
+			ok(b > 0 && back != 0 && first != 0 && back < first,
+			   "CONTROL: rendered alone, the side stack still backs the whole screen");
+		}
+
+		/* 2. a band carries the other stack's widgets that cross it */
+		{
+			const char *ids[1];
+			int seen_crossing = 0, seen_clear = 0;
+
+			for (int k = 0; k < 2; k++) {
+				const char *who = (k == 0) ? "m_stop" : "m_quit";
+				int agree = 1, carried = 0;
+
+				ids[0] = who;
+				if (wsk_doc_rows(&c.d, &part[0], ids, 1) != WSK_OK) { ok(0, who); break; }
+				n = compose_into(&c, doc, sizeof doc, 4096);
+
+				for (int i = 0; i < part[1].n; i++) {
+					wsk_rect_t r = wsk_rect(&part[1], i);
+					int crosses = !(r.y >= c.d.y1 || r.y + r.h <= c.d.y0);
+					if (crosses != has(doc, SIDE[i].text)) agree = 0;
+					if (crosses) carried++;
+				}
+				printf("     repaint %-6s rows %3d..%3d, carries %d of the %d readouts\n",
+				       who, c.d.y0, c.d.y1, carried, part[1].n);
+				ok(n > 0 && agree, k == 0
+				   ? "a band carries exactly the readouts it crosses"
+				   : "CONTROL: a band crossing none of them carries none");
+				ok(has(doc, (k == 0) ? ">Stop</text>" : ">Quit</text>"),
+				   "and the widget that was tapped");
+				if (carried) seen_crossing = 1; else seen_clear = 1;
+			}
+			ok(seen_crossing && seen_clear,
+			   "both cases occurred, so neither of those two is vacuous");
+		}
+
+		/* 3. refused over budget before a byte, as §5 criterion 5 */
+		wsk_doc_init(&c.d, &part[0]);
+		n = compose_into(&c, doc, sizeof doc, 4096);
+		ok(compose_into(&c, doc, sizeof doc, n - 1) == WSK_E_BUDGET,
+		   "a composite one byte over its budget is refused");
+		ok(doc[0] == '\0', "and not a byte of it was written");
+		ok(compose_into(&c, doc, sizeof doc, n) == n,
+		   "CONTROL: the same composite at exactly its size is accepted");
+
+		/* and composing costs no attributes when the stacks agree */
+		ok(count(doc, "<g font-size=") == 1 && count(doc, "</g>") == 1,
+		   "stacks that match the document share its one <g>");
+
+		/* 4. a stack sized for the other board is refused, not laid out */
+		{
+			wsk_tree_t bad[2];
+			comp_t b;
+
+			bad[0] = part[0]; bad[1] = part[1];
+			b.part = bad; b.n = 2;
+			wsk_doc_init(&b.d, &bad[0]);
+
+			bad[1].w = 1024; bad[1].h = 600;
+			ok(compose_into(&b, doc, sizeof doc, 4096) == WSK_E_DEVICE,
+			   "a stack sized for a different screen is refused");
+			ok(doc[0] == '\0',
+			   "and refused on the counting pass, so nothing was written");
+			bad[1].w = 320;
+			ok(compose_into(&b, doc, sizeof doc, 4096) == WSK_E_DEVICE,
+			   "matching width alone is not enough");
+			bad[1].h = 172;
+			ok(compose_into(&b, doc, sizeof doc, 4096) > 0,
+			   "CONTROL: the same two on one device compose");
+
+			bad[1].font = 12;
+			ok(compose_into(&b, doc, sizeof doc, 4096) > 0 &&
+			   count(doc, "<g font-size=") == 2 && count(doc, "</g>") == 2,
+			   "a stack with its own font gets a nested <g>, and it is closed");
+		}
+
+		/* 7. what composition saves, measured on the thing that asked for it */
+		{
+			wsk_tree_t kb[4];
+			comp_t k;
+			int sep = 0, one;
+
+			for (int i = 0; i < 4; i++) {
+				wsk_init(&kb[i], WSK_ROW, 1024, 600);
+				kb[i].pad = 4; kb[i].gap = 4; kb[i].ids = 1;
+				wsk_area(&kb[i], 0, 336 + i * 66, 1024, 62);
+			}
+			kb[0].item = KEYS_1; kb[0].n = 10;
+			kb[1].item = KEYS_2; kb[1].n = 10;
+			kb[2].item = KEYS_3; kb[2].n = 9;
+			kb[3].item = KEYS_4; kb[3].n = 7;
+
+			for (int i = 0; i < 4; i++)
+				sep += render_into(&kb[i], other, sizeof other, 4096);
+
+			wsk_doc_init(&k.d, &kb[0]);
+			k.part = kb; k.n = 4;
+			one = compose_into(&k, doc, sizeof doc, 4096);
+
+			/* The interesting part is not the saving, it is that the
+			   saving is the margin. Four documents are four framings and
+			   erase each other; one document is correct and must fit in
+			   one SRC_MAX. The four framings dropped are larger than the
+			   room left over, so a 36-key keyboard does not fit without
+			   composing -- which makes §5c a correctness iteration and
+			   not a tidiness one. */
+			printf("\n  36 keys at 1024x600, four rows:\n");
+			printf("    as four documents   %4d bytes  (and they erase each other)\n", sep);
+			printf("    as one composite    %4d bytes  %d under SRC_MAX\n",
+			       one, 4096 - one);
+			printf("    the three framings composing drops: %d bytes\n", sep - one);
+			ok(one > 0 && one < sep,
+			   "a composed keyboard is smaller than four documents of it");
+			ok(one <= 4096, "and it fits under SRC_MAX");
+			ok(sep > 4096 && sep - one > 4096 - one,
+			   "and would not fit if it had to carry a framing per row");
+			ok(has(doc, ">Q</text>") && has(doc, ">TAB</text>"),
+			   "with the first row in it and the last");
+
+			{
+				FILE *f = fopen("/tmp/wsk_compose.svg", "wb");
+				fputs(doc, f); fclose(f);
+			}
 		}
 	}
 

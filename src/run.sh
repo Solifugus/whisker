@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Iteration 1: the renderer. Every done-criterion in design.md §5.
+# Every done-criterion in design.md §5 (the renderer), §5b (hit) and
+# §5c (composition).
 #
 #   ./run.sh              the suite, the picture, and the XML check
 #   ./run.sh --module     and the module build, which is criterion 7
@@ -19,7 +20,7 @@ echo
 echo "-- 1  the document parses, by something that is not us"
 python3 - <<'PY'
 import xml.dom.minidom as m
-for f in ("/tmp/wsk_full.svg", "/tmp/wsk_clip.svg"):
+for f in ("/tmp/wsk_full.svg", "/tmp/wsk_clip.svg", "/tmp/wsk_compose.svg"):
 	m.parse(f)
 	print("ok    %s is well-formed XML" % f)
 PY
@@ -46,14 +47,18 @@ FLAGS=(-march=rv32imac_zicsr_zifencei_zaamo_zalrsc -mabi=ilp32 -mcmodel=medany -
        -ffunction-sections -fdata-sections -Wall -Wextra -Werror
        -I"$RV9/components/rv9_module/include" -I"$RV9/modules" -I"$HERE")
 LINK=(-nostdlib -nostartfiles -T"$RV9/modules/module.ld" -Wl,--gc-sections)
-"$CC9" "${FLAGS[@]}" "${LINK[@]}" -o "$W/m.elf" module_shape.c
-"$CC9" "${FLAGS[@]}" "${LINK[@]}" -Wl,--defsym,RV9_BASE=0x8000 -o "$W/m2.elf" module_shape.c
-"$OBJCOPY" -O binary "$W/m.elf" "$W/m.bin"
-"$OBJCOPY" -O binary "$W/m2.elf" "$W/m2.bin"
-if cmp -s "$W/m.bin" "$W/m2.bin"; then
-	echo "ok    links as a module, position independent ($(stat -c%s "$W/m.bin") bytes)"
-	echo "      no libc, no .data, no .bss -- the linker script asserts the last two"
-else
-	echo "FAIL  not position independent"
-	exit 1
-fi
+for SRC in module_shape.c module_compose.c; do
+	"$CC9" "${FLAGS[@]}" "${LINK[@]}" -o "$W/m.elf" "$SRC"
+	"$CC9" "${FLAGS[@]}" "${LINK[@]}" -Wl,--defsym,RV9_BASE=0x8000 -o "$W/m2.elf" "$SRC"
+	"$OBJCOPY" -O binary "$W/m.elf" "$W/m.bin"
+	"$OBJCOPY" -O binary "$W/m2.elf" "$W/m2.bin"
+	if cmp -s "$W/m.bin" "$W/m2.bin"; then
+		echo "ok    $SRC links as a module, position independent ($(stat -c%s "$W/m.bin") bytes)"
+	else
+		echo "FAIL  $SRC is not position independent"
+		exit 1
+	fi
+done
+echo "      no libc, no .data, no .bss -- the linker script asserts the last two"
+echo "      module_compose.c is where the function pointer wsk_compose takes,"
+echo "      and the array of trees it walks, get checked rather than assumed"

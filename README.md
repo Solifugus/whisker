@@ -5,12 +5,21 @@
 *A cat's whiskers are how it reads a surface it cannot see. RV-9's mascot is an
 armoured robot cat; this is the part that feels where you touched.*
 
-**Status: both functions are built.** `src/whisker.h` renders a panel, repaints
-one band of it, and says which widget is under a point. `src/run.sh --module`
-runs every done-criterion in `design.md` §5 and §5b — **74 checks**, the pixels
-through RV-9's own rasteriser, the module build, and a person looking at the
-pictures. Nothing has run on the board: `wflick` is staged in RV-9's tree for
-that, and `hit` is waiting on a touch driver that does not exist yet.
+**Status: both functions are built, and more than one stack fits on a screen.**
+`src/whisker.h` renders a panel, repaints one band of it, says which widget is
+under a point, and composes several stacks into one document. `src/run.sh
+--module` runs every done-criterion in `design.md` §5, §5b and §5c — **106
+checks**, the pixels through RV-9's own rasteriser, the module build, and a
+person looking at the pictures. Nothing has run on the board: `wflick` is staged
+in RV-9's tree for that, and `hit` is waiting on a touch driver that does not
+exist yet.
+
+**Iteration 3 was chosen by a measurement rather than by taste.** The gap to
+gBASIC's declarative `gui` is one widget — `input` — and on RV-9 that means an
+on-screen keyboard. Drawing one found that two stacks could not share a screen
+at all: each render backed the whole device, so four keyboard rows came out as
+one. Composing is also what makes the keyboard fit — 3,775 bytes against 4,186
+as separate documents, where `SRC_MAX` is 4,096.
 
 - `docs/decisions.md` — **read first.** Six decisions, all ratified 2026-09-29.
 - `docs/design.md` — the project, revised against the review.
@@ -22,6 +31,8 @@ that, and `hit` is waiting on a touch driver that does not exist yet.
   and the shape of the API. Evidence in `tools/evidence/`.
 - `docs/notation-sketch.md` — a compact way to write a panel down, prototyped
   and measured in `tools/notation/`. Not a decision, and not the wire format.
+- `docs/gbasic-gap.md` — the distance to gBASIC's declarative `gui`, measured
+  rather than argued. It is one widget, and it chose what iteration 3 would be.
 - `src/` — the library. `whisker.h` is the whole of it.
 - `host/linux/` — whisker running: a window, a blit, a point. 276 lines over
   RV-9's own rasteriser, so what it draws is what the board draws.
