@@ -261,6 +261,22 @@ a realistic panel happens to fit.** A caller that adds a widget at runtime has t
 be told **before** the write, in a way it can act on. And whisker must be correct
 against an RV-9 older than that date too, because a whisker that only behaves on
 a fixed one is a whisker that wedges somebody's board.
+
+**`MAX_CONTOURS` is the one that fails quietly, and it is not documented.**
+Measured 2026-10-02 (`tools/evidence/keyboard/`): a `<path>` with more than 16
+subpaths is **silently truncated to the first 16**. No log line, no dropped
+document, no error — the rest of the document draws normally around the hole.
+The picture is a 36-key keyboard with twenty invisible keys and all thirty-six
+labels, which is the worst shape a failure can take: it looks like a rendering
+bug in whichever widget happens to be missing.
+
+So the moment whisker emits a path with per-widget subpaths — which is the
+compact keyboard form, and is the cheapest route to an `input` — **16 is a hard
+count it has to carry in the code**, not a limit it can hope to stay under.
+`MAX_PTS` 256 binds the same path at about 50 rectangles, so the contour cap is
+the one that bites first. Both are `#define`s in `drv_svgwin.c` with no getstat
+and no mention in RV-9's reference; worth asking for, in the same breath as the
+`SRC_MAX` one it has already offered.
 ### 2.4 What RV-9's window does *not* do
 
 Recorded as not done, in its own roadmap: font families and weights, rotated

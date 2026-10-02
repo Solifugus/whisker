@@ -106,6 +106,36 @@ hardware for and no room to draw.
    one `<text>` per row rather than 36 of each. Unmeasured, and the only route
    that keeps option 2 affordable on a small screen.
 
+### Option 3, measured — 2026-10-02
+
+`tools/evidence/keyboard/` draws the same 36 keys three ways, taking the layout
+from `wsk_rect` in all three so the geometry is identical by construction:
+
+| | 1024×600 | 320×172 | |
+|---|---|---|---|
+| widgets, with ids | 3,794 | 3,721 | a `<rect>` and a `<text>` per key |
+| widgets, no ids | 3,434 | 3,361 | |
+| **one path per row** | **2,048** | **1,960** | **pixel-identical** |
+| one path for all 36 | 1,967 | 1,879 | draws 16 keys |
+
+**Option 3 works, and it is worth 46 %.** One path per row is 2,048 bytes
+against 3,794 and paints *exactly* the same pixels — a difference of zero, not
+of a few edges. The saving is per key, so it holds at both panel sizes.
+
+**And the last row of that table is the reason to be careful.** `MAX_CONTOURS`
+is 16 and a path with more subpaths is silently truncated — twenty keys missing,
+thirty-six labels drawn, nothing logged (`design.md` §2.3). One path *per row*
+survives only because 10, 9 and 7 are all under 16, which is luck rather than a
+rule; a compact keyboard inside whisker would have to carry the count.
+
+**What it changes.** The byte argument against option 2 is weaker than §3 made
+it: a keyboard is half the budget, not 94 % of it, which leaves room for the
+field and the panel behind it. The argument that survives is not about bytes at
+all — on the C5 each key is about **4 × 4.8 mm** against the **9 mm**
+`finger_size/` measured as comfortable, and the C5 has no touch to press them
+with. **Option 1 stands for the C5 for a hardware reason, and option 2 is
+affordable on the P4 for a measured one.**
+
 ## 4. And one claim in the design was wrong
 
 `design.md` §5 says a grid will arrive as *"two stacks are two trees over one

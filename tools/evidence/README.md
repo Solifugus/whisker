@@ -8,8 +8,8 @@ They need RV-9 (`~/development/esp32/rv9`, or set `RV9`). Nothing here needs a
 board: the driver is built natively through RV-9's own `tools/hosttest` stubs,
 which is the same trick RV-9 uses to look at its pictures.
 
-Neither directory is part of whisker. When there is a whisker to test, its
-tests live beside it; these stay as the record of what the substrate does.
+None of these is part of whisker. Its own tests live beside it in `src/`;
+these stay as the record of what the substrate does.
 
 ## `module_shapes/`
 
@@ -79,3 +79,42 @@ how to tell which RV-9 is in front of you.
 `bytes.c` also writes `panel_320x172.ppm` and `panel_1024x600.ppm`. Look at
 them. The second one shows something no measurement reports: a big screen
 wants a grid, not a longer column.
+
+## `keyboard/`
+
+What does a keyboard cost? `docs/gbasic-gap.md` §3 offered three ways to afford
+an `input` on RV-9 and marked the third **unmeasured**: *"a keyboard that is not
+a widget set — one `<path>` of key outlines and one `<text>` per row rather than
+36 of each."* This is that measurement.
+
+```
+./run.sh              the P4's panel, 1024x600
+./run.sh 320 172      the C5's
+```
+
+The same 36-key keyboard three ways, **with whisker's own layout in all three**
+— the outlines come from `wsk_rect`, not from a re-derivation — so "the same
+keyboard" is a property of the programme rather than a claim about it. It is
+also the first thing this measured: re-deriving the layout was 14 % wrong, and
+would have been read as a rasterisation difference.
+
+| | 1024×600 | 320×172 | |
+|---|---|---|---|
+| **A** widgets, with ids | 3,794 | 3,721 | a `<rect>` and a `<text>` per key |
+| **A** widgets, no ids | 3,434 | 3,361 | |
+| **B** one path per row | **2,048** | **1,960** | pixel-identical to A |
+| **C** one path for all 36 | 1,967 | 1,879 | **draws 16 keys** |
+
+**B is 54 % of A and draws exactly the same pixels — zero difference, not a
+small one.** The saving is per key, so it does not move with the screen.
+
+**C is why the cap matters.** `drv_svgwin.c` has an undocumented `MAX_CONTOURS`
+of 16, and a path with more subpaths than that is **silently truncated**: the
+first 16 keys are drawn, the other 20 are not, and all 36 labels are. Look at
+`keys_onepath.ppm` — it is a keyboard with twenty invisible keys, and nothing
+reports an error. One path per row stays under the cap at 10, 10, 9 and 7, which
+is luck worth knowing about rather than a rule to rely on.
+
+Run it, then look at `keys_widgets.ppm` at **actual size**. On the C5 each key is
+about 4 × 4.8 mm, against the 9 mm `finger_size/` measured as comfortable. The
+bytes fit on that panel; the fingers do not.
