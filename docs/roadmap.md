@@ -36,6 +36,7 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **On the board** | `wflick` and `wcompose` run on the C5, committed in RV-9 |
 | **On a desk** | `host/linux`, typing loop closed with a mouse (D7) |
 | **Decisions** | D0–D8 ratified |
+| **`SRC_MAX` on a 7-inch panel** | measured 2026-10-03: it does **not** bind; §2.3 corrected |
 | **Open** | two gates, below, and two decisions that are Matthew's |
 
 Eight iterations' worth of work has landed, and **G1 closed on 2026-10-03
@@ -73,29 +74,49 @@ and *"when a panel wants to live in a file"* is the exact condition
 place. See §4.2 below. That is the first time one of these has had a
 trigger rather than a preference.
 
-### G2 — the P4 measures what only hardware can
+### G2 — what the P4 is actually needed for
 
-**Blocked on the board, which was ordered 2026-09-27 and is due this month.**
+**Rewritten 2026-10-03, after Matthew asked the right question: *"why do we
+need to wait for the P4 before working on this?"* Mostly we did not.** This
+gate had four items and they were listed together because they were *about*
+the P4, which is not the same as *needing* it. Taken one at a time:
 
-Four things have been deferred to it by name, and they are deferred for the
-right reason rather than out of reluctance:
+**4. Does a realistic 1024×600 panel fit in `SRC_MAX`? — ✅ answered, no board
+required.** §2.3 predicted the ceiling would bind on the P4. It does not: a
+settings form is 1,286 bytes of 4,096, a 20-value readout is 1,026, and a
+screen *filled* with a column of buttons never binds at all. What binds is
+**density** — about forty controls visible at once, which only a grid reaches.
+`tools/evidence/p4_panel/`, and §2.3 is corrected. This was always pure
+arithmetic on whisker's output; it waited on nothing but being asked.
 
-1. **Finger-down to pixel-changed.** §2.2 is blunt that *"no tap has ever been
-   measured end to end"* — `flick` times three *draws*. This is the number the
-   whole latency budget is reasoning about and nobody has it.
-2. **Touch slop** (§5b). Left open deliberately: whether a tap two pixels into a
-   gap should resolve to the neighbour is a question about centroid scatter on a
-   real capacitive surface, and a mouse has none to measure (D7).
-3. **The stack, bisected on the P4** (§5). 75 bands against 22, and RV-9 owns
-   the pixels in PSRAM rather than the panel holding them. §5 says explicitly:
-   do not carry the C5's number over.
-4. **A panel at 1024×600 where `SRC_MAX` actually binds.** §2.3's inversion —
-   4 KB is generous on the C5 and is *the* constraint on the P4 — has never been
-   met on glass. This is the one most likely to produce a surprise, because it
-   is the only axis on which the big board is the harder one.
+**1. Finger-down to pixel-changed — half of it needs no board.** The chain is
+*sensor → driver → `hit` → `rows` → setstat → render → rasterise → blit*, and
+only the first two links are the panel's. Everything from "a point arrives" to
+"pixels changed" is measurable on the C5 and on Linux today, with a synthetic
+point. Worth doing **before** the board arrives, so that when it does the
+remaining subtraction is one number and not a whole investigation — the same
+argument §5b used for building `hit` early.
+
+**3. The stack — the P4's needs the P4, but the C5's does not.** `wstat` is
+staged with a stack that is *declared, not bisected* (8192, reasoned from an
+880-byte chain against `wflick`'s 592). That bisection is available on the
+board that is already on the desk, and it is asked for in
+`rv9-ask-2026-10-03.md`. Only the P4's own figure — 75 bands against 22, and
+pixels in PSRAM — has to wait.
+
+**2. Touch slop — genuinely blocked, and the only one.** Centroid scatter is a
+property of a capacitive surface; a mouse has none and neither does a
+synthetic point. What *can* be done first is write the measurement, so board
+time is spent measuring rather than programming. §5b left this open for exactly
+this reason and it stays open.
 
 **And one thing that is not a measurement:** somebody using a whisker interface
-on the P4 for something real. That is half of §6's bar and it cannot be faked.
+on the P4 for something real. That is half of §6's bar — and the C5 half of it
+is already started, see G3.
+
+**The lesson, worth keeping:** ask "does this need hardware" **per item**, not
+per gate. Three of these four were filed behind a board because they were
+filed behind each other.
 
 ### G3 — gBASIC answers
 
@@ -178,12 +199,21 @@ keyboard does not.
 `input` there and no keyboard to draw. It is a **P4-and-Linux** question
 entirely.
 
-**My recommendation: defer it to G2, and expect to need it.** The evidence
-already predicts the answer — 115 bytes is not headroom — but nobody has built
-a real P4 interface yet, and the honest sequence is to build one, hit the
-ceiling with a measurement rather than a forecast, and then spend the
-complexity knowingly. If G2 produces a panel that fits comfortably, this stays
-unbuilt and costs nothing.
+**Sharpened 2026-10-03 by `tools/evidence/p4_panel/`.** That measurement
+asked the question this decision was waiting for, and answered it without a
+board: **every realistic panel fits comfortably and the keyboard is the only
+one that does not.** A settings form is 1,286 bytes, a readout 1,026, a
+launcher 1,728 — and 36 keys with a field is 3,541, with 48 controls in a grid
+going over at 5,025.
+
+So the decision is narrower than it looked. This is **not** "whisker's output
+is too fat for a seven-inch screen" — it is not. It is "a keyboard is the
+densest grid an interface has, and whisker draws grids one control at a time."
+
+**My recommendation: still defer, but the trigger is now specific.** Build a P4
+text-entry screen; if the keyboard plus the interface *behind* it needs more
+than the ~550 bytes left over, the compact form is how you get it, and nothing
+else in the measurement wants it.
 
 ### 4.2 Does `tools/notation` ship?
 
@@ -272,14 +302,18 @@ rasteriser's stack depth `R`, which is not a constant and is not `pic`'s 2,080
 
 ## 7. The order, and why it is this order
 
-**G1 is closed. G2, then G3**, and those two are genuinely sequential.
+**G1 is closed. Most of G2 turned out not to need the board.** What is left in
+order: the software half of the tap measurement (available now), the C5 stack
+bisection (RV-9's, available now), then the P4's own four numbers when it
+lands, then G3.
 
 G1 was first because it was a *question*, cost nothing to answer, and decided
 whether there was one more iteration or none. It was worth asking before
 building: the answer was *none*, and a focus model would have been a whole
 iteration built for a panel with no controls on it.
 
-G2 cannot start early and should not be rushed when it does: the P4 is the only
+G2's remaining P4-only parts cannot start early and should not be rushed when
+they do: the P4 is the only
 source of four numbers this project has been reasoning *about* rather than
 *from*, and §2.2's correction on 2026-09-29 — where three months of quoted
 figures turned out to have been measured on a picture that was wrong — is the

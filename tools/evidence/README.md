@@ -223,3 +223,47 @@ being written, and reported a saving of zero.
 Whether a reduced build draws the *same* picture is a gate rather than a
 measurement, so it lives in `src/run.sh`: the same panel compiled both ways,
 diffed byte for byte, with a field and a mark as controls.
+
+## `p4_panel/`
+
+Does a realistic seven-inch panel fit in 4 KB?
+
+```
+./run.sh
+```
+
+`design.md` §2.3 predicted that `SRC_MAX`, which does not scale with the
+screen, would be *"the binding constraint on the P4"*. **It is not**, and this
+is the measurement that says so. It needs **no board**: how many bytes a tree
+emits is a property of the tree and the emitter, and both are here. The earlier
+reasoning was done before whisker's emitter existed, against hand-written SVG
+(`svgwin_facts/bytes.c` still answers that older question).
+
+| a realistic panel at 1024×600 | bytes of 4,096 |
+|---|---|
+| a readout of 20 values, two columns | 1,026 |
+| a settings form — 6 labelled fields, two buttons | 1,286 |
+| a launcher — 15 buttons in a 3×5 grid | 1,728 |
+| a text-entry screen — a field and 36 keys | 3,541 |
+
+A whole screen filled with one column of buttons never binds either: 8 at
+finger size is 976 bytes, 24 crammed in at 16 rows each is 2,662. **The screen
+runs out before the budget does.**
+
+**What binds is density.** A grid can put far more on a screen than a column,
+and that is where the ceiling is — 36 controls is 3,803 bytes and 48 is 5,025,
+over. So **about forty visible at once**, and the one realistic panel that gets
+there is a **keyboard**, which is the same fact from the other side: a keyboard
+is the densest grid an interface has.
+
+Two things the pictures caught that the numbers did not:
+
+- An earlier version counted "how many buttons fit in `SRC_MAX`" and printed
+  its own array bound twice while looking like an answer. A stack that overruns
+  the panel emits only what still intersects it, so that question quietly
+  becomes "how many fit on the glass". It is asked by filling the screen now.
+- `p4_settings.ppm` first came out with **invisible fields**. The panel had set
+  `bg` to its own taste and kept `wsk_init`'s `trough`, which is deliberately
+  *darker* than the default background so a field reads as a well — move one
+  without the other and the contrast goes. The byte counts were identical
+  either way. It uses the shipped palette now.

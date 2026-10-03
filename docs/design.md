@@ -274,11 +274,39 @@ clip, because every band re-parses the whole document. Terseness is a *frame
 budget* requirement, not a memory one.
 
 **And it does not scale with the screen, which inverts the usual assumption.**
-1024×600 is 11.2× the pixels of 320×172 and the **same 4 KB of description**. At
-320×172 four buttons fill the panel and 4 KB is enormously generous; at 1024×600
-a realistic panel of twenty controls with labels is where it starts to bind. So
-**`SRC_MAX` is comfortable on the C5 and is the binding constraint on the P4** —
-the opposite of this document's assumption on every other axis.
+1024×600 is 11.2× the pixels of 320×172 and the **same 4 KB of description**.
+
+**This section used to go on to predict that `SRC_MAX` would therefore be "the
+binding constraint on the P4". Measured 2026-10-03, with whisker's own
+emitter, that is wrong** (`tools/evidence/p4_panel/`). It needed no board: how
+many bytes a tree emits is a property of the tree and the emitter, and both
+were already here. The earlier reasoning was done before the emitter existed
+and against hand-written SVG.
+
+| a realistic panel at 1024×600 | bytes of 4,096 |
+|---|---|
+| a readout of 20 values, two columns | 1,026 |
+| a settings form — 6 labelled fields and two buttons | 1,286 |
+| a launcher — 15 buttons in a 3×5 grid | 1,728 |
+| a text-entry screen — a field and 36 keys | 3,541 |
+
+And a **whole screen filled** with a single column of buttons never binds
+either — 8 at finger size is 976 bytes, and even 24 crammed in at 16 rows each
+is 2,662. **The screen runs out before the budget does.**
+
+**What binds is density, not size.** A column cannot put more than a couple of
+dozen controls on a screen; a grid can, and that is where the ceiling is:
+
+| grid | controls | bytes |
+|---|---|---|
+| 5×5 | 25 | 2,707 |
+| 6×6 | 36 | 3,803 |
+| 6×8 | 48 | **5,025 — over** |
+
+**So the ceiling is about forty controls visible at once, and only a grid gets
+you there.** Which means the one realistic panel that approaches `SRC_MAX` is a
+**keyboard** — and that is not a coincidence, it is the same fact from the
+other side: a keyboard is the densest grid an interface has.
 
 Treat it as a **device property to ask about, not a constant**: it will differ
 between the two boards. There is a getstat for it now — RV-9 added

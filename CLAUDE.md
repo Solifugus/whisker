@@ -157,8 +157,12 @@ Anything proposed here is priced against them:
   screen. It is *raisable in one line*, so respect it for the right reason: the
   cost is **time, paid once per band**, roughly 0.34 ms + 0.00036 ms/byte on the
   host, so a full 4 KB document costs ~2.5× a terse 1 KB one. It also does **not
-  scale with the screen**, which makes it comfortable on the C5 and the binding
-  constraint on the P4.
+  scale with the screen** — but the old claim that this made it *"the binding
+  constraint on the P4"* was **measured and overturned** 2026-10-03
+  (`tools/evidence/p4_panel/`, §2.3): a realistic 1024×600 panel is 1–1.7 KB,
+  and a screen filled with a column of buttons never binds at all. What binds
+  is **density** — about forty controls visible at once — and only a grid gets
+  there, which is why a keyboard is the one panel that approaches it.
 - **~19 ms of latency and ~38 ms of work per tap** at 320×172 (~33 and ~66 at
   1024×600), against ~56 ms and ~640 ms for a full redraw. Keep the two apart:
   `flick`'s press is 19 ms and its release is 19 ms, and the finger lifts
