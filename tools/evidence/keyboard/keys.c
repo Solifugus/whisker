@@ -310,11 +310,23 @@ int main(void)
 	       pc - pa, pa ? (pc - pa) * 100 / pa : 0,
 	       (pa && abs(pc - pa) * 100 / pa < 2) ? "the same keyboard"
 	                                           : "NOT the same keyboard");
-	printf("  MAX_CONTOURS is %d, and this keyboard wants %d outlines\n",
-	       MAX_CONTOURS, keys);
-	if (na)
+	/* The comparison this programme is really for. It was 16 against 36 when
+	   this was first run, which drew 16 keys and logged a success; RV-9
+	   raised it to 64 on 2026-10-02 after being shown the picture. Printed
+	   rather than hard-coded, so running this is how to tell which driver
+	   is in front of you. */
+	printf("  MAX_CONTOURS is %d, and this keyboard wants %d outlines: %s\n",
+	       MAX_CONTOURS, keys,
+	       keys <= MAX_CONTOURS ? "form C fits"
+	                            : "form C IS SILENTLY TRUNCATED");
+	if (na) {
 		printf("\n  B costs %d%% of A with ids, %d%% of A without\n",
 		       nb * 100 / nid, nb * 100 / na);
+		printf("  C costs %d%% of A with ids, %d%% of A without%s\n",
+		       nc * 100 / nid, nc * 100 / na,
+		       keys <= MAX_CONTOURS ? " -- the cheapest of the three"
+		                            : " -- but see above");
+	}
 	printf("\n  wrote keys_widgets.ppm, keys_rowpaths.ppm, keys_onepath.ppm\n");
 	return 0;
 }

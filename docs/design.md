@@ -5,10 +5,18 @@ Iteration 1 is done. All eight
 done-criteria in §5 pass — the suite, the XML check, the pixels through RV-9's
 own rasteriser, the module build with its position-independence check, and the
 last one, which is a person looking at the pictures: Matthew, 2026-09-30, on
-the column, the pressed button and the row. **It has not run on the board**;
-`wflick` is staged in RV-9's tree for that, and the result is confirmation
-rather than a gate — every criterion is met on the host, which is what the two
-pure functions were chosen for.
+the column, the pressed button and the row.
+
+**It has run on the board, 2026-10-02.** `wflick` and `wcompose` are committed
+in RV-9's tree and both draw what they claim; the clipped repaint of one stack
+leaves the other untouched and the band comes back carrying the scene rather
+than the device colour. The comparison that was the point of `wflick` — it
+against hand-written `flick`, same panel, same session — is in
+`docs/rv9-answers-2026-10-02.md` §2: a full draw of 79 ms against 57, a press
+of 32 against 19, and two thirds of that difference is geometry rather than
+whisker, because the tree gives the button 64 rows where `flick` chose 48 by
+hand. The run also produced the one finding in this document that whisker
+could not have reached on the host: §5's note on what a sink costs in stack.
 
 **Iteration 2's `hit` is built too** (§5b), and for the reason §5b gives: it
 needs no panel either, and board time in October is the scarce thing. Its six
@@ -119,6 +127,24 @@ measured with `tools/hosttest/scale.c` and on the C5 at 320×172:
   as long as `flick` had existed. Fixed in RV-9; see `rv9-answers.md` §1.3 and
   §2.3 of this document's review.
 
+  **And whisker's own panel costs more than the hand-written one, 2026-10-02.**
+  `wflick` draws `flick`'s three draws from a widget tree, and on the same
+  panel in the same session: full **79 ms** against 57, press **32 ms** against
+  19, release **28 ms** against 19. That press is **over the 19 ms perceived
+  budget**, so it is worth saying exactly where it goes. RV-9's session
+  measured two thirds of it as *geometry rather than whisker*: the tree gives
+  the button **64 rows** where `flick` chose 48 by hand, and per band the two
+  are 4.1 ms against 3.2 ms. The remaining third is whisker's — about 1 ms a
+  band on a document that is longer because it carries ids and a backing.
+
+  The tension is real and it is not a defect to fix in the emitter: 64 rows is
+  what `tools/evidence/finger_size/` measured as a comfortable target and §5
+  defaults to deliberately. **A comfortable finger target costs bands**, and
+  that is the trade, stated here so it is not rediscovered as a performance
+  bug. A caller that wants `flick`'s latency can ask for `flick`'s button
+  height; what whisker must not do is make 48 the default because it measures
+  better.
+
   **Read `modules/flick/flick.c` before quoting this.** It times *three draws*,
   not an input round trip: the whole window, then the button's rows in a pressed
   colour, then the button's rows back to normal. Its own header says *"2 and 3
@@ -188,7 +214,14 @@ clipping as a future gain. So `rows(tree, ids)` should be able to become
   the clip against the panel height while the document is in whatever `viewBox`
   it declares. Get the device size from `getstat(RV9_GS_SIZE)` on `/w0`, which
   returns **pixels, not characters**. A whisker that assumes viewBox == device
-  works at 320×172 and clips the wrong strip at 1024×600.
+  works at 320×172 and clips the wrong strip at 1024×600. But note what that
+  getstat *cannot* answer: **"is this a window"**. It is the generic
+  how-big-is-this code and RBF answers it with a file's length, so
+  `wflick > /r0/x` laid itself out on a 0×0 screen and wrote nonsense — found
+  by RV-9's session on 2026-10-02, and present in all three of whisker's module
+  examples because theirs were taken from them. The probe is
+  `setstat(RV9_SVG_SS_ROWS)` with 0,0, which only `svgwin` answers and which
+  means "all of it", so asking changes nothing.
 - **The clip is snapped outward to 8-row band boundaries**, and a reversed range
   is refused with `RV9_IO_ERR_INVAL` rather than clamped. So `rows` need not be
   band-aligned, but a widget straddling a boundary repaints that whole band —
@@ -222,7 +255,10 @@ repaint.
 
 ### 2.3 The ceilings that do not move with screen size
 
-`SRC_MAX` 4,096 · `MAX_PTS` 256 · `MAX_CONTOURS` 16 · `MAX_DEPTH` 8.
+`SRC_MAX` 4,096 · `MAX_PTS` 256 · `MAX_CONTOURS` 64 · `MAX_DEPTH` 8 —
+and since 2026-10-02 these are **askable** rather than copied, through
+`getstat(RV9_SVG_GS_LIMITS)`. Ask, because two of the four have already
+moved under whisker's feet once.
 
 **4 KB of SVG is the real constraint on how much interface fits on a screen**, and
 it is whisker's to respect. A widget set that emits verbose SVG will hit this
@@ -245,8 +281,16 @@ a realistic panel of twenty controls with labels is where it starts to bind. So
 the opposite of this document's assumption on every other axis.
 
 Treat it as a **device property to ask about, not a constant**: it will differ
-between the two boards. There is no getstat for it today; RV-9 has offered to add
-one, which is cheap to get right before there is a caller.
+between the two boards. There is a getstat for it now — RV-9 added
+`RV9_SVG_GS_LIMITS` on 2026-10-02, reporting all four ceilings into an
+`rv9_svg_limits_t`, after this document observed that none of them appeared in
+any RV-9 document at all:
+
+```c
+rv9_svg_limits_t l;
+env->getstat(w0, RV9_SVG_GS_LIMITS, &l);   /* src_max, pts_max,
+                                              contours_max, depth_max */
+```
 
 **And going over it is not truncation — it is a lost picture, and it used to be
 a lost window.** Until 2026-09-30 a document past `SRC_MAX` wedged `/w0` for the
@@ -262,21 +306,39 @@ be told **before** the write, in a way it can act on. And whisker must be correc
 against an RV-9 older than that date too, because a whisker that only behaves on
 a fixed one is a whisker that wedges somebody's board.
 
-**`MAX_CONTOURS` is the one that fails quietly, and it is not documented.**
-Measured 2026-10-02 (`tools/evidence/keyboard/`): a `<path>` with more than 16
-subpaths is **silently truncated to the first 16**. No log line, no dropped
-document, no error — the rest of the document draws normally around the hole.
-The picture is a 36-key keyboard with twenty invisible keys and all thirty-six
-labels, which is the worst shape a failure can take: it looks like a rendering
-bug in whichever widget happens to be missing.
+**`MAX_CONTOURS` used to fail quietly, and finding that out is what moved it.**
+Measured 2026-10-02 (`tools/evidence/keyboard/`), when the cap was 16: a
+`<path>` with more subpaths than that was **silently truncated**. No log line,
+no dropped document, no error — the rest of the document drew normally around
+the hole. The picture was a 36-key keyboard with twenty invisible keys and all
+thirty-six labels, and the driver's own log line for it was `drew 1967 bytes in
+3 ms`, a success. That is the worst shape a failure can take, and worse than
+the `SRC_MAX` wedge it resembles in one specific way: it is **localised**, so
+it reads as a bug in whichever widget happens to be missing.
 
-So the moment whisker emits a path with per-widget subpaths — which is the
-compact keyboard form, and is the cheapest route to an `input` — **16 is a hard
-count it has to carry in the code**, not a limit it can hope to stay under.
-`MAX_PTS` 256 binds the same path at about 50 rectangles, so the contour cap is
-the one that bites first. Both are `#define`s in `drv_svgwin.c` with no getstat
-and no mention in RV-9's reference; worth asking for, in the same breath as the
-`SRC_MAX` one it has already offered.
+RV-9's session **logged it and raised it** the same day, on the ground that
+those answer different questions — the log is for the person whose picture came
+out wrong, the cap is for the picture:
+
+```
+W rv9-svgwin: path truncated: 8 subpath(s) past 64, 0 point(s) past 256
+              -- the rest of the document drew
+```
+
+**The cap is 64 now, and the way it got there is the part worth keeping.** The
+contour buffer was a *local* in `do_path`, so the obvious way to raise it would
+have raised the stack requirement of every program that writes to `/w0` —
+whisker's included, and §5's note on the sink's stack cost explains why that
+is a place whisker can least afford it. It sits in the device state instead, costing 512 bytes of the
+window's own heap once. At four points a subpath `MAX_PTS` binds next, at 64
+quads exactly.
+
+So a 36-key keyboard as one path now fits, with 28 subpaths to spare, and
+`tools/evidence/keyboard/` form C went from *broken* to the **cheapest of the
+three** — 1,879 bytes against B's 1,960 and A's 3,361, drawing pixels identical
+to A. But the rule this episode argues for is unchanged and is not "64 is
+enough": **ask, and carry the answer**. A limit a program hopes to stay under
+is not a limit, and whisker has now watched this number move once.
 ### 2.4 What RV-9's window does *not* do
 
 Recorded as not done, in its own roadmap: font families and weights, rotated
@@ -683,6 +745,65 @@ caller make it badly. (`rv9-answers.md` §3.3.)
 `rows` returns **device rows**, not viewBox units (§2.2), so it needs the device
 height. Take it as a parameter rather than reading a device: whisker stays pure,
 and the host got it from `getstat(RV9_GS_SIZE)` on `/w0`.
+
+#### "A sink costs nothing" is wrong in one specific way, and it is the stack
+
+That sentence is true about *memory* and false about *stack*, and the
+difference was found on 2026-10-02 by RV-9's session bisecting two stack
+declarations for whisker programs that were both wrong — one of which
+overflowed on the board.
+
+**Drawing to `/w0` renders on the writer's stack.** RV-9's `modules/pic`
+already recorded it. whisker streams rather than buffers, so the `put()` that
+finishes a document runs RV-9's entire rasteriser **with every one of
+whisker's layout frames still live beneath it**. The two depths add. That is a
+real consequence of the choice above, and the trade is sharper than "a sink
+costs nothing": the 4 KB buffer is saved and paid for in stack, at the worst
+possible moment.
+
+RV-9 asked the obvious follow-up — a buffering sink would pay the two depths
+separately and could declare a smaller stack — and left it as *"worth a
+measurement rather than a decision."* `tools/evidence/stack/` is that
+measurement, from `-fstack-usage` frames and the call graph in the object file,
+with tail calls separated from calls because `-Os` emits plenty of both:
+
+| whisker's chain, down to the write | |
+|---|---|
+| `module_shape.c` — one stack | 560 bytes |
+| `module_input.c` — a field | 576 bytes |
+| `module_compose.c` — a composite | 800 bytes |
+
+Call the rasteriser's own depth **R**. It is beneath the module either way, so
+it cancels, and the comparison is clean — `buffered.c` is `module_compose.c`
+with the sink changed and nothing else:
+
+| | stack | statics |
+|---|---|---|
+| **streaming** | 800 + R | 0 |
+| **buffering** | 544 + R | 4,096 |
+
+**Buffering saves 256 bytes of stack and spends 4,096 of statics**, and both
+come out of one process footprint — `rv9/module.h`: *"its own stack, statics
+and descriptor"*. It is a bad trade by 3,840 bytes whatever R turns out to be.
+Note where the buffer would have to live: not a local array, which is the
+stack this was meant to save, and not `.bss`, which a module does not have —
+only `env->statics`, declared in `build.conf`, which at least makes the cost
+visible rather than discovered by an overflow.
+
+**So streaming stays, and now for a measured reason rather than an assumed
+one.** The saving is small because whisker's own chain is small; streaming puts
+that chain beneath the rasteriser, it does not pay for the rasteriser twice.
+
+**What is not whisker's, and is worth knowing before writing anything that
+draws:** R itself. `pic`'s figure of 2,080 bytes is the only one written down
+anywhere, so it is the one a whisker program would reach for, and it is **not
+an upper bound**. Against RV-9's board bisections, a whisker document costs the
+rasteriser **at least 4,528 bytes** — more than twice that — and R differs by
+**at least 1,232 bytes** between `wflick`'s document and `wcompose`'s. There is
+therefore no single number for "drawing to `/w0`" and a program cannot be given
+one. What a whisker program *can* be given is its own chain, which is what
+`tools/evidence/stack/` prints; the rest has to be bisected on the hardware,
+and on the P4 — 75 bands against 22 — bisected again rather than carried over.
 
 **Done means:**
 

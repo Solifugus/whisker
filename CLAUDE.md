@@ -28,13 +28,13 @@ while nothing is invested.
 
 ## Status
 
-**Three iterations are built; nothing has run on the board.**
+**Four iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
-- **§5b — `hit`.** A point becomes an id. Done, built early so that board time in
-  October is spent on the measurement nobody has taken (finger-down to
-  pixel-changed) rather than on writing a hit test.
+- **§5b — `hit`.** A point becomes an id. Done, built early so that board time
+  when the P4 arrives is spent on the measurement nobody has taken
+  (finger-down to pixel-changed) rather than on writing a hit test.
 - **§5c — composition.** Several stacks in one document. Done. Chosen because
   §6's gBASIC measurement said the remaining gap is `input`, and drawing the
   keyboard that needs found that two stacks could not share a screen.
@@ -64,13 +64,19 @@ half the budget rather than 94 %, but because the C5 has nothing to press a key
 with. And the **mouse on Linux stands in for touch** until the P4 arrives: a
 click is one point, which is all `hit` takes.
 
-**Open, and in this order of readiness:** the board run (`wflick` and `wcompose`
-are staged in RV-9's tree for it); touch *slop*, deliberately unanswered until a
-real capacitive surface measures centroid scatter (§5b); the gBASIC binding
-itself, now that every widget `gui` names exists; whether the compact keyboard
-form is worth building into whisker (`tools/evidence/keyboard/` prices it at
-1,746 bytes); and whether `tools/notation` ships at all
-(`notation-sketch.md` §6 — Matthew's call).
+**The board run happened, 2026-10-02.** `wflick` and `wcompose` are committed in
+RV-9's tree and both draw what they claim. Three things came back
+(`docs/rv9-answers-2026-10-02.md`): `MAX_CONTOURS` is **64** and a truncated
+path now logs a warning, so the compact keyboard went from broken to cheapest;
+all four ceilings are askable through `getstat(RV9_SVG_GS_LIMITS)`; and a stack
+finding that is whisker's own, below.
+
+**Open, and in this order of readiness:** touch *slop*, deliberately unanswered
+until a real capacitive surface measures centroid scatter (§5b); the gBASIC
+binding itself, now that every widget `gui` names exists; whether the compact
+keyboard form is worth building into whisker (`tools/evidence/keyboard/` prices
+it at 1,842 bytes saved against the widget form); and whether `tools/notation`
+ships at all (`notation-sketch.md` §6 — Matthew's call).
 
 ## Read before working
 
@@ -182,3 +188,29 @@ gradients, documents over 4 KB. And no CSS — presentation attributes only, whi
 is the line RV-9 drew to avoid a cascade, a selector engine and a box model.
 
 whisker's look is flat because its substrate is.
+
+## Drawing to `/w0` runs on the writer's stack
+
+Measured 2026-10-02 after RV-9 bisected two whisker programs' stack
+declarations and found both wrong, one of them overflowing on the board. The
+cause is not whisker's frames. **whisker streams rather than buffers**, so the
+`put()` that finishes a document runs RV-9's entire rasteriser *with every one
+of whisker's layout frames still live beneath it*. The two depths add.
+
+So `design.md` §5's "a sink costs nothing" is true about memory and false about
+stack, and three things follow for anything written here:
+
+- **Buffering is not the answer, and that is measured, not assumed.**
+  `tools/evidence/stack/` builds `module_compose.c` against a buffering twin
+  that differs only in the sink: buffering saves **256 bytes of stack** and
+  spends **4,096 of statics**, out of one process footprint. A bad trade by
+  3,840 bytes. Streaming stays.
+- **Do not hand a whisker program a stack number from `modules/pic`.** Its
+  2,080 is the only figure written down anywhere and it is *not* an upper
+  bound: against RV-9's bisections a whisker document costs the rasteriser at
+  least **4,528** bytes, and the figure moves by at least 1,232 bytes between
+  two different documents. There is no single number for "drawing to `/w0`".
+- **What a program can be told is its own chain**, which is what
+  `tools/evidence/stack/run.sh` prints — 560 bytes for one stack, 800 for a
+  composite. The rest has to be bisected on the hardware, and bisected again on
+  the P4 rather than carried over from the C5.

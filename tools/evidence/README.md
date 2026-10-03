@@ -1,8 +1,9 @@
 # Evidence
 
-The programs behind `docs/review-2026-09-30.md`. Each one answers a question
+The programs behind `docs/review-2026-09-30.md`, and since then behind whatever
+else has needed measuring rather than arguing about. Each one answers a question
 that was previously settled by reading, and each prints the claim it supports,
-so a number in the review can be re-derived rather than trusted.
+so a number in a document here can be re-derived rather than trusted.
 
 They need RV-9 (`~/development/esp32/rv9`, or set `RV9`). Nothing here needs a
 board: the driver is built natively through RV-9's own `tools/hosttest` stubs,
@@ -102,19 +103,72 @@ would have been read as a rasterisation difference.
 |---|---|---|---|
 | **A** widgets, with ids | 3,794 | 3,721 | a `<rect>` and a `<text>` per key |
 | **A** widgets, no ids | 3,434 | 3,361 | |
-| **B** one path per row | **2,048** | **1,960** | pixel-identical to A |
-| **C** one path for all 36 | 1,967 | 1,879 | **draws 16 keys** |
+| **B** one path per row | 2,048 | 1,960 | pixel-identical to A |
+| **C** one path for all 36 | **1,967** | **1,879** | pixel-identical to A |
 
-**B is 54 % of A and draws exactly the same pixels — zero difference, not a
-small one.** The saving is per key, so it does not move with the screen.
+**Both compact forms draw exactly the same pixels as the widget form — zero
+difference, not a small one** — and the saving is per key, so it does not move
+with the screen. C is the cheapest: **half** of A with ids, and 55–57 % of it
+without, at either panel size.
 
-**C is why the cap matters.** `drv_svgwin.c` has an undocumented `MAX_CONTOURS`
-of 16, and a path with more subpaths than that is **silently truncated**: the
-first 16 keys are drawn, the other 20 are not, and all 36 labels are. Look at
-`keys_onepath.ppm` — it is a keyboard with twenty invisible keys, and nothing
-reports an error. One path per row stays under the cap at 10, 10, 9 and 7, which
-is luck worth knowing about rather than a rule to rely on.
+**C is also how the cap was found, and the numbers above are the second
+reading.** When this was first run on 2026-10-02 `drv_svgwin.c` had an
+undocumented `MAX_CONTOURS` of 16, and a path with more subpaths was **silently
+truncated**: C drew the first 16 keys, not the other 20, and all 36 labels —
+and the driver logged `drew 1967 bytes in 3 ms`, a success line. It did not look
+broken. It looked like a keyboard somebody had styled that way, which is why a
+localised silent truncation is worse than the `SRC_MAX` wedge it resembles.
+
+RV-9's session **logged it and raised the cap to 64** the same day, moving the
+contour buffer off the stack to get there — so raising it did not raise the
+stack requirement of every program that writes to `/w0`. So C went from the
+broken form to the cheapest one, and `run.sh` now prints the cap it found
+alongside the 36 outlines the keyboard wants, because the useful output of this
+programme turned out to be the comparison between those two numbers rather than
+the byte counts.
 
 Run it, then look at `keys_widgets.ppm` at **actual size**. On the C5 each key is
 about 4 × 4.8 mm, against the 9 mm `finger_size/` measured as comfortable. The
 bytes fit on that panel; the fingers do not.
+
+## `stack/`
+
+What stack does a whisker program need, and would a buffering sink need less?
+
+```
+./run.sh
+```
+
+The second question is RV-9's, left on 2026-10-02 as *"worth a measurement
+rather than a decision"* after they bisected two whisker programs' stack
+declarations and found both wrong — one of them overflowing on the board. The
+cause is not whisker's frames: **drawing to `/w0` renders on the writer's
+stack**, and whisker streams, so the `put()` that finishes a document runs
+RV-9's whole rasteriser with every layout frame still live beneath it. The two
+depths add.
+
+This reads `-fstack-usage` frames and the call graph out of the object file.
+Three things it gets right that summing the `.su` column does not: function
+starts come from the symbol table, so an `-Os` branch label is not mistaken for
+a callee; a **tail** call replaces the caller's frame instead of nesting under
+it, which otherwise overstates whisker's chain by about a third; and the two
+indirect calls — the sink's `put()` and the body `wsk_compose` takes — are
+resolved by naming their candidates, which is honest where guessing would not
+be. An unnamed site is reported rather than ignored.
+
+| | stack | statics |
+|---|---|---|
+| **streaming** (`src/module_compose.c`) | 800 + R | 0 |
+| **buffering** (`buffered.c`, the sink changed and nothing else) | 544 + R | 4,096 |
+
+**Buffering saves 256 bytes of stack and spends 4,096 of statics**, out of one
+process footprint — a bad trade by 3,840 bytes whatever the rasteriser's depth R
+turns out to be. Streaming stays, now for a measured reason.
+
+**And R is the part nobody has measured.** `modules/pic`'s figure of 2,080 is
+the only one written down, so it is the one a whisker program would reach for,
+and against RV-9's board bisections a whisker document costs the rasteriser **at
+least 4,528** — with at least 1,232 bytes between two different documents. So
+there is no single number for "drawing to `/w0`". Section 1 prints what a
+program *can* be told, which is its own chain; the rest has to be bisected on
+the hardware.

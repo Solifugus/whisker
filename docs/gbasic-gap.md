@@ -115,22 +115,31 @@ from `wsk_rect` in all three so the geometry is identical by construction:
 |---|---|---|---|
 | widgets, with ids | 3,794 | 3,721 | a `<rect>` and a `<text>` per key |
 | widgets, no ids | 3,434 | 3,361 | |
-| **one path per row** | **2,048** | **1,960** | **pixel-identical** |
-| one path for all 36 | 1,967 | 1,879 | draws 16 keys |
+| one path per row | 2,048 | 1,960 | **pixel-identical** |
+| **one path for all 36** | **1,967** | **1,879** | **pixel-identical** |
 
-**Option 3 works, and it is worth 46 %.** One path per row is 2,048 bytes
-against 3,794 and paints *exactly* the same pixels — a difference of zero, not
-of a few edges. The saving is per key, so it holds at both panel sizes.
+**Option 3 works, and it is worth about half.** Both compact forms paint
+*exactly* the same pixels as the widget form — a difference of zero, not of a
+few edges — and the saving is per key, so it holds at both panel sizes. One
+path for the whole keyboard is 1,879 bytes against 3,721 on the C5's panel.
 
-**And the last row of that table is the reason to be careful.** `MAX_CONTOURS`
-is 16 and a path with more subpaths is silently truncated — twenty keys missing,
-thirty-six labels drawn, nothing logged (`design.md` §2.3). One path *per row*
-survives only because 10, 9 and 7 are all under 16, which is luck rather than a
-rule; a compact keyboard inside whisker would have to carry the count.
+**That last row read `draws 16 keys` when this was first measured**, and the
+reason is worth keeping even though the number has moved. `MAX_CONTOURS` was
+16, undocumented, and a path with more subpaths was silently truncated — twenty
+keys missing, thirty-six labels drawn, and a **success** line in the log. RV-9's
+session logged it and raised the cap to 64 the same day (`design.md` §2.3), so
+the whole keyboard now fits in one path with 28 subpaths to spare.
+
+What does *not* change is the lesson: one path per row had survived only because
+10, 9 and 7 are all under 16, which was luck rather than a rule. A compact
+keyboard inside whisker has to **ask** — `getstat(RV9_SVG_GS_LIMITS)` exists
+now, added in the same change — rather than hope. whisker has watched this
+number move once already.
 
 **What it changes.** The byte argument against option 2 is weaker than §3 made
-it: a keyboard is half the budget, not 94 % of it, which leaves room for the
-field and the panel behind it. The argument that survives is not about bytes at
+it: a keyboard is **46 %** of the budget in its cheapest correct form — 1,879
+of 4,096 — not 94 % of it, which leaves room for the field and the panel behind
+it. The argument that survives is not about bytes at
 all — on the C5 each key is about **4 × 4.8 mm** against the **9 mm**
 `finger_size/` measured as comfortable, and the C5 has no touch to press them
 with. **Option 1 stands for the C5 for a hardware reason, and option 2 is

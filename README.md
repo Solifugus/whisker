@@ -26,9 +26,28 @@ on-screen keyboard. Drawing one found that two stacks could not share a screen
 at all — each render backed the whole device, so four keyboard rows came out as
 one. Composing fixed that and is also what makes the keyboard fit. Then the
 keyboard's cost was measured three ways, which found an undocumented
-`MAX_CONTOURS` of 16 that silently drops everything past the sixteenth subpath
-of a path. Then the field itself, which is **115 bytes under `SRC_MAX`** with a
-full keyboard beside it.
+`MAX_CONTOURS` of 16 that silently dropped everything past the sixteenth
+subpath of a path. Then the field itself, which is **115 bytes under `SRC_MAX`**
+with a full keyboard beside it.
+
+**Two of those went back to RV-9, and both came back changed.** The silent
+truncation is now logged *and* the cap is 64 — different questions, different
+answers — with the contour buffer moved off the stack so that raising it did not
+raise the stack requirement of every program that writes to `/w0`. All four
+ceilings are askable now, through `getstat(RV9_SVG_GS_LIMITS)`; they had been in
+no RV-9 document at all. So the compact keyboard went from the broken form to
+the **cheapest** one: 1,879 bytes against the widget form's 3,721, drawing
+pixels identical to it (`tools/evidence/keyboard/`).
+
+**And one thing came back that is whisker's own.** Bisecting two whisker
+programs' stack declarations found both wrong, and the cause is not whisker's
+frames: **drawing to `/w0` renders on the writer's stack**, and whisker streams,
+so the `put()` that finishes a document runs RV-9's whole rasteriser with every
+layout frame still live beneath it. The two depths add. The obvious fix —
+buffer the document and write once — is **measured and refused**: it saves 256
+bytes of stack and spends 4,096 of statics, out of one process footprint
+(`tools/evidence/stack/`). Streaming stays, now for a measured reason rather
+than an assumed one.
 
 - `docs/decisions.md` — **read first.** Six decisions, all ratified 2026-09-29.
 - `docs/design.md` — the project, revised against the review.
@@ -42,6 +61,9 @@ full keyboard beside it.
   and measured in `tools/notation/`. Not a decision, and not the wire format.
 - `docs/gbasic-gap.md` — the distance to gBASIC's declarative `gui`, measured
   rather than argued. It is one widget, and it chose what iteration 3 would be.
+- `docs/rv9-ask-2026-10-02.md` and `docs/rv9-answers-2026-10-02.md` — a defect
+  reported to RV-9, what they did about it, and the stack finding that came
+  back the other way. Question and answer kept separable, as before.
 - `src/` — the library. `whisker.h` is the whole of it.
 - `host/linux/` — whisker running: a window, a blit, a point. 276 lines over
   RV-9's own rasteriser, so what it draws is what the board draws.

@@ -50,12 +50,26 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 
 	if (env == NULL || env->abi_version < 11) return 1;
 
-	/* Pixels, not characters, and not assumed: a whisker that guesses works
-	   at 320x172 and clips the wrong strip at 1024x600. */
-	if (env->getstat(RV9_STDOUT, RV9_GS_SIZE, &size) < 0) {
-		m_say(env, RV9_STDERR, "wflick: that is not a window\n");
-		return 2;
+	/*
+	 * The size is pixels, not characters, and not assumed: a whisker that
+	 * guesses works at 320x172 and clips the wrong strip at 1024x600.
+	 *
+	 * But "is this a window" is not a question RV9_GS_SIZE can answer -- it is
+	 * the generic how-big-is-this code, and RBF answers it with a file's
+	 * length, so `wflick > /r0/x` laid itself out on a 0x0 screen and
+	 * wrote nonsense. Probe RV9_SVG_SS_ROWS, which only svgwin answers, and
+	 * which 0,0 means "all of it" to -- so the probe changes nothing.
+	 * (RV-9's session found this in wflick on 2026-10-02 and fixed it in
+	 * their copies; these are the originals those were taken from.)
+	 */
+	{
+		uint32_t none = 0;
+		if (env->setstat(RV9_STDOUT, RV9_SVG_SS_ROWS, &none) < 0) {
+			m_say(env, RV9_STDERR, "wflick: that is not a window\n");
+			return 2;
+		}
 	}
+	if (env->getstat(RV9_STDOUT, RV9_GS_SIZE, &size) < 0) return 2;
 
 	wsk_clone(live, PANEL, 3);
 
