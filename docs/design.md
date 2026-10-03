@@ -1248,3 +1248,116 @@ argued later when something is:
 If those are not true, the right answer is that whisker served RV-9 and gBASIC
 kept GTK. That is a success, not a failure: the reason for a separate project is
 to make *not* adopting it cheap.
+
+---
+
+## 7. Profiles — one renderer, and what a small host may leave out
+
+**Why this section exists.** Matthew, 2026-10-02: *"I want to ensure that at
+least a scaled down basic version can run on the C5 but also for gBASIC (and
+maybe other things) on larger systems."* Those are the two ends of §2.8's
+table, and until now whisker had only checked the large one.
+
+### 7.1 The large end is already reached
+
+gBASIC's declarative `gui` names exactly five component kinds — counted across
+its documents and examples, not estimated: `label`, `button`, `input`, `vert`
+and `horiz`. whisker has all five: `WSK_LABEL`, `WSK_BUTTON`, `WSK_FIELD`, and
+`WSK_COL`/`WSK_ROW` stacks composed into one document (§5c). `gbasic-gap.md`
+said the gap was one widget; that widget is built, and nothing in `gui` is
+left over. What remains before gBASIC takes this is §6's bar, which is about
+evidence and stability rather than about missing widgets.
+
+So the work is the **small** end, and the question is sharper than it looks:
+not *can* the C5 run whisker — it does — but **does it pay for the parts it
+cannot use?**
+
+### 7.2 It did, and the measurement says where
+
+`tools/evidence/profiles/` builds the smallest honest whisker program — a
+label and two buttons, written to `/w0` once — and prices what it carries:
+
+| | bytes | saved |
+|---|---|---|
+| full, the default | 3,272 | |
+| `-DWSK_NO_MARKS` | 2,984 | 288 |
+| `-DWSK_NO_FIELD` | 2,908 | 364 |
+| `-DWSK_MINIMAL`, both | **2,604** | **668 — 20 %** |
+
+That program draws no field and marks nothing, and carried both anyway.
+
+**But the larger half of the answer is what it never carried.** Every function
+here is `static inline`, so an entry point the caller does not name is never
+emitted: `wsk_hit`, `wsk_compose`, `wsk_rows`, `wsk_render_clipped`,
+`wsk_part` and `wsk_field_view` are all **absent** from that binary, checked
+by `nm` rather than assumed. whisker already scales down by linkage for
+everything a caller can decline to call.
+
+**What it cannot decline is a branch inside the per-widget loop**, which every
+caller links whatever it draws — the kind test that chooses between a field
+and a label, and the mark test. The linker cannot drop a branch; it can only
+drop a section nothing reaches.
+
+### 7.3 So the mechanism is the preprocessor, and that is forced
+
+A dispatch table would make those two droppable like everything else. **A
+dispatch table is precisely what an RV-9 module may not have** (§4.1): it is
+addresses in rodata, it fails the double-link, and it cost RV-9 a working
+module a rewrite twice before whisker existed. The preprocessor is what is
+left — not a taste, and worth saying so, because a reader who has used a
+widget set will reach for the table first.
+
+```
+-DWSK_MINIMAL     label, button, stacks, hit, bands: what the C5 needs
+-DWSK_NO_FIELD    drop the text field       (364 bytes)
+-DWSK_NO_MARKS    drop the corner marks     (288 bytes)
+```
+
+**The default is everything, and a host opts *down*.** That is §2.8's rule
+applied to the build: a large host configures nothing, and nobody pays for the
+C5's limits unless they are on the C5. The inverse — a minimal core that hosts
+opt *into* — would make the common case the configured one and would put the
+small board in charge of the model again.
+
+### 7.4 Two properties, and they are gates rather than intentions
+
+A profile system is where a widget library quietly becomes two widget
+libraries, so the two things that must stay true are checked in `src/run.sh`
+and not merely intended:
+
+1. **A reduced build draws identically.** The same panel compiled both ways is
+   diffed **byte for byte**. If it ever differs, D2 is gone — "one
+   implementation, not a specification and two" — and the failure would be a
+   widget hit-tested in one place and drawn in another, on whichever host
+   happened to be built small.
+2. **It refuses what it lacks, naming the widget** — `WSK_E_KIND`, from
+   `wsk_check`, before a byte is written. It never substitutes. A field
+   silently drawn as a label is exactly the silent-wrong-answer shape this
+   project keeps finding in substrates (§2.3's `MAX_CONTOURS`), and it would
+   be worse here because whisker would be the one doing it.
+
+The refusals are also the **control** on the first property: without them, a
+reduced build could satisfy "byte for byte" by drawing a field as a label and
+saying nothing. `WSK_FIELD`'s enum value never moves between profiles either —
+a reduced build refuses it, it does not renumber around it — so a panel, an id
+and a golden mean the same thing whatever whisker was compiled with.
+
+### 7.5 What this does and does not settle
+
+It is the mechanism D6 already called for: *"a whisker binding must report
+which widgets its host supports rather than drawing a keyboard that cannot be
+used."* D6 settled *which* hosts get `input`; this settles *how* a host that
+does not get it avoids paying for it.
+
+**Not settled, and deliberately:** whether the axes stay these two. Each new
+widget kind adds a branch to the same loop and so arrives with the same
+question — and the right answer may eventually be that the small profile is
+the one with a name and a documented widget set, rather than a list of
+subtractions. That is a decision to make when there is a third axis, not now,
+on one data point.
+
+**Also not a goal: shrinking the C5 build further.** 2,604 bytes of a ~39 KB
+program budget is not where a C5 program runs out of room; `SRC_MAX` and the
+stack (§5) are. The point of this section is that a host does not carry a
+widget it was told it cannot have — a correctness and honesty property that
+happens to save bytes, not a byte optimisation.

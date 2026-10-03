@@ -71,6 +71,14 @@ path now logs a warning, so the compact keyboard went from broken to cheapest;
 all four ceilings are askable through `getstat(RV9_SVG_GS_LIMITS)`; and a stack
 finding that is whisker's own, below.
 
+**Profiles, 2026-10-02 (§7).** whisker now scales *down* as well as up. The
+default is everything; `-DWSK_MINIMAL` is the C5's profile and drops the field
+and the corner marks for **668 bytes, 20 %** of a small panel's code. A reduced
+build draws **byte-identically** for the widgets it keeps and **refuses**
+(`WSK_E_KIND`) what it lacks rather than substituting — both checked in
+`src/run.sh`, the refusals being the control on the first. gBASIC's end needed
+nothing: its `gui` names five component kinds and whisker has all five.
+
 **Open, and in this order of readiness:** touch *slop*, deliberately unanswered
 until a real capacitive surface measures centroid scatter (§5b); the gBASIC
 binding itself, now that every widget `gui` names exists; whether the compact
@@ -111,6 +119,11 @@ here:
   labels and buttons in one single-axis stack, column or row; see `design.md` §5.
 - **Few to no dependencies**, and mature ones where unavoidable. whisker's whole
   argument is that the layer beneath it is already done.
+- **A new widget kind adds a branch to the shared emit loop**, so it arrives
+  with §7's question attached: which profile is it in, what does it cost, and
+  does the reduced build refuse it by name? The module rules forbid the
+  dispatch table that would make this automatic (§4.1), so it has to be asked
+  each time.
 - **Tabs for indentation.**
 - Tests are kept for regression.
 

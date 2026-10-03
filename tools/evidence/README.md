@@ -183,3 +183,43 @@ least 4,528** — with at least 1,232 bytes between two different documents. So
 there is no single number for "drawing to `/w0`". Section 1 prints what a
 program *can* be told, which is its own chain; the rest has to be bisected on
 the hardware.
+
+## `profiles/`
+
+What does a host pay for a widget it never uses?
+
+```
+./run.sh
+```
+
+Matthew, 2026-10-02: *"I want to ensure that at least a scaled down basic
+version can run on the C5 but also for gBASIC (and maybe other things) on
+larger systems."* `design.md` §7 is the answer; this is the number in it.
+
+It builds the smallest honest whisker program — a label and two buttons,
+written to `/w0` once — under each profile:
+
+| | bytes | saved |
+|---|---|---|
+| full, the default | 3,272 | |
+| `-DWSK_NO_MARKS` | 2,984 | 288 |
+| `-DWSK_NO_FIELD` | 2,908 | 364 |
+| `-DWSK_MINIMAL`, both | **2,604** | **668 — 20 %** |
+
+**The second section is the more interesting one.** It lists, by `nm` rather
+than by assertion, what that binary does *not* contain: `wsk_hit`,
+`wsk_compose`, `wsk_rows`, `wsk_render_clipped`, `wsk_part` and
+`wsk_field_view` are all absent, because everything here is `static inline` and
+an entry point nobody names is never emitted. whisker already scales down by
+linkage for everything a caller can decline to call. The preprocessor is needed
+for exactly the two branches that live inside the per-widget loop every caller
+links — and for nothing else.
+
+Note the include order in `run.sh`: `-I$SRC` comes **first**, because RV-9
+vendors its own `modules/whisker.h` and a measurement that silently used that
+copy would be worthless. That is not hypothetical — it happened while this was
+being written, and reported a saving of zero.
+
+Whether a reduced build draws the *same* picture is a gate rather than a
+measurement, so it lives in `src/run.sh`: the same panel compiled both ways,
+diffed byte for byte, with a field and a mark as controls.

@@ -9,9 +9,9 @@ armoured robot cat; this is the part that feels where you touched.*
 `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c and §5d — **135 checks**, the pixels through RV-9's own
-rasteriser, three module builds with the double-link, and a person looking at
-the pictures. `host/linux/run.sh --test` adds **19** more.
+`design.md` §5, §5b, §5c, §5d and §7 — **135 checks** plus the profile gate, the
+pixels through RV-9's own rasteriser, four module builds with the double-link,
+and a person looking at the pictures. `host/linux/run.sh --test` adds **19** more.
 
 **You can type on it now.** `host/linux/run.sh --input` puts a field and a
 36-key keyboard on screen; click the keys and the characters appear. The touch
@@ -54,6 +54,18 @@ panel, the P4 moves every figure, and gBASIC's GTK renders on its own loop where
 none of this arithmetic exists. whisker streams so that buffering stays the
 *caller's* choice: a sink that appends to an array is the buffer form. The
 design's §2.8 is the standing form of that caution.
+
+**It scales down as well as up.** The default build is everything; `-DWSK_MINIMAL`
+is the C5's profile and leaves out the text field and the corner marks — the two
+things that live inside the per-widget loop every caller links, and so the only
+two the linker cannot drop by itself. That is **668 bytes, 20 %** of a small
+panel's code (`tools/evidence/profiles/`). Everything else already scales down
+by linkage: a program that never names `wsk_hit`, `wsk_compose` or `wsk_rows`
+does not contain them, checked with `nm`. A reduced build is **not a second
+renderer** — it draws byte-identically for the widgets it keeps, and *refuses*
+what it lacks by name rather than substituting, both gated in `src/run.sh`.
+At the other end nothing was needed: gBASIC's declarative `gui` names five
+component kinds and whisker has all five.
 
 - `docs/decisions.md` — **read first.** Six decisions, all ratified 2026-09-29.
 - `docs/design.md` — the project, revised against the review.
