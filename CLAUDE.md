@@ -79,17 +79,28 @@ build draws **byte-identically** for the widgets it keeps and **refuses**
 `src/run.sh`, the refusals being the control on the first. gBASIC's end needed
 nothing: its `gui` names five component kinds and whisker has all five.
 
-**Open, and in this order of readiness:** touch *slop*, deliberately unanswered
-until a real capacitive surface measures centroid scatter (§5b); the gBASIC
-binding itself, now that every widget `gui` names exists; whether the compact
-keyboard form is worth building into whisker (`tools/evidence/keyboard/` prices
-it at 1,842 bytes saved against the widget form); and whether `tools/notation`
-ships at all (`notation-sketch.md` §6 — Matthew's call).
+**What is left is in `docs/roadmap.md`** (2026-10-03), which is the first thing
+to read when picking this up cold. Three gates, and only one is code:
+
+- **G1 — what the C5 panel is *for*.** It displays; whether it can be *operated
+  from the board* is undecided. `hit` assumes pointing and the C5 has none, so
+  §2.6's row 2 — `focus_next`/`activate` and a focus mark — is either one more
+  iteration or explicitly never. **Ask before building anything here.**
+- **G2 — the four things only the P4 can measure**: finger-down to
+  pixel-changed (never measured, §2.2), touch slop (§5b), the stack bisected
+  there rather than carried over (§5), and a panel where `SRC_MAX` actually
+  binds (§2.3).
+- **G3 — gBASIC answers.** §6's bar; a decline is a finish.
+
+Three decisions are Matthew's and are listed in `roadmap.md` §4: what the C5 is
+for, whether the compact keyboard form is built in, and whether
+`tools/notation` ships.
 
 ## Read before working
 
-1. `docs/decisions.md` — six ratified outcomes, one screen. **First**, so that
+1. `docs/decisions.md` — nine ratified outcomes, one screen. **First**, so that
    the design's §4 arguments read as history rather than as open questions.
+   Then `docs/roadmap.md`, which is what is left and what would let us stop.
 2. `docs/design.md` — all of it. It is the whole project, and it has been
    revised against the review, so it and the answers no longer disagree.
 3. `docs/rv9-answers.md` — the measurements and the four things the review did

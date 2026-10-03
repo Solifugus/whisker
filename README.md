@@ -67,7 +67,10 @@ what it lacks by name rather than substituting, both gated in `src/run.sh`.
 At the other end nothing was needed: gBASIC's declarative `gui` names five
 component kinds and whisker has all five.
 
-- `docs/decisions.md` — **read first.** Six decisions, all ratified 2026-09-29.
+- `docs/roadmap.md` — **what is left**, in what order, and what would let us
+  stop. Three gates: what the C5 is *for* (a question, not code), what only the
+  P4 can measure, and gBASIC's answer.
+- `docs/decisions.md` — **read first.** Nine decisions; D0–D5 ratified 2026-09-29, D6–D8 since.
 - `docs/design.md` — the project, revised against the review.
 - `docs/rv9-answers.md` — the RV-9 session's replies: the measurements, and four
   things the review did not think to ask.

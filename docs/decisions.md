@@ -9,10 +9,10 @@ question by reading the arguments and not the verdict.
 **Status of §4 as a whole: all six ratified, 2026-09-29, by Matthew**, on the
 RV-9 session's replies in `docs/rv9-answers.md`.
 
-**D6 and D7 came later** (2026-10-02) and are not part of §4: they are what
-`gbasic-gap.md`'s measurement and a dead touch monitor forced a choice about.
-They are here rather than in a document of their own because the rule is one
-ledger.
+**D6, D7 and D8 came later** and are not part of §4: they are what
+`gbasic-gap.md`'s measurement, a dead touch monitor and the two ends of §2.8's
+table forced a choice about. They are here rather than in a document of their
+own because the rule is one ledger.
 
 | id | Decision | Status | Outcome, and the argument that settled it |
 |---|---|---|---|
@@ -25,6 +25,7 @@ ledger.
 
 | **D6** | Which hosts get `input`, given that a keyboard is half the byte budget? (`gbasic-gap.md` §3) | **ratified 2026-10-02** | **Only hosts that have an input device.** Matthew: *"input is definitely not going to be on devices that have no input like the ESP32 C5."* So `gbasic-gap.md`'s option 1 holds for the C5 — a panel there displays and commands, and text arrives over the terminal as RV-9 already arranges — and option 2 holds for the P4 and Linux. This is a **hardware** criterion, not a byte one: the measurement (`tools/evidence/keyboard/`) found a keyboard costs half the budget rather than 94 % of it, so bytes stopped being the argument; what remains is that the C5 has nothing to press a key with, and that a key on its panel is about 4 × 4.8 mm against the 9 mm a finger wants. **A whisker binding must therefore report which widgets its host supports** rather than drawing a keyboard that cannot be used. |
 | **D7** | What stands in for touch until the P4 arrives? (§2.6) | **ratified 2026-10-02** | **The mouse on Linux.** Matthew: *"even if we cannot get touch to work on this linux computer, the mouse does work."* A click is a single point, which is exactly `hit`'s input and exactly what the panel will deliver (five contacts, whisker uses one), so the whole interaction loop — point, name, band, repaint — is exercisable **now** rather than in October. It does not stand in for the one thing only the panel can answer: touch **slop**, which stays open (§5b), because a mouse has no centroid scatter to measure. |
+| **D8** | How does whisker serve a host that cannot afford all of it? (§7) | **ratified 2026-10-03** | **Compile-time profiles, defaulting to everything, refusing rather than substituting.** Matthew: *"I want to ensure that at least a scaled down basic version can run on the C5 but also for gBASIC (and maybe other things) on larger systems."* Four parts, and the first is the one that constrains the rest. **(a) The mechanism is the preprocessor, and it is forced, not chosen:** everything is `static inline`, so whisker already scales down by linkage for every entry point a caller declines to name — `wsk_hit`, `wsk_compose`, `wsk_rows` are simply absent from a binary that does not call them. What cannot be dropped is a branch inside the per-widget loop every caller links, and the construct that *would* make those droppable is a dispatch table, which an RV-9 module may not have (§4.1). **(b) The default is everything and a host opts *down*** — §2.8's rule applied to the build, so nobody pays for the C5's limits unless they are on the C5. **(c) A reduced build is the same renderer**: byte-identical output for the widgets it keeps, gated by diffing the same panel compiled both ways, because this is where one widget library quietly becomes two and D2 would be gone. **(d) It refuses what it lacks** with `WSK_E_KIND` naming the widget, and never substitutes — a field silently drawn as a label is the failure shape §2.3 keeps finding in substrates, and worse here because whisker would be the one doing it. The refusals are also the control on (c). Measured at **668 bytes, 20 %** of a small panel (`tools/evidence/profiles/`). This is the mechanism **D6** already called for: *"a whisker binding must report which widgets its host supports."* |
 
 These are outcomes, not recommendations. `docs/design.md` §4 keeps the reasoning
 behind each, because a decision whose argument is lost gets reopened — but where
@@ -32,6 +33,11 @@ the two disagree, **this file wins**.
 
 Two of the six were *changed* rather than confirmed by the review (D0 and D3),
 which is the return on having asked.
+
+**D8 is the first decision that constrains how whisker is *built* rather than
+what it does**, and it is the one most likely to be reopened by a widget kind
+that has not been invented yet. §7.5 says what would reopen it: a third axis,
+at which point the small profile may be better named than enumerated.
 
 ---
 

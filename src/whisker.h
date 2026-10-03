@@ -69,7 +69,12 @@
  * configures nothing, which is §2.8's rule applied to the build -- do not
  * make every caller pay for the C5's limits.
  *
- *     -DWSK_MINIMAL     label, button, stacks, hit, bands: what the C5 needs
+ *     -DWSK_MINIMAL     label, button, stacks, bands -- and whichever of
+ *                       hit/rows/compose the caller names, since those
+ *                       drop by linkage rather than by macro. Note that
+ *                       `hit` assumes a pointing device and the C5 has
+ *                       none (§2.6): what a /gpio host needs is a focus
+ *                       traversal, which is not built (roadmap.md G1).
  *     -DWSK_NO_FIELD    drop the text field       (364 bytes)
  *     -DWSK_NO_MARKS    drop the corner marks     (288 bytes)
  *
