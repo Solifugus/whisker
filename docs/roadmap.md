@@ -99,14 +99,23 @@ on the P4 for something real. That is half of §6's bar and it cannot be faked.
 
 ### G3 — gBASIC answers
 
-**Blocked on G1 and G2, and on a seam that does not exist yet.**
+**Partly unblocked, 2026-10-03.** It was listed as waiting on G1 and G2; G1's
+answer turned out to *supply* the missing piece rather than gate it, because a
+readout is a real interface and the C5 is on the desk. The seam still does not
+exist.
 
 `design.md` §6 set the bar before anything was invested. Of its three items, one
 is already struck through (a small Linux host — 276 lines, done 2026-10-01). The
 other two:
 
 - **whisker runs a real RV-9 interface on real hardware, and somebody uses it**
-  — needs G1's answer and G2's board.
+  — **started 2026-10-03, and it turned out not to need the P4 at all.** G1's
+  answer said what a C5 panel is: a readout. `src/module_stat.c` is one — die
+  temperature, heap and uptime, repainting only the rows whose value moved —
+  staged in RV-9's tree as `modules/wstat/`. It is the first whisker program
+  written to be *used* rather than to demonstrate a mechanism. What is left of
+  this bar item is the half that cannot be written: flashing it and leaving it
+  running, and finding out whether it is worth looking at.
 - **The two functions are stable enough that gBASIC's renderer seam can be
   written against them without a version negotiation.** Nothing has moved the
   signatures since 2026-09-30; what has moved is what they *mean* on a reduced

@@ -88,6 +88,12 @@ to read when picking this up cold. Three gates, and only one is code:
   widget — so that panel is a **readout**, and a readout needs `rows` plus a
   clipped repaint, both of which exist. §2.6's row 2 (`focus_next`/`activate`,
   a focus mark) is **never built**, not deferred. Do not build a focus model.
+- **A readout exists.** `src/module_stat.c` / RV-9's `modules/wstat/` is the
+  first whisker program meant to be used rather than demonstrated, and it is
+  D9's shape: values on a write-only panel, only the changed rows repainted,
+  and **nothing written at all** on a tick where nothing moved. It starts
+  §6's first bar item, which G1's answer turned out to unblock rather than
+  gate — a readout is a real interface and the C5 is on the desk.
 - **G2 — the four things only the P4 can measure**: finger-down to
   pixel-changed (never measured, §2.2), touch slop (§5b), the stack bisected
   there rather than carried over (§5), and a panel where `SRC_MAX` actually

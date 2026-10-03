@@ -13,6 +13,16 @@ field you can type into. `src/run.sh --module` runs every done-criterion in
 pixels through RV-9's own rasteriser, four module builds with the double-link,
 and a person looking at the pictures. `host/linux/run.sh --test` adds **19** more.
 
+**And there is now a program to leave running.** `src/module_stat.c` — staged
+in RV-9's tree as `wstat` — puts the board's die temperature, free heap and
+uptime on the C5 panel and repaints only the rows whose value actually moved.
+A tick on which nothing changed writes **nothing at all**: no setstat, no
+bytes. That restraint is the whole point, and it is why the readings are at a
+resolution a person would choose rather than the finest the sensor offers.
+It is the first whisker program written to be *used* rather than to show that
+something works, and it exists because D9 settled what a write-only panel with
+no controls is for.
+
 **You can type on it now.** `host/linux/run.sh --input` puts a field and a
 36-key keyboard on screen; click the keys and the characters appear. The touch
 monitor on this desk enumerates and reports nothing, but a mouse click is a

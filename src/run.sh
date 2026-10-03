@@ -85,12 +85,14 @@ link_check () {   # link_check <source> <label> [extra flags...]
 		exit 1
 	fi
 }
-for SRC in module_shape.c module_compose.c module_input.c; do
+for SRC in module_shape.c module_compose.c module_input.c module_stat.c; do
 	link_check "$SRC" "$SRC"
+	# Named, not "whichever came last": this has been the wrong number twice,
+	# both times because a module was added to the loop after it.
+	[[ "$SRC" == module_shape.c ]] && FULL="$SIZE"
 done
-FULL="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
-echo "      so the C5 profile of that same program is $(( FULL - SIZE )) bytes smaller,"
+echo "      so the C5 profile of module_shape.c is $(( FULL - SIZE )) bytes smaller,"
 echo "      which is criterion 10: a host that cannot afford a widget leaves it"
 echo "      out, and what it keeps is the same renderer, not a second one (§7)."
 echo "      no libc, no .data, no .bss -- the linker script asserts the last two"
@@ -99,3 +101,5 @@ echo "      and the array of trees it walks, get checked rather than assumed;"
 echo "      module_input.c is the field, which is the first thing whisker emits"
 echo "      out of RAM rather than rodata. It is not staged in RV-9's tree: D6"
 echo "      keeps input off the C5, and the link check is the point of it."
+echo "      module_stat.c is a readout -- D9's shape, and the only one of the"
+echo "      four that is a program somebody would leave running."
