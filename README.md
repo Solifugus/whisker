@@ -46,8 +46,14 @@ so the `put()` that finishes a document runs RV-9's whole rasteriser with every
 layout frame still live beneath it. The two depths add. The obvious fix —
 buffer the document and write once — is **measured and refused**: it saves 256
 bytes of stack and spends 4,096 of statics, out of one process footprint
-(`tools/evidence/stack/`). Streaming stays, now for a measured reason rather
-than an assumed one.
+(`tools/evidence/stack/`).
+
+Which settles what an RV-9 *module* should pass, and nothing more. `/w0` is **a**
+display system, not **the** display system — RV-9 has a second driver on the same
+panel, the P4 moves every figure, and gBASIC's GTK renders on its own loop where
+none of this arithmetic exists. whisker streams so that buffering stays the
+*caller's* choice: a sink that appends to an array is the buffer form. The
+design's §2.8 is the standing form of that caution.
 
 - `docs/decisions.md` — **read first.** Six decisions, all ratified 2026-09-29.
 - `docs/design.md` — the project, revised against the review.

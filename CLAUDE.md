@@ -189,7 +189,24 @@ is the line RV-9 drew to avoid a cascade, a selector engine and a box model.
 
 whisker's look is flat because its substrate is.
 
-## Drawing to `/w0` runs on the writer's stack
+## `/w0` is not the display system, it is *a* display system
+
+**The standing hazard in this repository**, and the easiest one to fall into,
+because `/w0` is the only substrate that has been on a bench and it sets every
+budget above. Counted honestly whisker already faces several display systems:
+`/w0` on the C5; `/w0` on the P4, where RV-9 owns the pixels in PSRAM and every
+figure moves; RV-9's own `lcdcon`, a second driver on the *same panel*
+(`panel.h`: *"shared by every driver that draws on it"*); whisker's SDL host;
+and gBASIC's GTK, which renders on its own loop where none of this arithmetic
+exists at all. `design.md` §2.8 is the table.
+
+**So name the substrate a finding came from.** A measurement on `/w0` is
+evidence about `/w0`. It is evidence about *whisker* only where it shows
+whisker making a choice it did not have to make — and the usual right answer to
+such a finding is to push the choice back out to the caller, not to settle it
+here. The worked example follows.
+
+### Drawing to RV-9's `/w0` runs on the writer's stack
 
 Measured 2026-10-02 after RV-9 bisected two whisker programs' stack
 declarations and found both wrong, one of them overflowing on the board. The
@@ -198,13 +215,16 @@ cause is not whisker's frames. **whisker streams rather than buffers**, so the
 of whisker's layout frames still live beneath it*. The two depths add.
 
 So `design.md` §5's "a sink costs nothing" is true about memory and false about
-stack, and three things follow for anything written here:
+stack **on that host**, and three things follow:
 
-- **Buffering is not the answer, and that is measured, not assumed.**
+- **An RV-9 module should not buffer, and that is measured, not assumed.**
   `tools/evidence/stack/` builds `module_compose.c` against a buffering twin
   that differs only in the sink: buffering saves **256 bytes of stack** and
   spends **4,096 of statics**, out of one process footprint. A bad trade by
-  3,840 bytes. Streaming stays.
+  3,840 bytes. Note the scope — this settles what an RV-9 *module* passes, not
+  what whisker's API is. A sink that appends to an array *is* the buffer form,
+  so a host with an allocator and a real stack buffers by passing a different
+  sink, and whisker never knows. Keep it that way.
 - **Do not hand a whisker program a stack number from `modules/pic`.** Its
   2,080 is the only figure written down anywhere and it is *not* an upper
   bound: against RV-9's bisections a whisker document costs the rasteriser at
@@ -212,5 +232,6 @@ stack, and three things follow for anything written here:
   two different documents. There is no single number for "drawing to `/w0`".
 - **What a program can be told is its own chain**, which is what
   `tools/evidence/stack/run.sh` prints — 560 bytes for one stack, 800 for a
-  composite. The rest has to be bisected on the hardware, and bisected again on
-  the P4 rather than carried over from the C5.
+  composite. That part is host-neutral, because it is measured from whisker's
+  own frames and nothing else. The rest has to be bisected on the hardware, and
+  bisected again on the P4 rather than carried over from the C5.

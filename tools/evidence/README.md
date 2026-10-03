@@ -142,10 +142,13 @@ What stack does a whisker program need, and would a buffering sink need less?
 The second question is RV-9's, left on 2026-10-02 as *"worth a measurement
 rather than a decision"* after they bisected two whisker programs' stack
 declarations and found both wrong — one of them overflowing on the board. The
-cause is not whisker's frames: **drawing to `/w0` renders on the writer's
-stack**, and whisker streams, so the `put()` that finishes a document runs
-RV-9's whole rasteriser with every layout frame still live beneath it. The two
-depths add.
+cause is not whisker's frames: **drawing to RV-9's `/w0` renders on the
+writer's stack**, and whisker streams, so the `put()` that finishes a document
+runs RV-9's whole rasteriser with every layout frame still live beneath it. The
+two depths add.
+
+That property belongs to `/w0`, not to drawing in general — see `design.md`
+§2.8 — which is why the answer below is scoped to the host it was measured on.
 
 This reads `-fstack-usage` frames and the call graph out of the object file.
 Three things it gets right that summing the `.su` column does not: function
@@ -163,7 +166,15 @@ be. An unnamed site is reported rather than ignored.
 
 **Buffering saves 256 bytes of stack and spends 4,096 of statics**, out of one
 process footprint — a bad trade by 3,840 bytes whatever the rasteriser's depth R
-turns out to be. Streaming stays, now for a measured reason.
+turns out to be.
+
+**What that settles and what it does not.** It settles which sink an RV-9
+*module* should pass. It says nothing about whisker's API, which streams
+precisely so the choice stays the caller's: a sink that appends to an array is
+the buffer form, so a host with an allocator and a real stack — gBASIC's GTK,
+whisker's own SDL host — buffers by passing a different sink, and none of the
+arithmetic above applies to it. Section 1's figures are the host-neutral part,
+because they are whisker's own frames and nothing else.
 
 **And R is the part nobody has measured.** `modules/pic`'s figure of 2,080 is
 the only one written down, so it is the one a whisker program would reach for,

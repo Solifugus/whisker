@@ -486,6 +486,34 @@ companion ESP32-C6 over SDIO). Neither reaches whisker, which is pure — but th
 are why the P4 is the *personal-computing* target and the C5 stays the real-time
 one.
 
+### 2.8 `/w0` is not the display system, it is *a* display system
+
+Everything above measures RV-9's `drv_svgwin.c` on the C5's ST7789, because
+that is the host that sets the budget and the only one that has been on a bench.
+It would be easy to read this document as a description of what drawing *is*.
+It is not. Counted honestly, whisker already faces more than one display system
+and will face more:
+
+| | what draws | what that changes |
+|---|---|---|
+| **RV-9 `/w0`, C5** | `drv_svgwin.c` → `raster.c` → ST7789 | the budget, and §5's stack note — the writer's own stack renders the document |
+| **RV-9 `/w0`, P4** | same driver, MIPI-DSI, pixels in PSRAM | who owns the framebuffer, whether a horizontal clip exists, and every stack figure (§2.7) |
+| **RV-9 `lcdcon`** | a text console on the **same panel** | not a whisker target — but it is why `/w0` is not privileged even inside RV-9. `panel.h`: *"shared by every driver that draws on it"* |
+| **whisker's Linux host** | SDL2 over RV-9's own `raster.c` | the same pixels, with megabytes of stack and an allocator, so §5's trade is real and irrelevant at once |
+| **gBASIC** | GTK — *"GTK is still the only backend"* | a toolkit that renders on its own loop, where none of this arithmetic applies. An SVG backend is foreseeable, and §0.3 of its addressability design was decided *because* of it |
+
+**So the rule for this document, and for anything added to it: name the
+substrate a finding came from.** A measurement on `/w0` is evidence about
+`/w0`. It is evidence about *whisker* only where it shows whisker making a
+choice it did not have to make — and the right response to such a finding is
+usually to push the choice back out to the caller rather than to settle it
+here. §5's note on what a sink costs in stack is the worked example: the
+measurement is RV-9's, the conclusion binds RV-9's modules, and what whisker
+takes from it is a reason to keep not deciding.
+
+This is the same argument as §2.7's, one level up. §2.7 says *do not bake the
+C5's limits into the model.* §2.8 says *do not bake `/w0` into it either.*
+
 ---
 
 ## 3. The substrate contract
@@ -746,12 +774,19 @@ caller make it badly. (`rv9-answers.md` §3.3.)
 height. Take it as a parameter rather than reading a device: whisker stays pure,
 and the host got it from `getstat(RV9_GS_SIZE)` on `/w0`.
 
-#### "A sink costs nothing" is wrong in one specific way, and it is the stack
+#### "A sink costs nothing" is wrong on one host, and the fix is the caller's
 
-That sentence is true about *memory* and false about *stack*, and the
-difference was found on 2026-10-02 by RV-9's session bisecting two stack
-declarations for whisker programs that were both wrong — one of which
-overflowed on the board.
+**First, whose problem this is.** What follows is true of RV-9's `/w0` and of
+nothing else whisker has met. It is in this document because `/w0` sets the
+budget (§2), not because it is a property of writing SVG — and the conclusion
+it argues for is that whisker should keep **not deciding**, which is the only
+conclusion that survives contact with a second display system. §2.8 is the
+general form.
+
+That done: on `/w0`, "a sink costs nothing" is true about *memory* and false
+about *stack*, and the difference was found on 2026-10-02 by RV-9's session
+bisecting two stack declarations for whisker programs that were both wrong —
+one of which overflowed on the board.
 
 **Drawing to `/w0` renders on the writer's stack.** RV-9's `modules/pic`
 already recorded it. whisker streams rather than buffers, so the `put()` that
@@ -790,9 +825,20 @@ stack this was meant to save, and not `.bss`, which a module does not have —
 only `env->statics`, declared in `build.conf`, which at least makes the cost
 visible rather than discovered by an overflow.
 
-**So streaming stays, and now for a measured reason rather than an assumed
-one.** The saving is small because whisker's own chain is small; streaming puts
-that chain beneath the rasteriser, it does not pay for the rasteriser twice.
+**So an RV-9 module should not buffer, and that is now measured rather than
+assumed.** The saving is small because whisker's own chain is small; streaming
+puts that chain beneath the rasteriser, it does not pay for the rasteriser
+twice.
+
+**But note what that sentence does *not* say.** It is a finding about RV-9's
+modules, not about whisker's API, and the two were never the same question.
+whisker emits through a sink precisely so that **buffering is the caller's
+choice**: a sink that appends to an array *is* the buffer form, as this section
+said four paragraphs above it was written. A host that would rather hold the
+document — one with an allocator, a stack measured in megabytes, or a renderer
+that runs later on its own thread — passes a buffering sink and whisker never
+knows. What the measurement settles is which sink an RV-9 *module* should pass.
+Had it come out the other way it would still have settled only that.
 
 **What is not whisker's, and is worth knowing before writing anything that
 draws:** R itself. `pic`'s figure of 2,080 bytes is the only one written down
@@ -802,8 +848,11 @@ rasteriser **at least 4,528 bytes** — more than twice that — and R differs b
 **at least 1,232 bytes** between `wflick`'s document and `wcompose`'s. There is
 therefore no single number for "drawing to `/w0`" and a program cannot be given
 one. What a whisker program *can* be given is its own chain, which is what
-`tools/evidence/stack/` prints; the rest has to be bisected on the hardware,
-and on the P4 — 75 bands against 22 — bisected again rather than carried over.
+`tools/evidence/stack/` prints — and that part *is* host-neutral, because it is
+measured from whisker's own frames and nothing else. The rest has to be
+bisected on the hardware, and on the P4 — 75 bands against 22, and RV-9 owning
+the pixels in PSRAM rather than the panel holding them (§2.7) — bisected again
+rather than carried over.
 
 **Done means:**
 

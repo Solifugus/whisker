@@ -96,6 +96,13 @@ echo "   The saving is small because whisker's whole chain is small. Streaming"
 echo "   puts that chain beneath the rasteriser; it does not pay for the"
 echo "   rasteriser twice. The 4096 is the document, and it does not shrink."
 echo
+echo "   Scope: this settles which sink an RV-9 MODULE passes. It says nothing"
+echo "   about whisker's API, which streams so that the choice stays the"
+echo "   caller's -- a sink that appends to an array is the buffer form. A host"
+echo "   with an allocator and a real stack buffers by passing a different sink"
+echo "   and none of the above applies to it. /w0 is a display system, not the"
+echo "   display system (design.md 2.8). Section 1 is the host-neutral part."
+echo
 echo "   Note what the buffer may NOT be: a local array (that is the stack this"
 echo "   was meant to save) or .bss (a module has none). env->statics is the"
 echo "   only place left, and it is declared in build.conf, which is why the"
