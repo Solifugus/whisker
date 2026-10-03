@@ -82,19 +82,23 @@ nothing: its `gui` names five component kinds and whisker has all five.
 **What is left is in `docs/roadmap.md`** (2026-10-03), which is the first thing
 to read when picking this up cold. Three gates, and only one is code:
 
-- **G1 — what the C5 panel is *for*.** It displays; whether it can be *operated
-  from the board* is undecided. `hit` assumes pointing and the C5 has none, so
-  §2.6's row 2 — `focus_next`/`activate` and a focus mark — is either one more
-  iteration or explicitly never. **Ask before building anything here.**
+- ~~**G1 — what the C5 panel is *for*.**~~ **Closed 2026-10-03 with no code
+  (D9):** the C5 panel is **write-only, no controls**, driven from the serial
+  console or ssh. GPIO is for *sensors* — data in, not a person acting on a
+  widget — so that panel is a **readout**, and a readout needs `rows` plus a
+  clipped repaint, both of which exist. §2.6's row 2 (`focus_next`/`activate`,
+  a focus mark) is **never built**, not deferred. Do not build a focus model.
 - **G2 — the four things only the P4 can measure**: finger-down to
   pixel-changed (never measured, §2.2), touch slop (§5b), the stack bisected
   there rather than carried over (§5), and a panel where `SRC_MAX` actually
   binds (§2.3).
 - **G3 — gBASIC answers.** §6's bar; a decline is a finish.
 
-Three decisions are Matthew's and are listed in `roadmap.md` §4: what the C5 is
-for, whether the compact keyboard form is built in, and whether
-`tools/notation` ships.
+Two decisions are Matthew's and are explained in `roadmap.md` §4: whether the
+compact keyboard form is built in (a **P4-only** question — 115 bytes is all a
+field-plus-keyboard leaves of `SRC_MAX` at 1024×600, so expect to need it), and
+whether `tools/notation` ships (which D9 just gave a trigger: a C5 readout whose
+layout is compiled in cannot change without a reflash).
 
 ## Read before working
 

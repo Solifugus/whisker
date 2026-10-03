@@ -36,51 +36,42 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **On the board** | `wflick` and `wcompose` run on the C5, committed in RV-9 |
 | **On a desk** | `host/linux`, typing loop closed with a mouse (D7) |
 | **Decisions** | D0–D8 ratified |
-| **Open** | three gates, below, and three decisions that are Matthew's |
+| **Open** | two gates, below, and two decisions that are Matthew's |
 
-Eight iterations' worth of work has landed. What is left is **not mostly
-code** — it is two measurements only hardware can give, one decision about what
-the C5 is for, and one host's answer.
+Eight iterations' worth of work has landed, and **G1 closed on 2026-10-03
+without any** (D9). What is left is **not mostly code** — it is four
+measurements only the P4 can give, one host's answer, and two decisions below
+that are Matthew's.
 
 ---
 
-## 3. The three gates
+## 3. The gates — one closed, two open
 
-### G1 — the C5 is served, and "served" is *decided*
+### G1 — the C5 is served — ✅ **closed 2026-10-03, with no code**
 
-**Blocked on a decision, not on hardware. This is the one in front.**
+**Answered by the hardware, which is how every good question here has been
+answered.** Matthew: *"The C5 panel is write only and has no controls on it. I
+interact via serial console or over ssh for now though it has GPIO pins that I
+will be attaching to sensors, later."*
 
-A whisker panel on the C5 displays today, and §7 means it pays nothing for the
-field and the marks it cannot use. What is unresolved is whether it can be
-**operated from the board**.
+So §2.6's second row — `focus_next`/`activate` and a focus mark, which D0 kept
+*addable rather than built* — moves from **deferred** to **never**, and is
+recorded as **D9**. `hit` is dead weight on the C5 and costs nothing anyway,
+because it drops by linkage (D8). The C5's loop is: the console commands, the
+panel shows.
 
-`hit(tree, x, y)` assumes a pointing device. The C5 has none and probably never
-will. §2.6's own table says a host with `/gpio` buttons or a rotary encoder
-needs a different second function — `focus_next(tree, from)` and
-`activate(tree, focused)`, plus a visible focus mark — and **D0 deliberately
-left that addable rather than built**, because declaration order is already a
-traversal order.
+**The GPIO pins are not a reprieve**, and it is worth being exact about why.
+Sensors are data *in*, not a person acting on a widget. A sensor-driven C5
+panel is a **readout**, and what a readout needs is what whisker already has:
+`rows(tree, ids, n)` for the values that moved, and one clipped repaint. No
+focus, no traversal, no activation.
 
-RV-9's position (2026-10-02) is that *"text entry on the C5 is over the terminal
-from a machine that has a keyboard, and a whisker panel there displays and
-commands."* That sentence can be read two ways and the difference is an
-iteration:
-
-- **If the C5 panel is a display**, driven from the terminal, then G1 **closes
-  with no code at all** — §7's minimal profile is the whole C5 story, and the
-  answer goes in the ledger so nobody reopens it.
-- **If a person should be able to press a `/gpio` button and act on the panel**,
-  then there is one more iteration: focus traversal, `activate`, and a focus
-  mark — which is §2.6's row 2, the half that was consciously not built.
-
-**Nothing else on this map depends on which way this goes**, which is why it is
-first: it is cheap to answer and it sizes the remaining work.
-
-Note the shape of that second option if it happens. It is **not** a new widget
-kind, so D8's profile question does not arise; it is a third pure function over
-the same tree, and it would need its own test suite with the control the others
-have — a traversal that visits every widget exactly once and refuses to claim
-one that is not there.
+**But it moves the next question.** A readout whose layout is a C struct
+compiled into a module cannot be changed without rebuilding and reflashing —
+and *"when a panel wants to live in a file"* is the exact condition
+`notation-sketch.md` §6 names as the one that would earn that notation its
+place. See §4.2 below. That is the first time one of these has had a
+trigger rather than a preference.
 
 ### G2 — the P4 measures what only hardware can
 
@@ -130,24 +121,110 @@ decision was already made *in favour of* the rule whisker uses (D4, and its
 
 ---
 
-## 4. Three decisions that are Matthew's, not mine
+## 4. Two decisions that are Matthew's, not mine
 
-These block nothing but will be reopened forever if they are not answered.
+G1 was the third and is now D9. These two block nothing today, but both will be
+reopened forever if they are not answered, and **one of them has just acquired
+a trigger**.
 
-1. **Is the C5 panel operable from the board?** — G1. The only one that changes
-   how much work is left.
-2. **Is the compact keyboard form built into whisker?** `tools/evidence/keyboard/`
-   prices it: one `<path>` for 36 keys is 1,879 bytes against the widget form's
-   3,721, pixel-identical, and it now fits the cap RV-9 raised. It only matters
-   on hosts that have `input` at all, so it is a P4-and-Linux question, and the
-   honest framing is that it buys headroom rather than fixing a problem — the
-   keyboard already fits.
-3. **Does `tools/notation` ship?** `notation-sketch.md` §6 says the earliest it
-   earns a place is *"when a panel wants to live in a file"*, and no panel has
-   yet. The cheapest honest answer may be "not yet, and here is the test that
-   would tell us" rather than yes or no.
+### 4.1 Is the compact keyboard form built into whisker?
 
----
+**What it is.** Today whisker draws a keyboard the way it draws everything: one
+`<rect>` and one `<text>` per key, because a key *is* a button widget. 36 keys
+cost 3,794 bytes at 1024×600. The alternative, measured as form C in
+`tools/evidence/keyboard/`, emits all 36 key outlines as **one `<path>` with 36
+subpaths** plus one `<text>` per row: **1,967 bytes, pixel-identical** — not
+approximately, a difference of zero.
+
+**Why it is not a micro-optimisation.** `SRC_MAX` is 4,096 and does not scale
+with the screen (§2.3), so on the P4 the arithmetic is brutal:
+
+| a text-entry panel at 1024×600 | bytes | left for everything else |
+|---|---|---|
+| a field + 36 keys as widgets — **measured today** | 3,981 | **115** |
+| the same with the keys as one path | ~2,150 | ~1,950 |
+
+**115 bytes.** That is a full-screen 7-inch panel with a keyboard, one text
+field, and no room for a title, a prompt, a Cancel button, or any of the
+interface the person is typing *into*. The keyboard fits; a panel containing a
+keyboard does not.
+
+**What it costs.** Three things, and none is free:
+
+1. **One `<path>` has one `fill`.** A *pressed* key cannot live in the shared
+   path, so the emitter has to lift it out and draw it separately. That is the
+   one piece of real complexity, and it lands in the most-exercised path.
+2. **Keys lose their individual SVG `id`s.** `hit` is unaffected — it is
+   geometric, computed from the tree, and never reads the document — but D4
+   makes the id the address space, so this is the first place whisker would
+   emit a widget the *document* cannot name. Worth being deliberate about
+   rather than discovering.
+3. **It depends on a cap.** 36 subpaths against `MAX_CONTOURS`, which was 16
+   until RV-9 raised it to 64 on 2026-10-02 *because this measurement found it
+   silently truncating*. It fits now with 28 to spare — and the rule from that
+   episode is to **ask** `getstat(RV9_SVG_GS_LIMITS)` rather than hope, so the
+   compact form would have to carry that call.
+
+**Where it does and does not matter.** Not on the C5 at all: D6 and D9 mean no
+`input` there and no keyboard to draw. It is a **P4-and-Linux** question
+entirely.
+
+**My recommendation: defer it to G2, and expect to need it.** The evidence
+already predicts the answer — 115 bytes is not headroom — but nobody has built
+a real P4 interface yet, and the honest sequence is to build one, hit the
+ceiling with a measurement rather than a forecast, and then spend the
+complexity knowingly. If G2 produces a panel that fits comfortably, this stays
+unbuilt and costs nothing.
+
+### 4.2 Does `tools/notation` ship?
+
+**What it is, and what it is not.** It is **not** a wire format. §1 of
+`notation-sketch.md` measured that idea and killed it: a compact replacement
+for SVG on the wire buys about a quarter of a full redraw, and a clipped
+repaint is ~200 bytes where compression buys nothing anybody can perceive. The
+wire stays SVG.
+
+What it *is* is a way for a panel to be **written down and stored** — by a
+person with an editor, or by a gBASIC program:
+
+```
+.col pad=4 gap=4 fill=#10203a
+..lbl title "Settings"
+..btn ok h=64 "OK"
+..btn cancel h=64 "Cancel"
+```
+
+Dots are depth. No closing tags, depth survives whitespace, and — the property
+that earns it — **a line is addressable on its own**, located by its dots and
+its name without reading the rest of the file.
+
+**What that third property buys is the damage model.** An update is just the
+lines that changed, and applying it reports **which nodes actually moved** —
+not which were mentioned. Measured: a 347-byte panel, a 63-byte patch naming
+three nodes, of which **two** actually moved because the third restated what
+was already true. Those ids go straight to `rows(tree, ids, n)`, the rows go to
+`RV9_SVG_SS_ROWS`, and whisker writes one clipped document instead of a frame.
+**A patch that changes nothing costs no repaint at all.**
+
+It already parses with refusals that each have a control, and it **links as an
+RV-9 module** — 2,796 bytes, position-independent, double-linked — so the
+question is genuinely "ship it or not" rather than "could it work".
+
+**The trigger, which is new as of today.** Its own §6 says the earliest it
+earns a place is *"when a panel wants to live in a file"*, and until this
+morning no panel did. But a C5 that is a **write-only readout with sensors on
+its GPIO pins** (D9) is a panel whose layout is a C struct compiled into a
+module: adding a sensor, renaming a reading or moving a row means rebuilding
+and reflashing. A stored panel plus a patch is exactly the shape that work
+takes — and the patch's "which nodes actually moved" is exactly the set a
+clipped repaint wants.
+
+**My recommendation: not yet, but name the test.** The condition is not "does
+it work" — it does — but *does a panel on that board actually want to change
+without a rebuild?* That is answerable the first time a sensor readout exists
+on the C5 and somebody wants to add a second sensor. If the answer is that
+reflashing is fine because the panel changes once a month, it stays unshipped
+and §1 of its own sketch is the reason it was never on the wire anyway.
 
 ## 5. What is explicitly *not* on this map
 
@@ -156,8 +233,11 @@ ruled out with a reason and none should arrive by drift:
 
 - **A grid that computes cells.** D3 allows a 2×2 when it comes; the caller
   places areas today and §5c says that is composition's answer.
+- **A focus model and `activate`** — D9, settled rather than deferred: the C5
+  panel is write-only and the P4 points. This was the live candidate and it is
+  now closed.
 - **Nesting a stack in a stack**, scrolling, gestures, multiple contacts,
-  retained state, a focus model *if G1 says no*.
+  retained state.
 - **A second renderer, ever** — D2, and now gated byte-for-byte by D8.
 - **Anything RV-9's window cannot draw**: font families, rotated text, opacity,
   gradients, CSS. §2.4.
@@ -171,7 +251,7 @@ behind it, the way §5c and §5d were chosen — not an addition to this list.
 
 | | ours | RV-9's | gBASIC's |
 |---|---|---|---|
-| G1 | the focus iteration, if it happens | what the C5 panel is *for* | — |
+| ~~G1~~ | ~~the focus iteration~~ — closed, D9 | answered: a write-only panel | — |
 | G2 | the programs that get measured | the board, the driver, `R` | — |
 | G3 | a stable seam, and the binding if asked | — | the adoption decision |
 
@@ -183,12 +263,12 @@ rasteriser's stack depth `R`, which is not a constant and is not `pic`'s 2,080
 
 ## 7. The order, and why it is this order
 
-**G1, then G2, then G3** — but only G2 and G3 are genuinely sequential.
+**G1 is closed. G2, then G3**, and those two are genuinely sequential.
 
-G1 is first because it is a *question*, costs nothing to answer, and decides
-whether there is one more iteration or none. Asking it late would mean either
-building a focus model nobody wanted or discovering at G3 that the C5 was never
-really served.
+G1 was first because it was a *question*, cost nothing to answer, and decided
+whether there was one more iteration or none. It was worth asking before
+building: the answer was *none*, and a focus model would have been a whole
+iteration built for a panel with no controls on it.
 
 G2 cannot start early and should not be rushed when it does: the P4 is the only
 source of four numbers this project has been reasoning *about* rather than

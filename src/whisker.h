@@ -73,8 +73,8 @@
  *                       hit/rows/compose the caller names, since those
  *                       drop by linkage rather than by macro. Note that
  *                       `hit` assumes a pointing device and the C5 has
- *                       none (§2.6): what a /gpio host needs is a focus
- *                       traversal, which is not built (roadmap.md G1).
+ *                       none (§2.6) -- its panel is write-only, so there
+ *                       is no focus traversal and there will not be (D9).
  *     -DWSK_NO_FIELD    drop the text field       (364 bytes)
  *     -DWSK_NO_MARKS    drop the corner marks     (288 bytes)
  *
