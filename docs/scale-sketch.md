@@ -125,10 +125,20 @@ rung — which is §1's principle applied to overflow:
    can scale and cannot scroll; a touch surface can scroll and cannot scale past
    the finger. Neither needs the other's rung.
 
-   **The legibility floor is still unset.** The ink's peak intensity holds to
-   font 10 and falls off at 8, which is a signal; but legibility is physical and
-   wants the `finger_size/` treatment — drawn at matched physical size, judged
-   by a person. That is the open item of this section.
+   **The legibility floor is still unset, and the instrument for it is built.**
+   The ink's peak intensity holds to font 10 and falls off at 8, which says
+   where the *renderer* struggles rather than where a person stops reading. And
+   `finger_size/`'s trick — matched physical size on a monitor you have — does
+   **not** transfer to type: that monitor has 41 % of the C5's pixel pitch, so a
+   font-10 cell is 4.1 pixels there and would read as a smudge, setting the
+   floor two sizes too high. A touch target survives a coarser pitch because it
+   is a shape; type is the detail the pitch carries.
+
+   So it is answered on the glass: `src/module_font.c`, staged as **`wfont`**.
+   `wfont > /w0` draws the same string at seven sizes, each carrying its own
+   number, and the smallest row that can be read is the floor. **That is a
+   question for a person and the board, and it is the open item of this
+   section.**
 3. **Then the environment decides:**
    - **input available → scroll.** Up/down and left/right — **in discrete
      jumps, one item or one page per input event, never as an animation.**

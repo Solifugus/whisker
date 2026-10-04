@@ -398,8 +398,18 @@ that is *available*:
 string at font 24 down to 6 and reports the brightest pixel the ink reached, of
 63: it holds at 59–63 down to font 10 and falls to 45 at font 8, so there is a
 cliff where strokes stop reaching full intensity and start averaging into the
-background. That is a *signal*, not an answer — legibility is physical, and a
-PPM looked at on a development monitor is at whatever magnification that monitor
-happens to give. `finger_size/` had exactly this problem and solved it by
-drawing at matched **physical** size on a screen you do have. The font floor
-wants the same treatment and a person.
+background. That is a *signal* — it says where the renderer struggles, not where
+a person stops reading.
+
+**And `finger_size/`'s trick does not work for type**, which was tried before it
+was dismissed. That card draws at matched **physical** size on a monitor you
+have; the monitor is 4.0 px/mm against the C5's 9.7, so it has **41 %** of the
+pitch, and a font-10 cell — 1.03 mm — is **4.1 monitor pixels**. It would show a
+smudge and the floor would come out two sizes too high. The trick works for a
+touch target because a target is a *shape* and loses nothing to a coarser pitch.
+Type is the fine detail that pitch carries.
+
+So the floor has to be found **on the glass**, and that is `src/module_font.c`,
+staged in RV-9's tree as `wfont`: seven rows, the same string at font 24 down to
+8, each carrying its own size, so a row whose number you cannot read is below
+your floor by definition. 433 bytes, draws once, exits.

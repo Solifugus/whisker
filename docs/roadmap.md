@@ -104,6 +104,12 @@ board that is already on the desk, and it is asked for in
 `rv9-ask-2026-10-03.md`. Only the P4's own figure — 75 bands against 22, and
 pixels in PSRAM — has to wait.
 
+**And one new one that the C5 can answer today:** the legibility floor for
+scaled text (`scale-sketch.md` §4 rung 2). `wfont` is staged for it — seven font
+sizes on the glass, read from where you would really read it. It needed the
+board rather than the P4, and it needed it because a development monitor has
+41 % of that panel's pixel pitch and would set the floor two sizes too high.
+
 **2. Touch slop — genuinely blocked, and the only one.** Centroid scatter is a
 property of a capacitive surface; a mouse has none and neither does a
 synthetic point. What *can* be done first is write the measurement, so board
