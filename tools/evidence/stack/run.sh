@@ -39,7 +39,7 @@ for S in "${SITES[@]}"; do PUT+=("$S=to_path,to_buf"); done
 OUT=(rv9_module_entry= to_path= to_buf= flush= report= clip_rows.isra.0=
      m_say.constprop.0.isra.0=)
 
-build () { ( cd "$W" && "$CC9" "${FLAGS[@]}" -w -fstack-usage -c -o "$1.o" "$2" ); }
+build () { ( cd "$W" && "$CC9" "${FLAGS[@]}" "${@:3}" -w -fstack-usage -c -o "$1.o" "$2" ); }
 depth () {
 	local n="$1"; shift
 	python3 "$HERE/depth.py" "$W/$n.o" "$W/$n.su" "$OBJDUMP" "$NM" \
@@ -48,14 +48,37 @@ depth () {
 }
 bytes () { depth "$@" | sed -n 's/.* \([0-9]\+\) bytes.*/\1/p' | head -1; }
 
+# Can this program emit a <path>? It matters more than it looks: RV-9's
+# renderer enters do_path and rv9_raster_fill_n only for a path, and that is a
+# 624-byte frame -- worth about a kilobyte of declared stack between two real
+# programs (wflick 7168, wstat 6144, bisected on the board 2026-10-03).
+#
+# Asked of the object rather than of the source, because -Os inlines wsk__marks
+# away and leaves no symbol to look for. The string literal survives: if the
+# program can emit a path, `<path d=` is in its rodata.
+paths () {
+	if strings -a "$W/$1.o" | grep -q '<path d='; then
+		echo "CAN emit <path> -- the renderer's deep frame is reachable"
+	else
+		echo "no <path> in it at all -- that frame is unreachable"
+	fi
+}
+
 echo "== 1. whisker's own frames: the deepest path through each module"
 echo
-for M in module_shape module_compose module_input; do
+for M in module_shape module_compose module_input module_stat; do
 	build "$M" "$SRC/$M.c"
 	echo "src/$M.c"
 	depth "$M"
+	echo "      $(paths "$M")"
 	echo
 done
+echo "   Corner marks are the ONLY <path> whisker emits -- one site in"
+echo "   whisker.h, in wsk__marks -- so -DWSK_NO_MARKS turns \"this document"
+echo "   happens to contain no path\" into a property of the binary:"
+build min_shape "$SRC/module_shape.c" -DWSK_MINIMAL
+echo "      module_shape.c -DWSK_MINIMAL: $(paths min_shape)"
+echo
 
 echo "== 2. the question: streaming or buffering?"
 echo

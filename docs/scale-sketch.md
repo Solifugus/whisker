@@ -159,9 +159,31 @@ And what the **author** chooses, rather than the program:
 
 ## 7. Physical units — unblocked, 2026-10-03
 
-**RV-9 is making screen drivers report pixel *and* physical size**, where the
-physical size is hard set. That was the one thing in this sketch blocked on
-somebody else, and it is no longer blocked.
+**Landed in RV-9 on 2026-10-03**, as `getstat(RV9_GS_PHYSICAL)` →
+`rv9_physical_t`. That was the one thing in this sketch blocked on somebody
+else.
+
+```c
+typedef struct __attribute__((packed)) {
+    uint32_t width_px, height_px;   /* drawable area, current rotation */
+    uint32_t width_um, height_um;   /* 0 unless kind says otherwise */
+    uint8_t  kind;                  /* UNKNOWN | FIXED | VARIABLE */
+    uint8_t  reserved[3];
+} rv9_physical_t;
+```
+
+All four things this section asked for are in it, and `kind` is better than
+what was asked: three-way rather than a flag, separating **UNKNOWN** — *"knows
+the question, has no answer today"* — from a device with no opinion at all,
+which answers `RV9_IO_ERR_UNSUPPORTED`. A caller treats both as "work in
+pixels". **VARIABLE** is for a projector, whose image is a real size that stops
+being true when somebody moves the table — a case this sketch did not think of,
+and the reason a cached answer would be *quietly* wrong rather than loudly so.
+
+Their header also records why it cannot come from the hardware: no EDID over
+SPI or MIPI-DSI, and the ST7789 does not know its own active area — the C5's
+172-wide glass is a window into a 240-wide controller. **It is board knowledge,
+so the board declares it.**
 
 It does not, however, mean "declare everything in millimetres and one
 description fits all". Worked through with both panels' real geometry
@@ -200,27 +222,13 @@ division of labour again. (`design.md` already reasons this way in one place —
 the corner-mark table quotes 9.4′ and 13.7′ — so the arithmetic has precedent
 here, it has just never been computable before.)
 
-### What whisker would want from that getstat
+### What is left, which is whisker's own side
 
-Offered now, while it is cheap to get right and there is no caller yet — which
-is exactly the position the `SRC_MAX` and `MAX_CONTOURS` limits getstat was in:
-
-1. **Both dimensions**, not a diagonal. A diagonal plus an aspect ratio is a
-   reconstruction, and it assumes square pixels.
-2. **A distinct "unknown"**, because the size is only hard set *sometimes*. It
-   must be tellable apart from a real zero so whisker can fall back and say so
-   rather than compute nonsense from it. This is `RV9_GS_SIZE` not being able
-   to answer *"is this a window"* over again, and it cost three modules a
-   silent bug.
-3. **Integers, in micrometres**, since a module has no floats and no 64-bit
-   division. `uint32` micrometres reaches 4.3 m.
-4. **In the same record as the pixel size**, so a caller gets a consistent pair
-   from one call — the argument `RV9_SVG_GS_LIMITS` already settled by
-   reporting all four ceilings together.
-
-**And whisker must work when it is absent**, which it will be on some hosts
-forever. A size in millimetres on a device that cannot say how big it is should
-fall back to a declared nominal and **report that it did**, not guess quietly.
+**whisker must work when physical size is absent**, which it will be on some
+hosts forever. A size in millimetres on a device that cannot say how big it is
+should fall back to a declared nominal and **report that it did**, not guess
+quietly. Nothing in whisker reads this getstat yet, and nothing should until
+§1's units question is ratified.
 
 ## 8. What this is not
 

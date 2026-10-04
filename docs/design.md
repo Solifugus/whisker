@@ -868,8 +868,41 @@ that runs later on its own thread — passes a buffering sink and whisker never
 knows. What the measurement settles is which sink an RV-9 *module* should pass.
 Had it come out the other way it would still have settled only that.
 
-**What is not whisker's, and is worth knowing before writing anything that
-draws:** R itself. `pic`'s figure of 2,080 bytes is the only one written down
+**What R actually depends on — answered 2026-10-03, by being wrong about it.**
+`wstat` was staged with a declared stack of 8,192, reasoned from its call graph
+plus `wflick`'s board figure: *"a minimum somewhere near 6,432"*. RV-9 bisected
+it. **It runs at 5,120**, and is declared at 6,144 — *less* than `wflick`'s
+7,168, despite `wstat` having the **deeper module chain** of the two (880 bytes
+against 592).
+
+The reason is the one that matters:
+
+> **The renderer's depth depends on what the DOCUMENT contains, not on the
+> program.** `wflick` draws corner marks, so it reaches `do_path` and
+> `rv9_raster_fill_n` — a **624-byte frame** on its own. `wstat`'s readout has
+> no paths in it at all.
+
+So the rule, and it is not the obvious one: **measure the stack with the
+richest document the program can emit**, not with a typical one or with
+another program's. A figure measured against one document does not transfer to
+another even on the same board.
+
+**And whisker's case is unusually clean.** `<path>` appears **exactly once** in
+`whisker.h` — in `wsk__marks`. Corner marks are the only path whisker can
+emit; everything else is `<rect>`, `<text>` and `<g>`. Two consequences:
+
+- A program that never sets `WSK_MARK_CORNERS` never reaches the path
+  renderer, and the measured difference between the two board figures is
+  **about a kilobyte of declared stack**.
+- **`-DWSK_NO_MARKS` makes that a guarantee rather than a habit** (§7). A build
+  without marks *cannot* emit a path, so its lower stack requirement is a
+  property of the binary rather than of the document it happens to produce
+  today. That is a much better argument for the minimal profile than the 288
+  bytes of code it was sold on — **stack is the scarcer thing**, and this buys
+  roughly four times as much of it as the code saving.
+
+**What is still not whisker's, and is worth knowing before writing anything
+that draws:** R itself. `pic`'s figure of 2,080 bytes is the only one written down
 anywhere, so it is the one a whisker program would reach for, and it is **not
 an upper bound**. Against RV-9's board bisections, a whisker document costs the
 rasteriser **at least 4,528 bytes** — more than twice that — and R differs by
@@ -1311,6 +1344,15 @@ label and two buttons, written to `/w0` once — and prices what it carries:
 | `-DWSK_NO_MARKS` | 2,984 | 288 |
 | `-DWSK_NO_FIELD` | 2,908 | 364 |
 | `-DWSK_MINIMAL`, both | **2,604** | **668 — 20 %** |
+
+**`-DWSK_NO_MARKS` buys something larger than its 288 bytes, found on
+2026-10-03.** Corner marks are the only `<path>` whisker emits, and a document
+containing a path costs RV-9's renderer a 624-byte frame it otherwise never
+enters — worth about **a kilobyte of declared stack** between two real
+programs. Compiling marks out turns "this document happens to have no path" into
+a property of the binary. See §5's note on the writer's stack. **Stack is the
+scarcer resource of the two**, so for a host that does not need a pressed-button
+mark this is the profile's main benefit rather than a side effect.
 
 That program draws no field and marks nothing, and carried both anyway.
 

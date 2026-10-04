@@ -213,6 +213,12 @@ the last three compiles to a table of absolute addresses and breaks position
 independence, which `tools/build_modules.sh` *proves* by linking each module
 twice at different bases and comparing the bytes.
 
+**Staging a module in RV-9's tree? Its `build.conf` device list is
+SPACE-separated.** `devices="/w0,/tsens"` is one device name with a comma in
+it, and `wstat` was refused at fork for needing a device no machine has —
+correctly, and with an exact message. Guessing a separator from a
+one-element example (`devices="/w0"`) is what caused it.
+
 **A widget dispatch table is the natural design here and is exactly what that
 build refuses.** RV-9 hit this twice; the second time cost a working module a
 rewrite. Iteration 1's done-criteria include compiling under those flags, so the

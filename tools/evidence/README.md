@@ -176,7 +176,28 @@ whisker's own SDL host — buffers by passing a different sink, and none of the
 arithmetic above applies to it. Section 1's figures are the host-neutral part,
 because they are whisker's own frames and nothing else.
 
-**And R is the part nobody has measured.** `modules/pic`'s figure of 2,080 is
+**R is a function of the DOCUMENT, and now we know which part.** RV-9 bisected
+`wstat` on the board on 2026-10-03: it runs at **5,120** and is declared at
+6,144 — *less* than `wflick`'s 7,168, although `wstat` has the **deeper module
+chain** of the two (880 against 592). The difference is that `wflick` draws
+corner marks, so its document contains a `<path>` and the renderer enters
+`do_path` and `rv9_raster_fill_n` — **a 624-byte frame on its own**. `wstat`'s
+readout has no path in it.
+
+So section 1 also reports, per module, **whether the program can emit a path at
+all** — asked of the object rather than the source, because `-Os` inlines
+`wsk__marks` away and leaves no symbol, while the `<path d=` literal survives in
+rodata.
+
+That check earns its place by showing the distinction that matters:
+`module_stat.c` **can** emit a path even though the document it actually
+produces never does, because marks are compiled in and simply unused. Built
+`-DWSK_MINIMAL` it cannot. **That is what makes a stack figure durable rather
+than merely current** — with marks compiled in, "the richest document this
+program can emit" and "the document it does emit" are different things, and the
+bisection only measured the second.
+
+**And R's absolute size is still the part nobody has measured.** `modules/pic`'s figure of 2,080 is
 the only one written down, so it is the one a whisker program would reach for,
 and against RV-9's board bisections a whisker document costs the rasteriser **at
 least 4,528** — with at least 1,232 bytes between two different documents. So
