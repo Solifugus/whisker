@@ -114,9 +114,16 @@ written against them"* (§6) now has a specific reader — Studio's
 - Studio on whisker is **not** the next thing, and should not become the next
   thing. §6's bar is use, and the C5 readout (`wstat`) is the first real use
   and is a day old.
-- Of the four gaps, **scrolling is the one to price first**, because the other
-  three need it and because it is the one that interacts with the band model
-  rather than sitting on top of it.
+- Of the four gaps, **scrolling was the one to price first**, because the other
+  three need it and because it interacts with the band model rather than
+  sitting on top of it. **Priced 2026-10-04** (`tools/evidence/scroll/`), and
+  the answer is usable: a scroll is already expressible with today's whisker,
+  list *length* is free because only the visible rows are emitted, but a scroll
+  step damages the whole viewport — **35 ms on the C5 and 425 ms on the P4**
+  against the 19 ms a finger waits. So **discrete jumps per input event, never
+  an animation**, and the only lever is the size of the scrolling region, which
+  is linear. A multi-pane layout is cheaper than one scrolling screen, which
+  suits Studio, which already is one.
 - A text editor is a project, not an iteration. It is worth asking whether
   Studio-on-whisker needs one at all before it needs a *viewer* — five of
   Studio's seven modes are headless, and a read-only Studio on a touch panel is

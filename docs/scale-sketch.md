@@ -103,7 +103,13 @@ rung — which is §1's principle applied to overflow:
    *present but unusable*, which is exactly what a 36-key keyboard on the C5
    already is at 4 × 4.8 mm per key.
 3. **Then the environment decides:**
-   - **input available → scroll.** Up/down and left/right.
+   - **input available → scroll.** Up/down and left/right — **in discrete
+     jumps, one item or one page per input event, never as an animation.**
+     Priced 2026-10-04: a scroll step damages the whole viewport, 35 ms on the
+     C5 and 425 ms on the P4 against a 19 ms budget, and the only lever is the
+     size of the scrolling region (`tools/evidence/scroll/`). Smooth scrolling
+     is not a thing to optimise later; it is ruled out by a window that
+     re-parses its document once per band.
    - **no input → promote and rotate** (§5).
    - **neither acceptable → refuse, naming the widget that did not fit**,
      rather than hiding it silently. Same instinct as refusing an over-budget

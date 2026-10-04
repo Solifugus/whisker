@@ -288,3 +288,71 @@ Two things the pictures caught that the numbers did not:
   *darker* than the default background so a field reads as a well — move one
   without the other and the contrast goes. The byte counts were identical
   either way. It uses the shipped palette now.
+
+## `scroll/`
+
+What does a scroll cost against the band model?
+
+```
+./run.sh              the C5's panel
+./run.sh 1024 600     the P4's
+```
+
+`studio-gap.md` §5 says this is the first of the four Studio capabilities to
+price, because the other three need it and because it is the one that interacts
+with the band model rather than sitting on top of it. No board: bytes come from
+the emitter, bands from RV-9's own rasteriser built natively, milliseconds are
+**derived** from the board figures in `design.md` §2.2 and marked as such.
+
+**Nothing in whisker changed to run it.** A scroll is already expressible —
+put the stack's area at `y = -offset` with its full content height and clip the
+document to the viewport. `wsk_part` skips every widget that misses those rows,
+so what is scrolled off either end is simply not emitted. The question was never
+*can* whisker scroll.
+
+**1. Bytes track the viewport, not the content.** A 200-item list in a 6-item
+viewport emits the same 369 bytes as a 10-item one. So list length is free and
+`SRC_MAX` is not the constraint on a long list.
+
+**2. A scroll step damages the whole viewport**, which an in-place update does
+not:
+
+| | C5, bands of 22 | P4, bands of 75 |
+|---|---|---|
+| one value changing in place | **2** | **2** |
+| one scroll step | 14 | 50 |
+| the whole panel | 22 | 75 |
+
+**3. Which in time is the finding:**
+
+| | C5 | P4 |
+|---|---|---|
+| one value in place | 5 ms | 17 ms |
+| **one scroll step** | **35 ms** | **425 ms** |
+| the whole panel | 55 ms | 637 ms |
+
+Against the 19 ms a finger waits, a scroll step is **1.8×** the budget on the
+C5 and **22×** on the P4.
+
+**So: scroll in discrete jumps driven by an input event — one item or one page
+— and never as an animation.** A smooth pixel scroll needs a frame every 16 ms
+and one frame costs 35 ms at best. This is not a thing to optimise later; it is
+a property of a window that re-parses the document once per band.
+
+**4. And the only lever is the size of the scrolling region**, which is linear:
+
+| viewport | C5 | P4 |
+|---|---|---|
+| full screen | 35 ms | 391 ms |
+| half | 17 ms | 204 ms |
+| quarter | 10 ms | 102 ms |
+
+Convenient for the Studio direction: a multi-pane layout is **cheaper** than one
+scrolling screen, and Studio already is multi-pane.
+
+One thing the harness got wrong first, worth keeping. It set `d.y0/d.y1` — what
+whisker *emits* — and not `RV9_SVG_SS_ROWS`, what the window *paints*. A clipped
+document written without the setstat is painted across the whole screen, so
+everything outside it goes to the device background. That is the defect §2.2
+records `flick` shipping for months, reproduced by accident within the hour, and
+it reported a one-row text change as dirtying 20 bands of 22 rather than 2.
