@@ -52,10 +52,15 @@ Settled in conversation, and the reason the rest of this is coherent:
 
 Options are how a toolkit becomes the thing you were disappointed by. So:
 
-1. **Every option has a default chosen by a measurement**, not by taste.
-   Precedent exists: a button is 64 rows because `tools/evidence/finger_size/`
-   measured 9 mm as comfortable, and `size` overrides it when your case
-   differs.
+1. **Options with sane defaults** — Matthew's phrase, and in this project
+   "sane" can usually be stronger than that: **measured**. Precedent exists —
+   a button is 64 rows because `tools/evidence/finger_size/` measured 9 mm as
+   comfortable, and `size` overrides it when your case differs.
+
+   Where a default *cannot* be measured it is taste, and **it must be labelled
+   as taste** so a later reader knows which kind it is. A default nobody can
+   justify is the thing that quietly becomes a constant nobody dares change —
+   `MAX_CONTOURS` was 16 for exactly that reason, and it cost a keyboard.
 2. **whisker must do something sensible when told nothing at all.** That is a
    testable property, and it gets the control this project's evidence standard
    demands: the same panel, no hints, must still render.
