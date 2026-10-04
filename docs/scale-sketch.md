@@ -157,21 +157,70 @@ And what the **author** chooses, rather than the program:
 - justify and align
 - whether sizes are pixels or physical (§7)
 
-## 7. The open question: physical units
+## 7. Physical units — unblocked, 2026-10-03
 
-A 64-pixel button is **9.6 mm on the P4** and **6.6 mm on the C5**, because the
-panels are 170 and 247 PPI. `finger_size/` measured 9 mm as comfortable, and
-then the constant encoding it is in pixels — so **the same declaration is not
-the same interface on the two boards today**.
+**RV-9 is making screen drivers report pixel *and* physical size**, where the
+physical size is hard set. That was the one thing in this sketch blocked on
+somebody else, and it is no longer blocked.
 
-If "one description, every surface" is to be literally true in the unit that
-matters, sizes want to be expressible in millimetres or finger-units with the
-renderer computing pixels. SVG's `viewBox` is already the machinery for
-separating geometry from device.
+It does not, however, mean "declare everything in millimetres and one
+description fits all". Worked through with both panels' real geometry
+(`tools/evidence/finger_size/` has the PPI arithmetic; the viewing distances
+below are **assumptions**, marked as such, not measurements):
 
-**Undecided.** It needs the PPI of the target, which whisker does not receive
-and `/w0` may not report — a question for RV-9 before it is a question for
-whisker.
+| | ESP32-C5 | ESP32-P4 |
+|---|---|---|
+| panel | 320×172 px, 247 PPI, **33 × 18 mm** | 1024×600 px, 170 PPI, **153 × 90 mm** |
+| a 64 px button | 6.6 mm — 37 % of panel height | 9.6 mm — 11 % |
+| **a 9 mm touch target** | **88 px — 51 % of the panel** | 60 px — 10 % |
+| a 24 px font cell | 2.5 mm ≈ 21′ at 400 mm | 3.6 mm ≈ 35′ at 350 mm |
+
+**Two things fall out, and the first is the useful one.**
+
+**The right physical constant depends on what the surface is *for*.** A
+finger-sized target on the C5 is **half the screen**. That is not a layout to
+be tuned, it is a category error: the C5 has no touch (D9), so finger-sizing is
+meaningless there *and* absurd. What a monitoring display needs is a **legible
+glyph**, not a touchable target. So:
+
+- a **touch** surface sizes controls by the finger — 9 mm, measured
+- a **display-only** surface sizes text by legibility, and the control size is
+  whatever reads well
+
+Which means physical units do not collapse the three surfaces into one
+constant. They let each surface be sized by **the constraint that actually
+binds it** — and that is the same shape as the rest of this document.
+
+**And a font declared in pixels is not the same font.** The identical 24 px
+cell is ≈21′ on the C5 and ≈35′ on the P4 — 1.7× apparent size. If "one
+description, every surface" is to be true for *text*, size wants to be angular,
+which needs a viewing distance. whisker cannot know that; the **author** can
+say it, or the host can declare it as a property of the installation. §2's
+division of labour again. (`design.md` already reasons this way in one place —
+the corner-mark table quotes 9.4′ and 13.7′ — so the arithmetic has precedent
+here, it has just never been computable before.)
+
+### What whisker would want from that getstat
+
+Offered now, while it is cheap to get right and there is no caller yet — which
+is exactly the position the `SRC_MAX` and `MAX_CONTOURS` limits getstat was in:
+
+1. **Both dimensions**, not a diagonal. A diagonal plus an aspect ratio is a
+   reconstruction, and it assumes square pixels.
+2. **A distinct "unknown"**, because the size is only hard set *sometimes*. It
+   must be tellable apart from a real zero so whisker can fall back and say so
+   rather than compute nonsense from it. This is `RV9_GS_SIZE` not being able
+   to answer *"is this a window"* over again, and it cost three modules a
+   silent bug.
+3. **Integers, in micrometres**, since a module has no floats and no 64-bit
+   division. `uint32` micrometres reaches 4.3 m.
+4. **In the same record as the pixel size**, so a caller gets a consistent pair
+   from one call — the argument `RV9_SVG_GS_LIMITS` already settled by
+   reporting all four ceilings together.
+
+**And whisker must work when it is absent**, which it will be on some hosts
+forever. A size in millimetres on a device that cannot say how big it is should
+fall back to a declared nominal and **report that it did**, not guess quietly.
 
 ## 8. What this is not
 
