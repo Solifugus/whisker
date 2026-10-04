@@ -413,3 +413,48 @@ So the floor has to be found **on the glass**, and that is `src/module_font.c`,
 staged in RV-9's tree as `wfont`: seven rows, the same string at font 24 down to
 8, each carrying its own size, so a row whose number you cannot read is below
 your floor by definition. 433 bytes, draws once, exits.
+
+## `tap/`
+
+Of a tap, how much is whisker?
+
+```
+./run.sh              the C5's panel
+./run.sh 1024 600     the P4's
+```
+
+`design.md` §2.2 says *"no tap has ever been measured end to end"*, and the
+roadmap filed that under the P4. Most of it never needed the P4: the chain is
+*sensor → driver → hit → rows → setstat → render → rasterise → blit*, and only
+the first two links belong to a touch panel. Everything from "a point arrives"
+to "pixels changed" runs here with a synthetic point.
+
+| stage, one press | C5 | P4 |
+|---|---|---|
+| `hit` — a point becomes a name | 0.0 % | 0.0 % |
+| `rows` — a name becomes a band range | 0.0 % | 0.0 % |
+| `emit` — whisker writes the document | 0.7 % | 0.2 % |
+| **parse + rasterise — the window** | **99.2 %** | **99.7 %** |
+
+**whisker is under 1 % of a press.** Absolute microseconds on a development
+machine are not a 240 MHz core's, and the programme says so — what transfers is
+the *share*, because both halves are integer code doing the same work on either
+machine.
+
+**So whisker's cost is the document it writes, not the code that writes it.**
+Terseness matters because *parsing* is expensive and is paid once per band, not
+because emitting is. Optimising the emitter would be optimising 0.7 %.
+
+That also closes out the `wflick` vs `flick` gap without needing another board
+run: 32 ms over 8 bands is 4.0 ms a band, 19 ms over 6 is 3.2, and the
+difference per band is the 342 bytes re-parsed against 146. None of it is
+whisker executing.
+
+The blit is excluded deliberately — here it is a memcpy into an array, on the
+board it is SPI DMA to glass. Including it would import a number that means
+nothing off the panel.
+
+One harness bug worth keeping: the first run reported `hit` at **0.00 µs**,
+because with `-O2` and a result nobody reads the compiler is entitled to delete
+the loop. The timed results go into `volatile` sinks now. A benchmark of nothing
+reports excellent performance.

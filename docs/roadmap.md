@@ -89,7 +89,13 @@ screen *filled* with a column of buttons never binds at all. What binds is
 `tools/evidence/p4_panel/`, and §2.3 is corrected. This was always pure
 arithmetic on whisker's output; it waited on nothing but being asked.
 
-**1. Finger-down to pixel-changed — half of it needs no board.** The chain is
+**1. Finger-down to pixel-changed — ✅ the software half is measured, 2026-10-04.**
+`tools/evidence/tap/` times every link from "a point arrives" to "pixels
+changed": whisker is **under 1 %** of a press and the window is the other 99 %.
+What is left for the P4 is only *sensor → driver*, which is one subtraction
+rather than an investigation. The original note follows.
+
+**1a. Why it did not need the board.** The chain is
 *sensor → driver → `hit` → `rows` → setstat → render → rasterise → blit*, and
 only the first two links are the panel's. Everything from "a point arrives" to
 "pixels changed" is measurable on the C5 and on Linux today, with a synthetic

@@ -145,6 +145,21 @@ measured with `tools/hosttest/scale.c` and on the C5 at 320×172:
   height; what whisker must not do is make 48 the default because it measures
   better.
 
+  **And of that, almost none is whisker.** Measured 2026-10-04
+  (`tools/evidence/profiles/`… `tools/evidence/tap/`): of the work one press
+  causes, `hit` and `rows` are immeasurably small, whisker's emitter is **0.7 %**
+  at 320×172 and **0.2 %** at 1024×600, and the window's parse-and-rasterise is
+  the other **99 %**. The absolute microseconds are a development machine's and
+  are not quoted; the share is what transfers, since both halves are integer
+  code doing the same work either side.
+
+  **So whisker's cost is the document it writes, not the code that writes it.**
+  Terseness is a frame-budget requirement because *parsing* is paid once per
+  band — not because emitting is slow. This also settles the `wflick`/`flick`
+  gap above without another board run: 32 ms over 8 bands is 4.0 ms a band
+  against `flick`'s 3.2 over 6, and the per-band difference is 342 bytes
+  re-parsed against 146. None of it is whisker executing.
+
   **Read `modules/flick/flick.c` before quoting this.** It times *three draws*,
   not an input round trip: the whole window, then the button's rows in a pressed
   colour, then the button's rows back to normal. Its own header says *"2 and 3
