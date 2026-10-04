@@ -373,13 +373,22 @@ and asks whether the ladder earns its complexity at all.
 **It does on a display, and not on a touch surface — and the inversion is the
 finding.**
 
-| a readout of 32-row items | C5 | P4 |
+**The floors are measured.** Matthew read them off the real C5 panel on
+2026-10-04 with `wfont > /w0`: **readable down to font 8, comfortable from
+about 16–20**. Two numbers rather than one, which is the same shape
+`finger_size/` found for targets — a thing you *can* hit and a thing that is
+pleasant to hit are different sizes.
+
+| a readout of 32-row items, C5 | fit | |
 |---|---|---|
-| as laid out (pad 8, gap 8) | 4 | 14 |
-| 1. compressed (pad 0, gap 0) | 5 | 18 |
-| 2. scaled to font 16 | 7 | 25 |
-| 2. scaled to font 12 | **9** | **33** |
-| | **+125 %** | **+135 %** |
+| as laid out (pad 8, gap 8) | 4 | |
+| 1. compressed (pad 0, gap 0) | 5 | +1 |
+| 2. scaled to **comfort** (font 16) | 7 | **+75 %** |
+| 2. scaled to **readable** (font 8) | 14 | +250 % |
+
+**So the ladder is worth +75 % respecting comfort**, not the +125 % this file
+reported before the floor was known — that figure scaled to font 12, which is
+below comfort. The +250 % is available in an emergency and is not a design.
 
 But **for a touch surface the floor is the finger, not the pixels.** 9 mm is 88
 px on the C5 and 60 on the P4 (`finger_size/`), so a touchable list holds 1 row
@@ -409,10 +418,22 @@ smudge and the floor would come out two sizes too high. The trick works for a
 touch target because a target is a *shape* and loses nothing to a coarser pitch.
 Type is the fine detail that pitch carries.
 
-So the floor has to be found **on the glass**, and that is `src/module_font.c`,
-staged in RV-9's tree as `wfont`: seven rows, the same string at font 24 down to
-8, each carrying its own size, so a row whose number you cannot read is below
-your floor by definition. 433 bytes, draws once, exits.
+So the floor had to be found **on the glass**, and that is `src/module_font.c`,
+staged in RV-9's tree as `wfont`. **Answered 2026-10-04**: readable to 8,
+comfortable from 16–20.
+
+**The objective proxy was right.** Section 1's peak intensity holds to font 10
+and falls away at 8 — and 8 is exactly where reading stops. The renderer stops
+delivering full-intensity strokes at the same size the eye stops resolving them,
+which is a pleasing coincidence and a reason to trust the proxy on a panel
+nobody has yet.
+
+**And the floor is physical, so it does not transfer as a font size.** C5 font
+16 is **1.64 mm** of glass at 9.7 px/mm. The same 1.64 mm on the P4, at 6.7
+px/mm, is **font 11** — a coarser panel needs a *smaller* font number for the
+same readable size, which is the opposite of the intuition and exactly why
+`RV9_GS_PHYSICAL` matters. The C5's floor must travel to the P4 as millimetres,
+never as a number, and even then the viewing distance is a separate question.
 
 ## `tap/`
 

@@ -125,7 +125,23 @@ rung — which is §1's principle applied to overflow:
    can scale and cannot scroll; a touch surface can scroll and cannot scale past
    the finger. Neither needs the other's rung.
 
-   **The legibility floor is still unset, and the instrument for it is built.**
+   **The legibility floor is measured, 2026-10-04.** Matthew, reading `wfont`
+   on the real C5 panel: *"I can read the fonts down to 8 but comfort of reading
+   begins around 16 or 20."* So **two** floors, as `finger_size/` found for
+   targets: a hard floor at **font 8** (0.82 mm) and a comfort floor at
+   **16–20** (1.64–2.06 mm). Rung 2 scales to *comfort*; the hard floor exists
+   for an emergency and is not a design.
+
+   That recosts the rung honestly: **+75 %**, not the +125 % priced before the
+   floor was known, because that figure scaled past comfort to font 12.
+
+   **It is physical and must travel as millimetres.** C5 font 16 is 1.64 mm at
+   9.7 px/mm; the same 1.64 mm on the P4's 6.7 px/mm is **font 11**. A coarser
+   panel needs a *smaller* number for the same readable size. The P4's own
+   comfort floor is still unmeasured — the physical size transfers, the viewing
+   distance does not.
+
+   The note that found it:
    The ink's peak intensity holds to font 10 and falls off at 8, which says
    where the *renderer* struggles rather than where a person stops reading. And
    `finger_size/`'s trick — matched physical size on a monitor you have — does

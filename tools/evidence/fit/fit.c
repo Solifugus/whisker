@@ -189,30 +189,69 @@ int main(void)
 		printf("     rather than an answer.\n\n");
 	}
 
-	/* ---- 2. what the ladder buys, rung by rung ---- */
+	/* ---- 2. what the ladder buys, against the MEASURED floors ---- */
 	{
-		/* A readout row: text plus a little breathing room. */
-		const int FONT = 24, ROWH = 32, PAD = 8, GAP = 8;
-		int a = fits(ROWH, PAD, GAP);
-		int b = fits(ROWH, 0, 0);
-		int c16 = fits(16 + 8, 0, 0);
-		int c12 = fits(12 + 6, 0, 0);
+		/*
+		 * The floors are Matthew's, read off the real C5 panel on
+		 * 2026-10-04 with `wfont > /w0`: readable down to font 8,
+		 * comfortable from about 16. Two numbers, not one -- the same
+		 * shape finger_size/ found for targets, where a thing you CAN
+		 * hit and a thing that is pleasant to hit are different sizes.
+		 *
+		 * They are quoted here as font numbers because that is how they
+		 * were read, but they are PHYSICAL: font 16 on the C5 is 1.64 mm
+		 * of glass. See section 3 for why that matters and why the P4
+		 * must not inherit the number.
+		 */
+		const int COMFORT = 16, READABLE = 8;
+		const int ROWH = 32, PAD = 8, GAP = 8;
+		int a  = fits(ROWH, PAD, GAP);
+		int b  = fits(ROWH, 0, 0);
+		int cc = fits(COMFORT + 8, 0, 0);
+		int cr = fits(READABLE + 4, 0, 0);
 		int touch_px = (PW <= 320) ? 88 : 60;   /* 9 mm, from finger_size/ */
 		int tfit = fits(touch_px, PAD, GAP);
 
 		printf("  2. a readout of %d-row items: what each rung buys\n", ROWH);
-		printf("     %-34s %-6s %s\n", "rung", "fit", "");
-		printf("     %-34s %-6d %s\n", "as laid out (pad 8, gap 8)", a, "");
-		printf("     %-34s %-6d %s\n", "1. compressed (pad 0, gap 0)", b,
-		       b > a ? "+1 more" : "no gain");
-		printf("     %-34s %-6d %s\n", "2. scaled to font 16", c16, "");
-		printf("     %-34s %-6d %s\n", "2. scaled to font 12", c12, "");
-		printf("\n     so the two rungs together take %d rows to %d: %d%% more\n",
-		       a, c12, a > 0 ? (c12 - a) * 100 / a : 0);
-		printf("\n     and for a TOUCH surface the floor is different: 9 mm is\n");
-		printf("     %d px here, so a touchable list holds %d rows and compressing\n",
+		printf("     %-36s %-6s %s\n", "rung", "fit", "");
+		printf("     %-36s %-6d %s\n", "as laid out (pad 8, gap 8)", a, "");
+		printf("     %-36s %-6d %s\n", "1. compressed (pad 0, gap 0)", b,
+		       b > a ? "+1" : "no gain");
+		printf("     %-36s %-6d %+d%%\n", "2. scaled to COMFORT (font 16)", cc,
+		       a > 0 ? (cc - a) * 100 / a : 0);
+		printf("     %-36s %-6d %+d%%\n", "2. scaled to READABLE (font 8)", cr,
+		       a > 0 ? (cr - a) * 100 / a : 0);
+		printf("\n     So the ladder is worth +%d%% if comfort is respected, and\n",
+		       a > 0 ? (cc - a) * 100 / a : 0);
+		printf("     +%d%% if it is spent down to the hard floor. The second\n",
+		       a > 0 ? (cr - a) * 100 / a : 0);
+		printf("     number is available in an emergency and is not a design.\n");
+
+		printf("\n     And for a TOUCH surface the floor is different again: 9 mm\n");
+		printf("     is %d px here, so a touchable list holds %d rows and\n",
 		       touch_px, tfit);
-		printf("     cannot move it -- the floor is the finger, not the pixels.\n");
+		printf("     compressing cannot move it -- the floor is the finger.\n");
+	}
+
+	/* ---- 3. the floor is physical, so it transfers as millimetres ---- */
+	{
+		/* px per mm, from the panel's own geometry. Integer arithmetic in
+		   tenths, because this is the shape a module would have to use. */
+		int pitch10 = (PW <= 320) ? 97 : 67;    /* px per mm, x10 */
+		int comfort_um = 16 * 10000 / 97;       /* font 16 on the C5, in um */
+
+		printf("\n  3. the floor is PHYSICAL and does not transfer as a font size\n");
+		printf("     C5 font 16 is %d.%02d mm of glass, at %d.%d px/mm.\n",
+		       comfort_um / 1000, (comfort_um % 1000) / 10, 97 / 10, 97 % 10);
+		printf("     The same %d.%02d mm on THIS panel (%d.%d px/mm) is font %d.\n",
+		       comfort_um / 1000, (comfort_um % 1000) / 10,
+		       pitch10 / 10, pitch10 % 10, (comfort_um * pitch10 + 5000) / 10000);
+		printf("\n     So a panel with coarser pixels needs a SMALLER font number\n");
+		printf("     for the same readable size, which is the opposite of the\n");
+		printf("     intuition and is exactly why RV9_GS_PHYSICAL matters\n");
+		printf("     (scale-sketch.md SS7). The C5's comfort floor must not be\n");
+		printf("     copied to the P4 as a number -- only as millimetres, and\n");
+		printf("     even then the viewing distance is a different question.\n");
 	}
 
 	return 0;
