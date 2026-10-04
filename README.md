@@ -92,6 +92,9 @@ component kinds and whisker has all five.
   and measured in `tools/notation/`. Not a decision, and not the wire format.
 - `docs/gbasic-gap.md` — the distance to gBASIC's declarative `gui`, measured
   rather than argued. It is one widget, and it chose what iteration 3 would be.
+- `docs/studio-gap.md` — the distance to **gBASIC Studio**, the IDE, measured
+  the same way. 324 of its 33,878 lines touch GTK, in six files, and none use
+  the layer that could not be ported. The gap is four capabilities, not a port.
 - `docs/rv9-ask-2026-10-02.md` and `docs/rv9-answers-2026-10-02.md` — a defect
   reported to RV-9, what they did about it, and the stack finding that came
   back the other way. Question and answer kept separable, as before.

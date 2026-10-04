@@ -144,7 +144,23 @@ other two:
   against knowingly.
 
 Then gBASIC either writes the binding or keeps GTK. Both end this project's
-obligation. The groundwork is better than it looks: gBASIC's `gui` names five
+obligation.
+
+**And there is a named destination beyond it, as of 2026-10-03.** Matthew:
+*"eventually I am hoping to build a gbasic library around this and adapt the
+gbasic-studio project to it."* `docs/studio-gap.md` measures that distance
+rather than arguing it, and the headline is better than anyone had a right to
+expect: **324 of Studio's 33,878 lines touch GTK — 0.96 %, in six files — and
+none of them use `gtkui`**, the layer gBASIC's own §0.3 called unportable. Its
+domain model is already headless; the shell is mounted over it.
+
+The gap is **four capabilities**, all of which `roadmap.md` §5 currently lists
+as *not on this map*: a multi-line editor, scrolling, a table, and a tree with
+expansion. The byte objection to those is **gone** — §2.3's ceiling does not
+bind on a seven-inch panel — but that is not the same as a commitment, and
+Studio-on-whisker is not the next thing. See `studio-gap.md` §5 for the
+sequencing, of which the first line is that **scrolling is the one to price
+first**, because the other three need it. The groundwork is better than it looks: gBASIC's `gui` names five
 component kinds and whisker has all five (§7.1), and its addressability
 decision was already made *in favour of* the rule whisker uses (D4, and its
 §0.3) — so the binding is a translation, not a negotiation.
@@ -276,7 +292,13 @@ ruled out with a reason and none should arrive by drift:
   panel is write-only and the P4 points. This was the live candidate and it is
   now closed.
 - **Nesting a stack in a stack**, scrolling, gestures, multiple contacts,
-  retained state.
+  retained state, a table, a tree. **Reopened as *questions* rather than
+  refusals, 2026-10-03**, by two things arriving together: `studio-gap.md`
+  names four of them as what gBASIC Studio would need, and
+  `tools/evidence/p4_panel/` removed the byte argument against them. They are
+  still not on this map and nothing should be built from this paragraph — but
+  the reason they were off it has changed from *"unaffordable"* to *"nobody
+  has asked for them yet"*, and one caller has now half-asked.
 - **A second renderer, ever** — D2, and now gated byte-for-byte by D8.
 - **Anything RV-9's window cannot draw**: font families, rotated text, opacity,
   gradients, CSS. §2.4.
