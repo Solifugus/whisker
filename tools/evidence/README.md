@@ -356,3 +356,50 @@ document written without the setstat is painted across the whole screen, so
 everything outside it goes to the device background. That is the defect §2.2
 records `flick` shipping for months, reproduced by accident within the hour, and
 it reported a one-row text change as dirtying 20 bands of 22 rather than 2.
+
+## `fit/`
+
+What do the lower rungs of the overflow ladder buy?
+
+```
+./run.sh              the C5's panel
+./run.sh 1024 600     the P4's
+```
+
+`scale-sketch.md` §4 proposes compressing first, then scaling to a floor, and
+only then scrolling. `scroll/` priced the last rung; this prices the first two
+and asks whether the ladder earns its complexity at all.
+
+**It does on a display, and not on a touch surface — and the inversion is the
+finding.**
+
+| a readout of 32-row items | C5 | P4 |
+|---|---|---|
+| as laid out (pad 8, gap 8) | 4 | 14 |
+| 1. compressed (pad 0, gap 0) | 5 | 18 |
+| 2. scaled to font 16 | 7 | 25 |
+| 2. scaled to font 12 | **9** | **33** |
+| | **+125 %** | **+135 %** |
+
+But **for a touch surface the floor is the finger, not the pixels.** 9 mm is 88
+px on the C5 and 60 on the P4 (`finger_size/`), so a touchable list holds 1 row
+and 8 rows respectively, and compressing cannot move either. Scaling below the
+finger produces targets nobody can hit.
+
+So the rung that *helps* is decided by the same capability that decides the rung
+that is *available*:
+
+- **display-only** — scaling works and buys over twice the content; scrolling is
+  not available at all (D9). Rungs 1–2 are the whole answer.
+- **touch** — scrolling works; scaling is blocked by the finger almost
+  immediately. Rung 3 is the answer and the first two are nearly free of effect.
+
+**The legibility floor is deliberately not set here.** Section 1 draws the same
+string at font 24 down to 6 and reports the brightest pixel the ink reached, of
+63: it holds at 59–63 down to font 10 and falls to 45 at font 8, so there is a
+cliff where strokes stop reaching full intensity and start averaging into the
+background. That is a *signal*, not an answer — legibility is physical, and a
+PPM looked at on a development monitor is at whatever magnification that monitor
+happens to give. `finger_size/` had exactly this problem and solved it by
+drawing at matched **physical** size on a screen you do have. The font floor
+wants the same treatment and a person.

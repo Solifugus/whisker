@@ -106,11 +106,29 @@ The proposal is a ladder, with the **host's capabilities** choosing the last
 rung — which is §1's principle applied to overflow:
 
 1. **Compress.** Squeeze padding and gaps first. Costs no legibility, so it is
-   free and comes before anything else.
+   free and comes before anything else. **Priced 2026-10-04: worth one extra
+   row of four** on the C5 — real but small on its own.
 2. **Scale** — down to a floor that is **measured, not aesthetic**: 9 mm
    targets (`finger_size/`) and a legible glyph. Past that the interface is
    *present but unusable*, which is exactly what a 36-key keyboard on the C5
    already is at 4 × 4.8 mm per key.
+
+   **Priced together, rungs 1 and 2 are worth +125 % on the C5 and +135 % on
+   the P4** for a readout — four rows becoming nine. So the ladder earns its
+   complexity. **But only on a display**: on a touch surface the floor is the
+   *finger*, 88 px on the C5 and 60 on the P4, so a touchable list holds 1 and
+   8 rows and compressing cannot move either (`tools/evidence/fit/`).
+
+   **Which inverts neatly, and is the strongest argument yet for the ladder
+   being capability-driven:** the rung that *helps* is decided by the same
+   capability that decides the rung that is *available*. A display-only surface
+   can scale and cannot scroll; a touch surface can scroll and cannot scale past
+   the finger. Neither needs the other's rung.
+
+   **The legibility floor is still unset.** The ink's peak intensity holds to
+   font 10 and falls off at 8, which is a signal; but legibility is physical and
+   wants the `finger_size/` treatment — drawn at matched physical size, judged
+   by a person. That is the open item of this section.
 3. **Then the environment decides:**
    - **input available → scroll.** Up/down and left/right — **in discrete
      jumps, one item or one page per input event, never as an animation.**
