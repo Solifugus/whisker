@@ -802,6 +802,46 @@ caller make it badly. (`rv9-answers.md` §3.3.)
 height. Take it as a parameter rather than reading a device: whisker stays pure,
 and the host got it from `getstat(RV9_GS_SIZE)` on `/w0`.
 
+#### Justify — where the leftover space goes
+
+**Built 2026-10-04**, the first thing taken from `scale-sketch.md` and the only
+one; the rest of that sketch stays unratified. It is an extension of **D3**
+rather than a new decision: D3 settled a single-axis stack with a per-child
+weight, and this settles what happens to the surplus when **no child claims
+it**.
+
+```
+WSK_START    all of it after the last child   (the default, and what
+WSK_END      all of it before the first        whisker did before)
+WSK_CENTER   half at each end
+WSK_BETWEEN  shared between the children, none at the ends
+WSK_AROUND   shared around them, half-shares at the ends
+```
+
+**`weight` and `justify` do not compete**, and that is the one interaction
+worth stating: a stack with any weighted child has *no surplus left*, because
+the children took it, so a justify has nothing to place and does nothing. That
+is asserted with a control rather than left to be discovered.
+
+**The arithmetic is computed from the index, not accumulated**, so rounding
+cannot drift: `free * i / (n-1)` is exactly `free` at the last child whatever
+the division threw away on the way — the same care the weighted path already
+took by giving the last weighted child the remainder. Asserted: under
+`WSK_BETWEEN` the gaps it makes are *equal*, and the last child ends exactly on
+the far padding.
+
+**What it cost, measured rather than guessed.** This document twice called it
+"free" and "zero extra bytes" before it was built, and neither was quite right:
+
+- **~96 bytes of code** per module — `module_shape.c` went 3,972 → 4,068.
+- **+1 byte** in the document for the panel measured, and that is coordinate
+  digits, not markup. The assertion that holds is the one worth making:
+  **justify adds no elements**, it only moves them, which the suite checks by
+  counting `<rect>` and `<text>` under two justifies.
+
+`WSK_START` is zero, so an unset tree lays out byte for byte as it always did —
+every golden in the suite is unmoved.
+
 #### "A sink costs nothing" is wrong on one host, and the fix is the caller's
 
 **First, whose problem this is.** What follows is true of RV-9's `/w0` and of

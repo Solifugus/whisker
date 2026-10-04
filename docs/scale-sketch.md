@@ -73,7 +73,16 @@ distribution — space-between, space-around, left/top, right/bottom, center.
 Most of it exists. `WSK_COL`/`WSK_ROW` are the containers, per-child `weight`
 is flex-grow, `gap` is the gap, and the cross axis centres.
 
-**What is missing is justify, and it is cheap.** `wsk_rect` already computes
+**Justify is built, 2026-10-04** — `design.md` §5 has it, with `WSK_START` as
+the zero value so nothing already written moves. It is the only thing taken
+from this sketch; everything else below remains unratified. What it actually
+cost: **~96 bytes of code** and **+1 byte** of document, the latter being
+coordinate digits. This section previously said "zero extra bytes", which was
+reasoning rather than measurement and was wrong by one byte — the claim that
+survives is that justify adds **no elements**, only moves them.
+
+The note that led to it, kept because the reasoning was right even where the
+number was not:  `wsk_rect` already computes
 `extra = span - used`. Today it distributes that by weight and, **if no child
 has weight, throws it away** — everything packs to the start. The five
 distributions are arithmetic on a number already in hand: no new widget kinds,

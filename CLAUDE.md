@@ -42,7 +42,7 @@ while nothing is invested.
   request. Done, and it is the last widget — nothing after it has a caller
   (`gbasic-gap.md`).
 
-`src/run.sh --module` is the whole of it: **135 checks**, the pixels through
+`src/run.sh --module` is the whole of it: **154 checks**, the pixels through
 RV-9's own rasteriser, three module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 19, including the
 typing loop end to end; `--input` is the same loop with a person in it.

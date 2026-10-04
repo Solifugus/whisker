@@ -9,7 +9,7 @@ armoured robot cat; this is the part that feels where you touched.*
 `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c, §5d and §7 — **135 checks** plus the profile gate, the
+`design.md` §5, §5b, §5c, §5d and §7 — **154 checks** plus the profile gate, the
 pixels through RV-9's own rasteriser, four module builds with the double-link,
 and a person looking at the pictures. `host/linux/run.sh --test` adds **19** more.
 

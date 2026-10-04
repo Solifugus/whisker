@@ -494,6 +494,67 @@ int main(void)
 		}
 	}
 
+	/*
+	 * Justify, looked at.
+	 *
+	 * The suite asserts the arithmetic; this is the part an assertion cannot
+	 * do -- whether five ways of placing the same three boxes are actually
+	 * distinguishable on a panel this size, which is the only thing that
+	 * makes the option worth having.
+	 */
+	{
+		static wsk_widget_t cell[5][3];
+		static wsk_tree_t part[5];
+		static const char *NAME[5] = { "Sta", "End", "Cen", "Btw", "Arn" };
+		comp_t c;
+		wsk_sink_t s;
+		int m, i, n;
+
+		for (m = 0; m < 5; m++) {
+			for (i = 0; i < 3; i++) {
+				memset(&cell[m][i], 0, sizeof cell[m][i]);
+				cell[m][i].kind = WSK_BUTTON;
+				cell[m][i].size = 24;
+				cell[m][i].fill = WSK_INHERIT;
+				cell[m][i].ink = WSK_INHERIT;
+				cell[m][i].id[0] = (char)('a' + m);
+				cell[m][i].id[1] = (char)('0' + i);
+				cell[m][i].id[2] = '\0';
+				if (i == 0) {
+					int k = 0;
+					while (NAME[m][k] != '\0') { cell[m][i].text[k] = NAME[m][k]; k++; }
+					cell[m][i].text[k] = '\0';
+				}
+			}
+			wsk_init(&part[m], WSK_COL, PW, PH);
+			part[m].pad = 4; part[m].gap = 4; part[m].font = 16;
+			part[m].justify = (unsigned char)m;     /* START..AROUND, in order */
+			wsk_area(&part[m], m * (PW / 5), 0, PW / 5, PH);
+			part[m].item = cell[m]; part[m].n = 3;
+		}
+		wsk_doc_init(&c.d, &part[0]);
+		c.part = part; c.n = 5;
+		s.put = to_window; s.ctx = &dev; s.len = 0;
+		{
+			uint32_t v = 0;
+			svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		}
+		n = wsk_compose(comp_body, &c, &s, 4096);
+		ok(n > 0, "five justifies draw in one document");
+		shot("justify.ppm");
+		{
+			/* Each column's first box must start lower than the one to its
+			   left for START/CENTER/END, which is the whole visible point. */
+			wsk_rect_t a0 = wsk_rect(&part[0], 0);
+			wsk_rect_t a2 = wsk_rect(&part[2], 0);
+			wsk_rect_t a1 = wsk_rect(&part[1], 0);
+			ok(a0.y < a2.y && a2.y < a1.y,
+			   "START sits above CENTER, which sits above END");
+			printf("    first box at y: START %d, CENTER %d, END %d\n",
+			       a0.y, a2.y, a1.y);
+		}
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

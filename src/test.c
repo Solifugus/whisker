@@ -984,6 +984,107 @@ int main(void)
 		       rb, (ry1 - ry0) / 8, (ry1 - ry0) / 8);
 	}
 
+	/* ---- §7b. justify: where the leftover space goes (scale-sketch §3) ---- */
+	printf("\n-- justify\n");
+	{
+		static wsk_widget_t three[3];
+		wsk_tree_t j;
+		wsk_rect_t a, b, c;
+		int i, span, used, extra;
+
+		for (i = 0; i < 3; i++) {
+			memset(&three[i], 0, sizeof three[i]);
+			three[i].kind = WSK_LABEL;
+			three[i].size = 20;            /* fixed: nothing claims the surplus */
+			three[i].fill = WSK_INHERIT;
+			three[i].ink = WSK_INHERIT;
+			three[i].id[0] = (char)('a' + i); three[i].id[1] = '\0';
+			three[i].text[0] = (char)('A' + i); three[i].text[1] = '\0';
+		}
+		wsk_init(&j, WSK_COL, 320, 172);
+		j.pad = 4; j.gap = 4; j.item = three; j.n = 3;
+
+		span = j.ah - 2 * j.pad;
+		used = 3 * 20 + 2 * j.gap;
+		extra = span - used;
+
+		/* START is the default and is what whisker did before justify
+		   existed -- the control for every case below. */
+		ok(j.justify == WSK_START, "a tree justifies to the start unless told otherwise");
+		a = wsk_rect(&j, 0); c = wsk_rect(&j, 2);
+		ok(a.y == j.pad, "START: the first child is at the padding");
+		ok(c.y + c.h == j.pad + used,
+		   "CONTROL: and the surplus is all after the last child");
+
+		j.justify = WSK_END;
+		a = wsk_rect(&j, 0); c = wsk_rect(&j, 2);
+		ok(a.y == j.pad + extra, "END: the surplus is all before the first");
+		ok(c.y + c.h == j.ah - j.pad,
+		   "and the last child ends exactly on the far padding");
+
+		j.justify = WSK_CENTER;
+		a = wsk_rect(&j, 0); c = wsk_rect(&j, 2);
+		ok(a.y == j.pad + extra / 2, "CENTER: half the surplus leads");
+		ok((a.y - j.pad) - (j.ah - j.pad - (c.y + c.h)) <= 1 &&
+		   (j.ah - j.pad - (c.y + c.h)) - (a.y - j.pad) <= 1,
+		   "and both ends are equal to within the odd pixel");
+
+		j.justify = WSK_BETWEEN;
+		a = wsk_rect(&j, 0); b = wsk_rect(&j, 1); c = wsk_rect(&j, 2);
+		ok(a.y == j.pad, "BETWEEN: the first child is still at the padding");
+		ok(c.y + c.h == j.ah - j.pad, "the last still ends on the far padding");
+		ok((b.y - (a.y + a.h)) == ((c.y - (b.y + b.h))),
+		   "and the two gaps it made are equal -- no rounding drift");
+
+		j.justify = WSK_AROUND;
+		a = wsk_rect(&j, 0); c = wsk_rect(&j, 2);
+		ok(a.y > j.pad && a.y < j.pad + extra / 2,
+		   "AROUND: a half-share leads, less than CENTER's whole half");
+		{
+			/* The property that distinguishes AROUND from everything
+			   else: the space at the two ends is equal, and it is half
+			   what sits between the children. */
+			int lead = a.y - j.pad;
+			int trail = (j.ah - j.pad) - (c.y + c.h);
+			int mid = b.y - (a.y + a.h);
+			b = wsk_rect(&j, 1);
+			mid = b.y - (a.y + a.h) - j.gap;
+			ok(lead - trail <= 1 && trail - lead <= 1,
+			   "and the space at the two ends is equal");
+			ok(mid - 2 * lead <= 1 && 2 * lead - mid <= 1,
+			   "and each end is half of what falls between the children");
+			ok(trail > 0, "CONTROL: a trailing gap, which END and BETWEEN do not leave");
+		}
+
+		/* The interaction that could have been a bug: a weighted child
+		   eats the surplus, so there is nothing left for a justify to
+		   place and it must do nothing at all. */
+		{
+			wsk_rect_t w0, w1;
+			three[1].weight = 1;
+			j.justify = WSK_START;  w0 = wsk_rect(&j, 2);
+			j.justify = WSK_AROUND; w1 = wsk_rect(&j, 2);
+			ok(w0.y == w1.y && w0.h == w1.h,
+			   "CONTROL: with a weighted child there is no surplus, so justify does nothing");
+			three[1].weight = 0;
+		}
+
+		/* It is layout, not markup: the same elements, moved. */
+		{
+			char d0[2048], d1[2048];
+			int n0, n1;
+			j.justify = WSK_START;  n0 = render_into(&j, d0, sizeof d0, 4096);
+			j.justify = WSK_BETWEEN; n1 = render_into(&j, d1, sizeof d1, 4096);
+			ok(n0 > 0 && n1 > 0, "both justifies render");
+			ok(count(d0, "<text") == count(d1, "<text") &&
+			   count(d0, "<rect") == count(d1, "<rect"),
+			   "justify adds no elements -- it only moves them");
+			printf("    %d bytes at START, %d at BETWEEN: %+d, and that is "
+			       "coordinate digits\n", n0, n1, n1 - n0);
+		}
+		j.justify = WSK_START;
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

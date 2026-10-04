@@ -114,6 +114,23 @@ enum { WSK_LABEL = 1, WSK_BUTTON, WSK_FIELD };
 enum { WSK_COL = 1, WSK_ROW };
 
 /*
+ * Where the leftover space along the axis goes, when no child claimed it.
+ *
+ * `weight` hands the surplus to the children; this hands it to the GAPS, and
+ * the two do not compete -- a stack with any weighted child has no surplus
+ * left for a justify to place. START is zero because it is what whisker did
+ * before this existed, so an unset tree lays out byte for byte as it always
+ * did.
+ */
+enum {
+	WSK_START = 0,               /* all of it after the last child */
+	WSK_END,                     /* all of it before the first */
+	WSK_CENTER,                  /* half each end */
+	WSK_BETWEEN,                 /* shared between the children, none at the ends */
+	WSK_AROUND                   /* shared around them, half-shares at the ends */
+};
+
+/*
  * A mark on a widget, for the states a flat substrate has no other way to
  * show. No shadow, no gradient, no opacity -- §2.4 -- so a pressed button
  * changes colour, and that is one signal doing all the work. Ticks driven
@@ -208,6 +225,7 @@ typedef struct {
 	                                accent or it is a button with words in. */
 
 	unsigned char ids;           /* emit id= attributes: 1 yes, 0 no */
+	unsigned char justify;       /* WSK_START..WSK_AROUND, along the axis */
 } wsk_tree_t;
 
 typedef struct { short x, y, w, h; } wsk_rect_t;
@@ -447,6 +465,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->accent = 0x2a6b8fu;
 	t->trough = 0x081620u;
 	t->ids = 0;
+	t->justify = WSK_START;
 }
 
 /* The part of the device this stack lays out in. */
@@ -491,6 +510,26 @@ static inline int wsk__natural(const wsk_tree_t *t, int i)
  * widget costs the same in absolute terms on a large screen as on a small
  * one. A bigger screen holds more widgets rather than bigger ones.
  */
+/*
+ * How far child `idx` is pushed along the axis by the justify.
+ *
+ * Computed from idx rather than accumulated, so the rounding cannot drift:
+ * `free * i / (n-1)` is exactly `free` at the last child whatever the
+ * division threw away on the way, which is the same care the weighted path
+ * takes by giving the last weighted child the remainder.
+ */
+static inline int wsk__lead(const wsk_tree_t *t, int idx, int free)
+{
+	if (free <= 0) return 0;
+	switch (t->justify) {
+	case WSK_END:     return free;
+	case WSK_CENTER:  return free / 2;
+	case WSK_BETWEEN: return (t->n > 1) ? free * idx / (t->n - 1) : 0;
+	case WSK_AROUND:  return (t->n > 0) ? free * (2 * idx + 1) / (2 * t->n) : 0;
+	default:          return 0;            /* WSK_START */
+	}
+}
+
 static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 {
 	wsk_rect_t r;
@@ -505,7 +544,9 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 	extra = span - used;
 	if (extra < 0) extra = 0;
 
-	at = (t->axis == WSK_COL ? t->ay : t->ax) + t->pad;
+	/* A weighted stack has no surplus left: the children took it. */
+	at = (t->axis == WSK_COL ? t->ay : t->ax) + t->pad
+	   + wsk__lead(t, idx, (weights > 0) ? 0 : extra);
 	for (int i = 0; i < idx; i++) {
 		int e = wsk__natural(t, i);
 		if (weights > 0 && t->item[i].weight > 0) {
