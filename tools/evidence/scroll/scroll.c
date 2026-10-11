@@ -46,6 +46,11 @@ void rv9_panel_size(int *w, int *h) { if (w) *w = PW; if (h) *h = PH; }
 void rv9_panel_backlight(uint32_t p) { (void)p; }
 uint32_t rv9_panel_backlight_get(void) { return 100; }
 bool rv9_panel_take(const void *o) { (void)o; return false; }
+/* RV-9 split the panel in two on 2026-10-11: the C5's SPI ST7789 wants
+   its pixels byte-swapped and the P4's MIPI-DSI does not. These harnesses
+   have always emulated the C5, and every swap in this file assumes it, so
+   say so rather than inherit whichever the linker finds. */
+bool rv9_panel_swaps_bytes(void) { return true; }
 void rv9_panel_blit(int x0, int y0, int x1, int y1, const uint16_t *px)
 {
 	blits++;
@@ -238,11 +243,14 @@ int main(void)
 	 * Derived, not measured here: the per-band cost comes from RV-9's own
 	 * board figures in design.md SS2.2 -- flick's full frame is 57 ms over 22
 	 * bands and its press 19 ms over 8, which agree at about 2.5 ms a band
-	 * at 320x172; a full redraw at 1024x600 is ~640 ms over 75 bands, which
-	 * is ~8.5. Marked derived because this program has no board.
+	 * at 320x172. At 1024x600 the P4's own measurement is 175 ms over 75
+	 * bands, which is ~2.3 -- NOT the ~8.5 this programme used until
+	 * 2026-10-11, when a real panel replaced an extrapolation that had been
+	 * scaled for width, board and clock and had compounded its pessimism at
+	 * every step. Marked derived because this programme still has no board.
 	 */
 	{
-		const int MS10 = (PW <= 320) ? 25 : 85;      /* tenths of a ms a band */
+		const int MS10 = (PW <= 320) ? 25 : 23;      /* tenths of a ms a band */
 		int total = (PH + WSK_BAND - 1) / WSK_BAND;
 
 		printf("\n  3. and in time, at %d.%d ms a band (derived, SS2.2)\n",
@@ -259,10 +267,31 @@ int main(void)
 			printf("     a scroll step is %d.%dx that budget.\n",
 			       ms10 / 190, (ms10 * 10 / 190) % 10);
 		}
-		printf("\n     So: scroll in DISCRETE JUMPS driven by an input event --\n");
-		printf("     one item or one page at a time -- and never as an\n");
-		printf("     animation. A smooth pixel scroll would need a frame every\n");
-		printf("     16 ms and one frame costs %d.\n", total * 2 / 3 * MS10 / 10);
+		{
+			/* How tall a scrolling region may be and still make a frame
+			   budget. This used to read "never as an animation", which
+			   was true of an extrapolated 8.5 ms a band and is not true
+			   of the measured 2.3. */
+			int b30 = 333 / MS10, b60 = 166 / MS10;
+
+			printf("\n     A full-screen scroll step is %d ms, so scrolling the\n",
+			       total * 2 / 3 * MS10 / 10);
+			printf("     WHOLE screen stays a discrete jump: one item or one page\n");
+			printf("     per input event, not an animation.\n");
+			printf("\n     But a PANE is a different question, and the answer\n");
+			printf("     changed when the P4 was measured rather than estimated:\n");
+			printf("       up to %2d bands (%3d rows) fits a 30 fps frame\n", b30, b30 * WSK_BAND);
+			printf("       up to %2d bands (%3d rows) fits a 60 fps frame\n", b60, b60 * WSK_BAND);
+			printf("     and that is nearly the same on both boards, because the\n");
+			printf("     per-band cost barely differs -- 2.5 ms against 2.3 -- so\n");
+			printf("     what decides it is how TALL the scrolling region is, not\n");
+			printf("     which panel it is on.\n");
+			printf("\n     IMPLIED, NOT DEMONSTRATED: nobody has dragged anything\n");
+			printf("     on either panel and timed it. RV-9 reached the same place\n");
+			printf("     from the other side on 2026-10-11 and put it the right\n");
+			printf("     way -- measure before assuming a drag is too expensive,\n");
+			printf("     rather than prohibiting it.\n");
+		}
 	}
 
 	/*
@@ -270,7 +299,7 @@ int main(void)
 	 *    a layout has: a scrolling PANE is cheaper than a scrolling screen.
 	 */
 	{
-		const int MS10 = (PW <= 320) ? 25 : 85;
+		const int MS10 = (PW <= 320) ? 25 : 23;
 		printf("\n  4. a scrolling pane rather than a scrolling screen\n");
 		printf("     %-16s %-8s %-7s %s\n", "viewport", "bytes", "bands", "ms");
 		for (int vh = PH; vh >= PH / 4; vh /= 2) {

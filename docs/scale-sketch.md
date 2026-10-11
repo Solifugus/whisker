@@ -156,13 +156,19 @@ rung — which is §1's principle applied to overflow:
    question for a person and the board, and it is the open item of this
    section.**
 3. **Then the environment decides:**
-   - **input available → scroll.** Up/down and left/right — **in discrete
-     jumps, one item or one page per input event, never as an animation.**
-     Priced 2026-10-04: a scroll step damages the whole viewport, 35 ms on the
-     C5 and 425 ms on the P4 against a 19 ms budget, and the only lever is the
-     size of the scrolling region (`tools/evidence/scroll/`). Smooth scrolling
-     is not a thing to optimise later; it is ruled out by a window that
-     re-parses its document once per band.
+   - **input available → scroll.** Up/down and left/right. A scroll step
+     damages the whole viewport, so scrolling a **whole screen** is a discrete
+     jump — one item or one page per input event, at 35 ms on the C5 and 115
+     on the P4. **A pane is not**: about **110 rows** fits a 30 fps frame on
+     either board, because the per-band cost barely differs between them and
+     what decides it is the height of the scrolling region
+     (`tools/evidence/scroll/`).
+
+     *This said "never as an animation" until 2026-10-11.* That rested on a
+     P4 figure of 425 ms derived from §2.2's extrapolated 640 ms full redraw;
+     the real panel measures 175. Smooth scrolling of a small pane is now
+     implied to be affordable — implied, not demonstrated, because nobody has
+     dragged anything and timed it.
    - **no input → promote and rotate** (§5).
    - **neither acceptable → refuse, naming the widget that did not fit**,
      rather than hiding it silently. Same instinct as refusing an over-budget

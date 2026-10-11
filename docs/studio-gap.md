@@ -90,10 +90,13 @@ controls never binds; only a grid of ~40 reaches the ceiling. So "whisker
 cannot afford richer widgets" is **not** an argument that survives measurement
 — it was the main one, and it is spent.
 
-**The time budget did not change.** A full redraw at 1024×600 is ~640 ms
-(§2.2). A scrolling pane is a banded repaint, which whisker is built for; a
-*smooth* scroll is a different proposition and should be priced before it is
-promised.
+**And the time budget moved too, 2026-10-11, in the generous direction.** This
+section said a full redraw at 1024×600 was ~640 ms. Measured on the real panel
+it is **175 ms**, and a tap is **5 ms** rather than the extrapolated 66 — the
+old pair was never measured. A scrolling pane is a banded repaint, which
+whisker is built for, and at 2.3 ms a band a *smooth* scroll of a small pane is
+no longer obviously out of reach. It still has to be priced rather than
+promised, and `tools/evidence/scroll/` is now priced against the real figure.
 
 **And the refusals were right for the host that set the budget.** §2.4 exists
 because RV-9's window has no clipPath, no opacity and no CSS. An editor and a
@@ -119,11 +122,15 @@ written against them"* (§6) now has a specific reader — Studio's
   sitting on top of it. **Priced 2026-10-04** (`tools/evidence/scroll/`), and
   the answer is usable: a scroll is already expressible with today's whisker,
   list *length* is free because only the visible rows are emitted, but a scroll
-  step damages the whole viewport — **35 ms on the C5 and 425 ms on the P4**
-  against the 19 ms a finger waits. So **discrete jumps per input event, never
-  an animation**, and the only lever is the size of the scrolling region, which
-  is linear. A multi-pane layout is cheaper than one scrolling screen, which
-  suits Studio, which already is one.
+  step damages the whole viewport — **35 ms on the C5 and 115 ms on the P4**.
+  So scrolling a *whole screen* is a discrete jump per input event. **A pane is
+  not**: up to about **110 rows** fits a 30 fps frame on either board, so a
+  scrolling pane can plausibly be animated, which is implied by the numbers and
+  not yet demonstrated by anyone dragging anything. (The P4 figure read 425 ms
+  until 2026-10-11, derived from an extrapolation; the real panel measures 175
+  ms for a full redraw, not 640.) The lever is the height of the scrolling
+  region and it is linear — a multi-pane layout is cheaper than one scrolling
+  screen, which suits Studio, which already is one.
 - A text editor is a project, not an iteration. It is worth asking whether
   Studio-on-whisker needs one at all before it needs a *viewer* — five of
   Studio's seven modes are headless, and a read-only Studio on a touch panel is

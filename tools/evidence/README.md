@@ -323,29 +323,46 @@ not:
 | one scroll step | 14 | 50 |
 | the whole panel | 22 | 75 |
 
-**3. Which in time is the finding:**
+**3. Which in time is the finding — and the P4 column was wrong until
+2026-10-11:**
 
 | | C5 | P4 |
 |---|---|---|
-| one value in place | 5 ms | 17 ms |
-| **one scroll step** | **35 ms** | **425 ms** |
-| the whole panel | 55 ms | 637 ms |
+| one value in place | 5 ms | 4 ms |
+| **one scroll step** | **35 ms** | **115 ms** |
+| the whole panel | 55 ms | 172 ms |
 
-Against the 19 ms a finger waits, a scroll step is **1.8×** the budget on the
-C5 and **22×** on the P4.
+The P4 figures used to read 425 and 637, derived from §2.2's *extrapolated*
+640 ms full redraw. RV-9 ran `flick` on the real panel and measured **175 ms**
+— so the per-band cost is 2.3 ms, not 8.5, and everything derived from it was
+3.7× too pessimistic. The 172 ms this programme now derives against their
+measured 175 is a decent check on the per-band model itself.
 
-**So: scroll in discrete jumps driven by an input event — one item or one page
-— and never as an animation.** A smooth pixel scroll needs a frame every 16 ms
-and one frame costs 35 ms at best. This is not a thing to optimise later; it is
-a property of a window that re-parses the document once per band.
+**So the conclusion moved, in the generous direction.** Scrolling the *whole*
+screen is still a discrete jump — one item or one page per input event. But a
+**pane** is a different question:
 
-**4. And the only lever is the size of the scrolling region**, which is linear:
+| | fits a 30 fps frame | fits a 60 fps frame |
+|---|---|---|
+| C5 | 13 bands — 104 rows | 6 bands — 48 rows |
+| P4 | 14 bands — 112 rows | 7 bands — 56 rows |
+
+**Nearly the same on both boards**, because the per-band cost barely differs
+(2.5 ms against 2.3). So what decides whether a scroll can be animated is **how
+tall the scrolling region is**, not which panel it is on.
+
+*Implied, not demonstrated:* nobody has dragged anything on either panel and
+timed it. RV-9 reached the same place from the other side the same day and put
+it the right way — measure before assuming a drag is too expensive, rather than
+prohibiting it.
+
+**4. The lever is still the size of the scrolling region**, and it is linear:
 
 | viewport | C5 | P4 |
 |---|---|---|
-| full screen | 35 ms | 391 ms |
-| half | 17 ms | 204 ms |
-| quarter | 10 ms | 102 ms |
+| full screen | 35 ms | 105 ms |
+| half | 17 ms | 55 ms |
+| quarter | 10 ms | 27 ms |
 
 Convenient for the Studio direction: a multi-pane layout is **cheaper** than one
 scrolling screen, and Studio already is multi-pane.

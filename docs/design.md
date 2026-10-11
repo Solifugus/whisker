@@ -166,9 +166,19 @@ measured with `tools/hosttest/scale.c` and on the C5 at 320×172:
   together are what a person experiences as one tap."* **No tap has ever been
   measured end to end** — the touch panel arrives in October (§2.6) — so what is
   known is what it costs to *answer* one, which is the number that was in doubt.
-- widening to 1024×600 costs only **1.7×** (not 3.2× — the per-band re-parse does
-  not care about width), so a tap is about **66 ms at 1024×600** against ~640 ms
-  for a full screen.
+- ~~widening to 1024×600 costs only **1.7×**, so a tap is about **66 ms** against
+  ~640 ms for a full screen~~ — **both measured and both wrong, 2026-10-11.**
+  `flick > /w0` on the real 1024×600 panel: a **full screen is 175 ms** and a
+  **tap is 5 ms** (3 press + 2 release). The old pair was never measured; it was
+  extrapolated from host band timings, scaled for width, then for board, then
+  implicitly for clock, and the pessimism compounded at each step. The full
+  screen is 3.7× better than the figure this document carried and the tap is an
+  **order of magnitude** better. RV-9 found it, and also found `module.h`
+  quoting the same pair with the word *"measured"* beside it.
+
+  **What survives, and harder than before:** 5 ms against 175 is a factor of
+  **thirty-five**, so repainting only what changed is not an optimisation on
+  this board — it is the difference between interactive and not.
 - 1024×600 costs **24,576 bytes** of buffers and 2.9× the time of 320×172 for
   11.2× the pixels. *Resolution is not the problem.*
 - the C5 is about **96×** slower than the host on `pic.svg` (82 ms vs 0.85 ms).

@@ -61,6 +61,11 @@ void rv9_panel_size(int *w, int *h) { if (w) *w = S.w; if (h) *h = S.h; }
 void rv9_panel_backlight(uint32_t pct) { (void)pct; }
 uint32_t rv9_panel_backlight_get(void) { return 100; }
 bool rv9_panel_take(const void *owner) { (void)owner; return false; }
+/* RV-9 split the panel in two on 2026-10-11: the C5's SPI ST7789 wants
+   its pixels byte-swapped and the P4's MIPI-DSI does not. These harnesses
+   have always emulated the C5, and every swap in this file assumes it, so
+   say so rather than inherit whichever the linker finds. */
+bool rv9_panel_swaps_bytes(void) { return true; }
 
 /*
  * One band, pushed. The driver hands these over in 8-row strips and only for
