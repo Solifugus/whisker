@@ -116,11 +116,15 @@ sizes on the glass, read from where you would really read it. It needed the
 board rather than the P4, and it needed it because a development monitor has
 41 % of that panel's pixel pitch and would set the floor two sizes too high.
 
-**2. Touch slop — genuinely blocked, and the only one.** Centroid scatter is a
-property of a capacitive surface; a mouse has none and neither does a
-synthetic point. What *can* be done first is write the measurement, so board
-time is spent measuring rather than programming. §5b left this open for exactly
-this reason and it stays open.
+**2. Touch slop — unblocked 2026-10-11, and the instrument is staged.** The P4
+has a working `/touch` and RV-9's `wtap` already closes the loop on glass. The
+measurement is `src/module_slop.c`, staged as **`wslop`**: five marks, eight
+taps each, reporting **bias** (a constant offset, which is the driver's or the
+glass's), **scatter** (the radius a hit test must forgive — whisker's question)
+and **drift** between DOWN and UP (which decides whether press and release can
+belong to different widgets). In pixels *and* millimetres, via
+`RV9_GS_PHYSICAL`, so the answer is portable between panels of different pitch
+rather than true of one. **This now needs a finger, not a program.**
 
 **And one thing that is not a measurement:** somebody using a whisker interface
 on the P4 for something real. That is half of §6's bar — and the C5 half of it

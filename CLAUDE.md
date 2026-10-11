@@ -94,6 +94,13 @@ to read when picking this up cold. Three gates, and only one is code:
   and **nothing written at all** on a tick where nothing moved. It starts
   §6's first bar item, which G1's answer turned out to unblock rather than
   gate — a readout is a real interface and the C5 is on the desk.
+- **The P4 is here, 2026-10-11**, with a working panel and `/touch`. It
+  immediately made three of whisker's derived numbers wrong: §2.2's 640 ms
+  full redraw and 66 ms tap were *extrapolations*, and the panel measures
+  **175 ms** and **5 ms**. Anything derived from those was ~3.7× pessimistic —
+  `tools/evidence/scroll/` among them, whose "never as an animation" became
+  "not for a whole screen, but a pane of ~110 rows fits a 30 fps frame".
+  **Check what a figure was derived from before quoting it.**
 - **G2 — the four things only the P4 can measure**: finger-down to
   pixel-changed (never measured, §2.2), touch slop (§5b), the stack bisected
   there rather than carried over (§5), and a panel where `SRC_MAX` actually
