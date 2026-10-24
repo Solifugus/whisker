@@ -128,11 +128,11 @@ rather than true of one. **This now needs a finger, not a program.**
 
 **✅ Measured 2026-10-24**, on the third run (`tools/evidence/slop/`):
 **scatter 12–26 px worst (1.7–3.8 mm), drift zero**, recorded in §5b.
-**Bias is still owed.** The taps landed ~45 rows low and I asked RV-9 about
-the panel; RV-9 found it was `wslop`'s own marks, unsized buttons laid out 64
-rows tall (`rv9-answers-2026-10-24.md`). Fixed in both trees; one more run
-with sized marks measures bias, and then whether `hit` forgives gap taps has
-both of its numbers.
+**Bias, run 4, same afternoon: at most 10 px (1.5 mm), nil at the corners.**
+The ~45 rows of the run before were `wslop`'s own marks, unsized buttons laid
+out 64 rows tall (`rv9-answers-2026-10-24.md`), which became D10. **Item 2 is
+closed: `hit` stays exact**, and the scatter becomes a sizing rule instead —
+a tappable widget at least ~42 rows, which the default 64 clears.
 
 **And one design question that run raised, not yet answered:** a widget's
 natural size silently beats its area. Nothing refuses it and nothing

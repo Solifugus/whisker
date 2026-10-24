@@ -1138,6 +1138,17 @@ press and its release belong to the same widget. Against the default 64 px
 target that is comfortable: a tap aimed at the centre lands inside it with
 room to spare, and one in a 4–8 px gap is a near miss, not a choice.
 
+**Bias, measured properly the same afternoon (run 4, sized marks): at most
+10 px (1.5 mm), and nil at the corners**; scatter 9–21 px worst, drift zero
+again. So **`hit` stays exact**: the touch lands where the finger aims to
+within its own scatter, and the scatter turns into a layout rule rather than
+a tolerance — a widget meant to be tapped wants to be at least twice the
+worst scatter, about 42 rows, which the default 64 clears. A tap in a 4–8 px
+gap is an aim at an edge, and nothing a hit test should guess at.
+
+What follows is the account of the run before it, kept because it is how
+the layout bug behind D10 was found.
+
 **Bias was not measured, and the first account of it was wrong.** Every tap
 landed +37 to +48 rows low, and I reported it to RV-9 as the panel drawing
 ~45 rows low. It was whisker's: the marks were buttons with `size = 0`, which
@@ -1150,9 +1161,7 @@ the middle of a tall bar rather than at a point, and the bottom two marks ran
 off the glass, which squeezed their taps. A re-run with sized marks is what
 measures bias, and is owed.
 
-**`hit` stays exact** until that re-run, because the bias is the half of the
-answer still missing. Whether a gap tap should resolve to its nearer
-neighbour then has both numbers behind it.
+That re-run is the paragraph above.
 
 **And the measurement nobody has taken**: finger-down to pixel-changed, end to
 end. That number includes an I²C controller, an interrupt, a process wakeup and

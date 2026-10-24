@@ -101,8 +101,9 @@ to read when picking this up cold. Three gates, and only one is code:
   `tools/evidence/scroll/` among them, whose "never as an animation" became
   "not for a whole screen, but a pane of ~110 rows fits a 30 fps frame".
   **Check what a figure was derived from before quoting it.**
-- **Touch scatter is measured, 2026-10-24** (§5b): 12–26 px worst, zero
-  drift. **Bias is not** — the "P4 draws ~45 rows low" I sent to RV-9 was
+- **Touch slop is measured, 2026-10-24** (§5b, `tools/evidence/slop/` run 4):
+  bias ≤ 10 px, scatter 9–21 px worst (≤ 3.1 mm), drift zero. **`hit` stays
+  exact.** On the way, the "P4 draws ~45 rows low" I sent to RV-9 was
   `wslop`'s own marks, unsized buttons laid out 64 rows tall
   (`docs/rv9-answers-2026-10-24.md`). **A button with `size = 0` in a column
   is 64 rows whatever its area says** — which used to overflow silently and
