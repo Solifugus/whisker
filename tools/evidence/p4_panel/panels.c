@@ -325,8 +325,15 @@ int main(void)
 			wsk_doc_init(&p.d, &p.part[0]);
 			set_ids(&p, 1);
 			len = measure(&p);
-			printf("     %dx%-8d %-7d %-7d %s\n", c, r, c * r, len,
-			       len <= SRC_MAX ? "fits" : "OVER SRC_MAX");
+			/* 6x10 asks for ten 64-row buttons in 600 rows. Until
+			   whisker refused an overflowing stack (roadmap 4.3) this
+			   printed 5639 bytes for a grid drawn off the glass. */
+			if (len == WSK_E_FIT)
+				printf("     %dx%-8d %-7d %-7s %s\n", c, r, c * r, "-",
+				       "taller than the screen: refused");
+			else
+				printf("     %dx%-8d %-7d %-7d %s\n", c, r, c * r, len,
+				       len <= SRC_MAX ? "fits" : "OVER SRC_MAX");
 		}
 	}
 

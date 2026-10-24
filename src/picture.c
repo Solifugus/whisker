@@ -318,9 +318,9 @@ int main(void)
 
 		wsk_clone(pair, PANEL + 1, 2);              /* CONFIRM and Cancel */
 		/* 112 rows of area, 6 of padding each end, 6 of gap: two of 47.
-		   Sized rather than defaulted because a stack does NOT clamp to its
-		   area -- two 64-row buttons simply run off the bottom of the panel,
-		   which is true today and is not §5c's to change. */
+		   Sized rather than defaulted because two 64-row buttons do not fit
+		   that area -- which used to run off the bottom of the panel without
+		   a word and is now refused with WSK_E_FIT (D10). */
 		pair[0].size = 47;
 		pair[1].size = 47;
 		wsk_init(&part[1], WSK_COL, PW, PH);

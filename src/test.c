@@ -117,6 +117,18 @@ static const wsk_widget_t BIG[] = {
 	{ .kind = WSK_BUTTON, .id = "start", .text = "Start" },
 };
 
+/* BIG at a size twelve of them can take in one column at 600 rows -- 44 each
+   with the gaps and padding is 580. At the default 64 they need 820, and
+   until wsk_check refused an overflowing stack (roadmap 4.3) the "dozen
+   controls" checks below drew three and a half of them off the screen. */
+static const wsk_widget_t *dozen(void)
+{
+	static wsk_widget_t d[12];
+	memcpy(d, BIG, sizeof d);
+	for (int i = 0; i < 12; i++) d[i].size = 44;
+	return d;
+}
+
 static const wsk_widget_t TOOLBAR[] = {
 	{ .kind = WSK_BUTTON, .id = "back", .text = "Back",   .weight = 1 },
 	{ .kind = WSK_BUTTON, .id = "stop", .text = "Stop",   .weight = 1 },
@@ -226,8 +238,9 @@ int main(void)
 
 	{
 		wsk_tree_t big = t;
-		big.item = BIG; big.n = 12;
+		big.item = dozen(); big.n = 12;
 		big.w = 1024; big.h = 600;
+		wsk_area(&big, 0, 0, 1024, 600);   /* t's area is 320x172 */
 		n = render_into(&big, doc, sizeof doc, 4096);
 		printf("     a dozen controls at 1024x600: %d bytes of the 4096 ceiling\n", n);
 		ok(n > 0 && n < 4096, "a realistic panel of a dozen controls fits under SRC_MAX");
@@ -315,8 +328,9 @@ int main(void)
 	{
 		wsk_tree_t g = t;
 		int exact;
-		g.item = BIG; g.n = 12;
+		g.item = dozen(); g.n = 12;
 		g.w = 1024; g.h = 600;
+		wsk_area(&g, 0, 0, 1024, 600);
 
 		exact = render_into(&g, doc, sizeof doc, 0);
 		ok(render_into(&g, doc, sizeof doc, exact - 1) == WSK_E_BUDGET,
@@ -324,6 +338,56 @@ int main(void)
 		ok(doc[0] == '\0', "and nothing was written -- not even a prefix");
 		ok(render_into(&g, doc, sizeof doc, exact) == exact,
 		   "CONTROL: the same document, given the bytes it needs, is written");
+	}
+
+	/* ---- 5b. a stack that does not fit its area is refused (roadmap 4.3) ----
+	   Two buttons in 172 rows with pad 4 and gap 4: 80 + 4 + 80 is exactly
+	   the 164 the area has. One row more and the second widget crosses the
+	   end, which until 2026-10-24 was drawn past the area without a word. */
+	{
+		wsk_widget_t two[2];
+		wsk_tree_t g;
+		int which = -1;
+		comp_t c;
+
+		memset(two, 0, sizeof two);
+		for (int i = 0; i < 2; i++) {
+			two[i].kind = WSK_BUTTON;
+			two[i].size = 80;
+			two[i].fill = WSK_INHERIT;
+			two[i].ink = WSK_INHERIT;
+		}
+		memcpy(two[0].id, "a", 2);
+		memcpy(two[1].id, "b", 2);
+		wsk_init(&g, WSK_COL, 320, 172);
+		g.pad = 4; g.gap = 4;
+		g.item = two; g.n = 2;
+
+		ok(render_into(&g, doc, sizeof doc, 4096) > 0,
+		   "CONTROL: a stack that exactly fills its area renders");
+
+		two[1].size = 81;
+		ok(render_into(&g, doc, sizeof doc, 4096) == WSK_E_FIT,
+		   "one row more than the area holds is refused");
+		ok(doc[0] == '\0', "and nothing was written");
+		ok(wsk_check(&g, &which) == WSK_E_FIT && which == 1,
+		   "and the refusal names the widget that crosses the end");
+
+		two[1].size = 0;             /* the default: 64 rows */
+		g.ah = 60;                   /* an area shorter than one button */
+		g.n = 1;
+		ok(render_into(&g, doc, sizeof doc, 4096) == WSK_E_FIT,
+		   "an unsized button in an area shorter than 64 rows is refused -- wslop's marks");
+
+		g.ah = 172; g.n = 2;
+		two[1].size = 81;
+		c.part = &g; c.n = 1;
+		wsk_doc_init(&c.d, &g);
+		ok(compose_into(&c, doc, sizeof doc, 4096) == WSK_E_FIT && doc[0] == '\0',
+		   "a composite with one overflowing stack is refused whole");
+		two[1].size = 80;
+		ok(compose_into(&c, doc, sizeof doc, 4096) > 0,
+		   "CONTROL: and the same composite, fitting, is written");
 	}
 
 	/* ---- 6. a label the window cannot draw ---- */
@@ -652,6 +716,7 @@ int main(void)
 		int full, one;
 		g.item = BIG; g.n = 8;
 		g.w = 1024; g.h = 600;
+		wsk_area(&g, 0, 0, 1024, 600);     /* t's area is 320x172 */
 		full = render_into(&g, doc, sizeof doc, 4096);
 		ids[0] = "heater";
 		one = clip_into(&g, ids, 1, clip, sizeof clip, 4096);
@@ -968,8 +1033,14 @@ int main(void)
 		const char *ids[1];
 		int cy0, cy1, ry0, ry1, cb, rb;
 
+		/* Three 64-row buttons are 200 rows with the gaps; a column at 172
+		   cannot hold them, and wsk_check now says so. 48 each fits. */
+		static wsk_widget_t tall[3];
+		memcpy(tall, TOOLBAR, sizeof tall);
+		for (int i = 0; i < 3; i++) tall[i].size = 48;
+
 		wsk_init(&col, WSK_COL, 320, 172);
-		col.pad = 4; col.gap = 4; col.item = TOOLBAR; col.n = 3;
+		col.pad = 4; col.gap = 4; col.item = tall; col.n = 3;
 		wsk_init(&row, WSK_ROW, 320, 172);
 		row.pad = 4; row.gap = 4; row.item = TOOLBAR; row.n = 3;
 

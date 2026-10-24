@@ -42,7 +42,7 @@ while nothing is invested.
   request. Done, and it is the last widget — nothing after it has a caller
   (`gbasic-gap.md`).
 
-`src/run.sh --module` is the whole of it: **154 checks**, the pixels through
+`src/run.sh --module` is the whole of it: **168 checks**, the pixels through
 RV-9's own rasteriser, three module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 19, including the
 typing loop end to end; `--input` is the same loop with a person in it.
@@ -105,7 +105,8 @@ to read when picking this up cold. Three gates, and only one is code:
   drift. **Bias is not** — the "P4 draws ~45 rows low" I sent to RV-9 was
   `wslop`'s own marks, unsized buttons laid out 64 rows tall
   (`docs/rv9-answers-2026-10-24.md`). **A button with `size = 0` in a column
-  is 64 rows whatever its area says, and overflows silently.** Before blaming
+  is 64 rows whatever its area says** — which used to overflow silently and
+  is now **refused with `WSK_E_FIT` (D10)**. Before blaming
   a layer below, check what whisker drew — RV-9 settled it by turning the
   picture over and watching the fault follow the colour.
 - **G2 — the four things only the P4 can measure**: finger-down to
@@ -122,7 +123,7 @@ layout is compiled in cannot change without a reflash).
 
 ## Read before working
 
-1. `docs/decisions.md` — nine ratified outcomes, one screen. **First**, so that
+1. `docs/decisions.md` — ten ratified outcomes, one screen. **First**, so that
    the design's §4 arguments read as history rather than as open questions.
    Then `docs/roadmap.md`, which is what is left and what would let us stop.
 2. `docs/design.md` — all of it. It is the whole project, and it has been

@@ -1280,6 +1280,14 @@ bottom of the panel. That is true of iteration 1 and is not composition's to
 change; it is noted here so it is a known behaviour rather than a surprise, and
 the pictures set sizes that fit.
 
+**Changed 2026-10-24 (D10): such a stack is now refused**, with `WSK_E_FIT`
+naming the widget that crosses the end. "Known rather than a surprise" held
+for the pictures and not for the next program written — `wslop`'s marks were
+exactly this and cost a day on the P4. Turning the check on found that
+`module_compose.c` itself had been doing it on the C5 all along: the pictures
+sized their buttons to 47, the module never did, and `wcompose` drew Cancel
+28 rows off the panel. It sizes them now, on short screens only.
+
 ---
 
 ## 5d. Iteration 4 — `input`, which is the last widget

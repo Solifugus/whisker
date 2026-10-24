@@ -195,12 +195,12 @@ decision was already made *in favour of* the rule whisker uses (D4, and its
 
 ---
 
-## 4. Three decisions that are Matthew's, not mine
+## 4. Decisions that are Matthew's, not mine
 
 G1 was the third and is now D9. The first two block nothing today, but both
 will be reopened forever if they are not answered, and **one of them has just
-acquired a trigger**. The third, §4.3, arrived on 2026-10-24 with a cost
-already attached.
+acquired a trigger**. §4.3 arrived on 2026-10-24 with a cost already attached,
+and was decided the same day (D10).
 
 ### 4.1 Is the compact keyboard form built into whisker?
 
@@ -310,7 +310,7 @@ on the C5 and somebody wants to add a second sensor. If the answer is that
 reflashing is fine because the panel changes once a month, it stays unshipped
 and §1 of its own sketch is the reason it was never on the wire anyway.
 
-### 4.3 When a widget's natural size does not fit its area — added 2026-10-24
+### 4.3 When a widget's natural size does not fit its area — ✅ decided 2026-10-24: refuse (D10)
 
 **What happens today.** `wsk_rect` lays out fixed extents first and shares
 what is left; when nothing is left it clamps the surplus at zero and carries
@@ -333,11 +333,21 @@ deciding cost."*
    is a silent substitution, which is what D8 was written to forbid.
 3. **Document it** and change nothing.
 
-**My recommendation: refuse.** It is the rule whisker already has, and the
-failure it would have caught was silent for a whole session on hardware. What
-I have **not** checked is whether any existing test tree overflows its area
-on purpose, which is the first thing to find out before it is built — a golden
-that moves would be a deliberate, listed rebaseline.
+**Decided: refuse** (Matthew, same day; **D10**). Built in `wsk_check`, so a
+single stack and a composite are refused alike, before a byte is written, and
+`which` names the widget that crosses the end. Seven new checks, two of them
+controls.
+
+**What turning it on found**, which is the argument for having done it:
+
+- three test trees had been overflowing all along. The two "1024×600" ones
+  copied a 320×172 tree and changed only the screen, so they were laid out in
+  a 320×172 corner of it, and the dozen-control panel needed 820 rows anyway.
+  All three are fixed; they print figures, and **no PPM golden moved**.
+- `module_compose.c` drew Cancel 28 rows off the C5's panel — the overflow
+  §5c had seen in the pictures and sized away there, but never in the module.
+- `tools/evidence/p4_panel/`'s 6×10 grid had been reporting 5,639 bytes for a
+  grid taller than the screen. It now says so.
 
 ## 5. What is explicitly *not* on this map
 
