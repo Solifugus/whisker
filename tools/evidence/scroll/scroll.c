@@ -7,6 +7,10 @@
  * pricing, and it needs no board: bytes come from the emitter and bands come
  * from RV-9's own rasteriser, built natively.
  *
+ * Since 2026-10-24 whisker scrolls for real (design.md §5e). This keeps the
+ * trick below on purpose: its viewport is the whole screen, so nothing can
+ * spill, and these are the figures the iteration was chosen on.
+ *
  * NOTHING IN WHISKER CHANGES TO RUN THIS. A scroll is already expressible:
  * put the stack's area at y = -offset with its full content height, and clip
  * the document to the viewport's rows. `wsk_part` skips any widget that does

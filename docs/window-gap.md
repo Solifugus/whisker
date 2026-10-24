@@ -1,5 +1,9 @@
 # The distance to gBASIC's `window`, and to Studio on it — measured
 
+> **Later the same day: `scroll` is answered** (design §5e) — a stack with
+> `overflow = WSK_SCROLL`. **Sixteen of twenty-five.** The counts below are
+> kept as measured; this note and the `scroll` row are the only changes.
+
 **Written 2026-10-24**, against gBASIC at `8e804d5` and gBASIC Studio at
 `fb14cba` (2026-10-23). It replaces `gbasic-gap.md` and `studio-gap.md` as the
 current answer; both measured a GTK tree that gBASIC removed on 2026-10-22
@@ -72,7 +76,7 @@ open document is one site, not one per tab:
 | `check` | 5 | a checkbox | — |
 | `choice` | 4 | a drop-down | — needs an overlay |
 | `menu` / `popup` / `item` | 1 / 2 / 8 | menus, context menus | — needs an overlay |
-| `scroll` | 1 | a scrolling region | — priced, not built (`tools/evidence/scroll/`) |
+| `scroll` | 1 | a scrolling region | **`overflow = WSK_SCROLL`** (§5e, built later the same day) |
 | `table` | 2 | rows × columns, sortable | — needs scroll |
 | `tree` | 1 | expandable rows | — needs scroll |
 | `memo` | 7 | multi-line text | — needs scroll, and an editor |

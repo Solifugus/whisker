@@ -30,11 +30,12 @@ place. `docs/design.md` §6 records what would have to be true first. **Every
 whisker document written before 2026-10-22 that measures gBASIC measured its
 GTK tree** (last GTK commit `d997c94`): `gbasic-gap.md` and `studio-gap.md`
 are history. **`docs/window-gap.md` (2026-10-24) is the current distance**:
-Studio's window is a pure record, and whisker answers 15 of its 25 words.
+Studio's window is a pure record, and whisker answers 15 of its 25 words —
+16 since §5e answered `scroll`.
 
 ## Status
 
-**Four iterations are built, and two of them have now run on the C5.**
+**Five iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -47,9 +48,20 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words.
 - **§5d — `input`.** A text field: left-aligned, tail-scrolled, caret on
   request. Done, and it is the last widget — nothing after it has a caller
   (`gbasic-gap.md`).
+- **§5e — scrolling** (2026-10-24). Not a widget: a property of a stack,
+  `overflow = WSK_SCROLL` plus a `scroll` offset the caller holds. Chosen by
+  `window-gap.md` as the first step to gBASIC's Qt-era `window`. A widget half
+  in view is **cut by arithmetic** (no `clipPath`, and `/w0`'s row clip may
+  not be leaned on); **text is whole or not at all**; out of range is
+  **refused** (`WSK_E_SCROLL`), never clamped. **A stack ends at row 32,767**
+  (a rectangle is four shorts) and **a document costs the square of the
+  list**, so a long list goes to whisker **a slice at a time** —
+  `wsk_slice`, proven byte-identical to the whole list. In the default
+  profile, out of `WSK_MINIMAL` (496 bytes). `wscroll` is written for the P4
+  and not yet run there; `tools/evidence/drag/` runs it here first.
 
-`src/run.sh --module` is the whole of it: **168 checks**, the pixels through
-RV-9's own rasteriser, three module builds with the double-link, and a person
+`src/run.sh --module` is the whole of it: **219 checks**, the pixels through
+RV-9's own rasteriser, eight module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 19, including the
 typing loop end to end; `--input` is the same loop with a person in it.
 

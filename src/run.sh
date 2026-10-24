@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Every done-criterion in design.md §5 (the renderer), §5b (hit),
-# §5c (composition) and §5d (input).
+# §5c (composition), §5d (input) and §5e (scrolling).
 #
 #   ./run.sh              the suite, the picture, and the XML check
 #   ./run.sh --module     and the module build, which is criterion 7
@@ -40,7 +40,7 @@ else
 fi
 # The controls. Without these, "byte for byte" is satisfied by a minimal build
 # that draws a field as a label and says nothing.
-for W in field marked; do
+for W in field marked scrolled; do
 	F="$(/tmp/wsk_prof_full $W)"; M="$(/tmp/wsk_prof_min $W)"
 	case "$F$M" in
 	drew*refused\ -6*) echo "ok    CONTROL: $W -- full ${F%% bytes*} bytes, minimal ${M}" ;;
@@ -85,7 +85,7 @@ link_check () {   # link_check <source> <label> [extra flags...]
 		exit 1
 	fi
 }
-for SRC in module_shape.c module_compose.c module_input.c module_stat.c module_font.c module_slop.c; do
+for SRC in module_shape.c module_compose.c module_input.c module_stat.c module_font.c module_slop.c module_scroll.c; do
 	link_check "$SRC" "$SRC"
 	# Named, not "whichever came last": this has been the wrong number twice,
 	# both times because a module was added to the loop after it.
@@ -103,3 +103,5 @@ echo "      out of RAM rather than rodata. It is not staged in RV-9's tree: D6"
 echo "      keeps input off the C5, and the link check is the point of it."
 echo "      module_stat.c is a readout -- D9's shape, and the only one of the"
 echo "      four that is a program somebody would leave running."
+echo "      module_scroll.c is wscroll: ten thousand rows dragged on the P4,"
+echo "      a slice at a time, holding none of them (§5e)."

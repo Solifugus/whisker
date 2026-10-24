@@ -12,11 +12,12 @@
  * and D2's "one implementation, not a specification and two" would be gone
  * the moment somebody shipped a host on the small profile.
  *
- * So this prints one of three things and `run.sh` compares the builds:
+ * So this prints one of four things and `run.sh` compares the builds:
  *
  *     ./profile panel    the shared panel, which must be byte-identical
  *     ./profile field    a tree with a field  -- full draws, minimal refuses
  *     ./profile marked   a pressed button     -- full draws, minimal refuses
+ *     ./profile scrolled a scrolling stack     -- full draws, minimal refuses
  *
  * The refusals are the control. Without them a minimal build could satisfy
  * `panel` by drawing a field as a label, and the diff would still pass.
@@ -55,6 +56,11 @@ int main(int argc, char **argv)
 		live[1].text[0] = '\0';
 	} else if (strcmp(what, "marked") == 0) {
 		live[1].mark = WSK_MARK_CORNERS;
+	} else if (strcmp(what, "scrolled") == 0) {
+		/* the same three, in an area too short for them, scrolled */
+		wsk_area(&t, 0, 0, 320, 96);
+		t.overflow = WSK_SCROLL;
+		t.scroll = 20;
 	}
 
 	s.put = to_out; s.ctx = 0; s.len = 0;
@@ -64,10 +70,13 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
-	/* The two that a reduced build must refuse rather than draw. */
+	/* The three that a reduced build must refuse rather than draw. A
+	   scroll belongs to the stack rather than to a widget, so it is
+	   refused with which = -1. */
 	e = wsk_check(&t, &which);
 	if (e != WSK_OK) {
-		printf("refused %d at widget %d (%s)\n", e, which, live[which].id);
+		printf("refused %d at widget %d (%s)\n", e, which,
+		       which >= 0 ? live[which].id : "the stack");
 		return 0;
 	}
 	s.put = 0; s.ctx = 0; s.len = 0;

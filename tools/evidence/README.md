@@ -304,6 +304,13 @@ with the band model rather than sitting on top of it. No board: bytes come from
 the emitter, bands from RV-9's own rasteriser built natively, milliseconds are
 **derived** from the board figures in `design.md` §2.2 and marked as such.
 
+**Since 2026-10-24 whisker scrolls for real** (`design.md` §5e: `overflow =
+WSK_SCROLL`, an offset, and the viewport cut by arithmetic). This programme
+still uses the trick below, deliberately: its viewport is the whole screen, so
+nothing can spill, and it is the pricing the iteration was chosen on. Its
+figures stand; what §5e added is everything that happens at the edge of a pane
+that is *not* the whole screen.
+
 **Nothing in whisker changed to run it.** A scroll is already expressible —
 put the stack's area at `y = -offset` with its full content height and clip the
 document to the viewport. `wsk_part` skips every widget that misses those rows,
@@ -373,6 +380,35 @@ document written without the setstat is painted across the whole screen, so
 everything outside it goes to the device background. That is the defect §2.2
 records `flick` shipping for months, reproduced by accident within the hour, and
 it reported a one-row text change as dirtying 20 bands of 22 rather than 2.
+
+## `drag/`
+
+`wscroll` (`src/module_scroll.c`), the module itself, run on this machine
+before it goes near a board.
+
+```
+./run.sh
+```
+
+The environment is a stand-in for RV-9's: `/w0` is RV-9's own window and
+rasteriser at 1024×600, built natively, and `/touch` is a script of finger
+events delivered two at a time, so the module's coalescing has something to
+do. The script presses, drags up 300 rows, lifts, and taps at y 330.
+
+**What it checks, as assertions:** the drag ends with row 6 at the top
+(300 / 50); the tap through the scrolled *slice* is named `r11`, and row 11
+is what is drawn there; no frame of it is refused; and at the pixels, the
+selected row's fill is under the tap and not under the row above it.
+`drag.ppm` is the end of it, for a person.
+
+**What it does not check: time.** It prints repaint milliseconds because the
+module does, and they are this machine's — meaningless for the P4. Whether a
+pane drags at 30 fps is the board run's question (§5e), and it is the first
+time anybody will have dragged anything on either panel.
+
+Two translation units, and that is not tidiness: RV-9's host stubs and its
+`module.h` each declare `rv9_physical_t` and `rv9_svg_limits_t` differently,
+so the window lives in `window.c` and the module in `drag.c`.
 
 ## `fit/`
 

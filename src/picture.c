@@ -560,6 +560,120 @@ int main(void)
 		}
 	}
 
+	/*
+	 * Scrolling, at the pixels (design.md §5e).
+	 *
+	 * A toolbar above, a status line below, and a 200-row list in the pane
+	 * between them. The suite asserts the arithmetic; what only pixels can
+	 * say is that nothing a scroll draws lands outside the pane -- there is
+	 * no clipPath, so whisker cutting by arithmetic is the only thing
+	 * keeping a half-scrolled row off the toolbar -- and that a banded
+	 * scroll step leaves the screen exactly as a full redraw would.
+	 */
+	{
+		static wsk_widget_t list[200];
+		static uint16_t full0[PW * PH], full1[PW * PH];
+		static const wsk_widget_t STATUS[] = {
+			{ .kind = WSK_LABEL, .id = "st", .text = "200 rows" },
+		};
+		wsk_tree_t part[3];
+		comp_t c;
+		wsk_sink_t s;
+		int i, outside = 0, inside = 0, y0, y1, ink0, ink1;
+		uint32_t v;
+
+		for (i = 0; i < 200; i++) {
+			memset(&list[i], 0, sizeof list[i]);
+			list[i].kind = WSK_BUTTON;
+			list[i].size = 24;
+			list[i].fill = (i % 2) ? 0x2a6b8fu : 0x3a7b4fu;
+			list[i].ink = WSK_INHERIT;
+			snprintf(list[i].id, WSK_ID_MAX, "i%03d", i);
+			snprintf(list[i].text, WSK_TEXT_MAX, "Row %d", i);
+		}
+		wsk_init(&part[0], WSK_ROW, PW, PH);
+		part[0].pad = 4; part[0].gap = 4;
+		wsk_area(&part[0], 0, 0, PW, 40);
+		part[0].item = TOOLBAR; part[0].n = 3;
+
+		wsk_init(&part[1], WSK_COL, PW, PH);
+		part[1].pad = 2; part[1].gap = 2;
+		wsk_area(&part[1], 0, 40, PW, 100);
+		part[1].item = list; part[1].n = 200;
+		part[1].overflow = WSK_SCROLL;
+
+		wsk_init(&part[2], WSK_COL, PW, PH);
+		part[2].pad = 4; part[2].gap = 0;
+		wsk_area(&part[2], 0, 140, PW, 32);
+		part[2].item = STATUS; part[2].n = 1;
+
+		wsk_doc_init(&c.d, &part[0]);
+		c.part = part; c.n = 3;
+		s.put = to_window; s.ctx = &dev; s.len = 0;
+
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		ok(wsk_compose(comp_body, &c, &s, 4096) > 0, "a pane between a toolbar and a status line");
+		memcpy(full0, screen, sizeof screen);
+
+		part[1].scroll = 12;                 /* row 0 half out at the top */
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		ok(wsk_compose(comp_body, &c, &s, 4096) > 0, "and the same, scrolled by 12");
+		memcpy(full1, screen, sizeof screen);
+		shot("scroll_pane.ppm");
+
+		for (int y = 0; y < PH; y++)
+			for (int x = 0; x < PW; x++) {
+				int diff = full0[y * PW + x] != full1[y * PW + x];
+				if (y >= 40 && y < 140) inside += diff; else outside += diff;
+			}
+		ok(inside > 0, "CONTROL: the scroll changed pixels inside the pane");
+		ok(outside == 0, "and not one pixel outside it, toolbar and status untouched");
+		printf("    %d pixels changed inside the pane, %d outside\n", inside, outside);
+
+		/* A cut row keeps its box and loses its text, at the pixels: the
+		   label's ink is absent from row 0's visible strip and present
+		   in row 1's. */
+		{
+			wsk_rect_t r0 = wsk_rect(&part[1], 0), r1 = wsk_rect(&part[1], 1);
+			int lo, hi;
+			/* Ink is whatever is not the row's own fill: RV-9 antialiases
+			   text, so a label is a spread of blends and never pure white. */
+			r0.h = (short)(r0.y + r0.h - 40); r0.y = 40;
+			ink0 = r0.w * r0.h - span(r0, pix565(0x3a7b4fu), &lo, &hi);
+			ink1 = r1.w * r1.h - span(r1, pix565(0x2a6b8fu), &lo, &hi);
+			ok(span(r0, pix565(0x3a7b4fu), &lo, &hi) > 0,
+			   "row 0's cut box is on the glass, in its own fill");
+			ok(ink0 == 0, "with no ink in it -- its text is not drawn");
+			ok(ink1 > 0, "CONTROL: row 1, whole, has its label's ink");
+		}
+
+		/* A scroll step is a banded repaint of the pane's rows, carrying
+		   the status line wherever it shares a band -- and must come out
+		   exactly as the full redraw did. */
+		part[1].scroll = 0;
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		wsk_compose(comp_body, &c, &s, 4096);
+		part[1].scroll = 12;
+		ok(wsk_area_rows(&part[1], &y0, &y1) == WSK_OK, "the pane's rows, band-snapped");
+		c.d.y0 = (short)y0; c.d.y1 = (short)y1;
+		v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		blits = 0;
+		{
+			int n = wsk_compose(comp_body, &c, &s, 4096);
+			printf("    a scroll step: rows %d..%d, %d bytes\n", y0, y1, n);
+		}
+		ok(memcmp(screen, full1, sizeof screen) == 0,
+		   "a banded scroll step leaves exactly what a full redraw does");
+		c.d.y0 = 0; c.d.y1 = PH;
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

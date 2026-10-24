@@ -32,6 +32,7 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **`hit`** (§5b) | built, ahead of hardware |
 | **Composition** (§5c) | built; chosen by a measurement |
 | **`input`** (§5d) | built; the last widget with a caller |
+| **Scrolling** (§5e) | built 2026-10-24, for `window`; `wscroll` written, not yet on the P4 |
 | **Profiles** (§7, D8) | built; the C5 pays for nothing it cannot use |
 | **On the board** | `wflick` and `wcompose` run on the C5, committed in RV-9 |
 | **On a desk** | `host/linux`, typing loop closed with a mouse (D7) |
@@ -190,6 +191,10 @@ Qt-only** (gBASIC `19a830f`). Two consequences, neither yet worked through:
   interaction); eight kinds are missing, in three families — scrolling
   (`scroll`, `table`, `tree`), overlays (`choice`, menus), and editors
   (`memo`, `source`) — plus `check`. The order is unchanged: scrolling first.
+  **Scrolling is built, 2026-10-24 (design §5e)**, which answers `scroll` —
+  sixteen of twenty-five — and is what `table`, `tree` and `memo` stand on.
+  Next in the same family is a choice, not a default: `table` or `tree` as a
+  scrolling stack of rows, or the overlay question.
 
 **And there is a named destination beyond it, as of 2026-10-03.** Matthew:
 *"eventually I am hoping to build a gbasic library around this and adapt the
@@ -377,7 +382,9 @@ ruled out with a reason and none should arrive by drift:
 - **A focus model and `activate`** — D9, settled rather than deferred: the C5
   panel is write-only and the P4 points. This was the live candidate and it is
   now closed.
-- **Nesting a stack in a stack**, scrolling, gestures, multiple contacts,
+- ~~Scrolling~~ — **built, 2026-10-24 (design §5e)**, the first of these to
+  be asked for: Matthew, on `window-gap.md`'s order.
+- **Nesting a stack in a stack**, gestures, multiple contacts,
   retained state, a table, a tree. **Reopened as *questions* rather than
   refusals, 2026-10-03**, by two things arriving together: `studio-gap.md`
   names four of them as what gBASIC Studio would need, and

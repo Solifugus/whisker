@@ -1056,6 +1056,241 @@ int main(void)
 	}
 
 	/* ---- §7b. justify: where the leftover space goes (scale-sketch §3) ---- */
+	printf("\n-- §5e  scrolling\n");
+	{
+		/*
+		 * A list of buttons, each 24 rows with a 2-row gap: a pitch of 26,
+		 * in a pane from row 40 to row 140 of a 320x172 screen. Band-aligned
+		 * at the top on purpose, so criterion 7 can say which band a cut
+		 * widget's repaint starts on.
+		 */
+		static wsk_widget_t list[200];
+		wsk_tree_t p, q;
+		int i, max, which;
+
+		for (i = 0; i < 200; i++) {
+			memset(&list[i], 0, sizeof list[i]);
+			list[i].kind = WSK_BUTTON;
+			list[i].size = 24;
+			list[i].fill = WSK_INHERIT;
+			list[i].ink = WSK_INHERIT;
+			snprintf(list[i].id, WSK_ID_MAX, "i%03d", i);
+			snprintf(list[i].text, WSK_TEXT_MAX, "Row %d", i);
+		}
+		wsk_init(&p, WSK_COL, 320, 172);
+		p.pad = 2; p.gap = 2; p.ids = 1;
+		wsk_area(&p, 0, 40, 320, 100);
+		p.item = list; p.n = 200;
+
+		/* the control on the whole section: without SCROLL this is D10 */
+		ok(wsk_check(&p, &which) == WSK_E_FIT,
+		   "CONTROL: 200 rows in a 100-row pane, not scrolling, is refused (D10)");
+		p.overflow = WSK_SCROLL;
+		ok(wsk_check(&p, 0) == WSK_OK, "and scrolling, the same tree is accepted");
+
+		max = wsk_scroll_max(&p);
+		ok(max == 2 + 200 * 24 + 199 * 2 + 2 - 100,
+		   "scroll_max is the content less the pane: padding, rows, gaps, padding");
+
+		/* 1. bytes track the viewport, not the list */
+		{
+			int n200, n20;
+			q = p; q.n = 20;
+			p.scroll = q.scroll = 13;
+			n200 = render_into(&p, doc, sizeof doc, 4096);
+			n20 = render_into(&q, other, sizeof other, 4096);
+			ok(n200 > 0 && n200 == n20 && strcmp(doc, other) == 0,
+			   "200 rows and 20 draw the same document at the same offset");
+			printf("     %d bytes either way, %d boxes and %d labels for a "
+			       "100-row pane\n", n200, count(doc, "<rect") - 1,
+			       count(doc, "<text"));
+			ok(count(doc, "<rect") - 1 < 8,
+			   "and it is the pane's handful, not the list's two hundred");
+		}
+
+		/* 2. a list that fits lays out exactly as one that does not scroll */
+		{
+			wsk_tree_t a = p, b = p;
+			a.n = b.n = 3;
+			a.overflow = WSK_REFUSE; a.scroll = 0;
+			b.overflow = WSK_SCROLL; b.scroll = 0;
+			ok(wsk_scroll_max(&b) == 0, "three rows fit: nothing to scroll");
+			render_into(&a, doc, sizeof doc, 4096);
+			render_into(&b, other, sizeof other, 4096);
+			ok(doc[0] != '\0' && strcmp(doc, other) == 0,
+			   "a scrolling stack that fits is byte-identical to one that does not scroll");
+			b.scroll = 1;
+			ok(wsk_check(&b, 0) == WSK_E_SCROLL,
+			   "and it may not be scrolled at all");
+		}
+
+		/* 4. a widget cut by the edge keeps its box and loses its text */
+		{
+			wsk_rect_t r;
+			p.scroll = 0;
+			render_into(&p, doc, sizeof doc, 4096);
+			ok(has(doc, ">Row 0</text>"),
+			   "CONTROL: in full view, row 0 has its text");
+			p.scroll = 12;                   /* row 0 is now half above the pane */
+			r = wsk_rect(&p, 0);
+			ok(r.y < p.ay && r.y + r.h > p.ay, "at 12, row 0 straddles the top edge");
+			render_into(&p, doc, sizeof doc, 4096);
+			ok(has(doc, "<rect id=\"i000\" x=\"2\" y=\"40\" width=\"316\" height=\"14\""),
+			   "its box is drawn cut: from the pane's top, 14 rows of 24");
+			ok(!has(doc, ">Row 0</text>"), "and its text is not drawn at all");
+			ok(has(doc, ">Row 1</text>"), "CONTROL: row 1, wholly in view, is");
+			{
+				/* the last visible row is cut at the bottom the same way */
+				int last = -1;
+				for (i = 0; i < 200; i++) {
+					r = wsk_rect(&p, i);
+					if (r.y < p.ay + p.ah) last = i;
+				}
+				r = wsk_rect(&p, last);
+				ok(r.y + r.h > p.ay + p.ah, "and the last row in view hangs off the bottom");
+				{
+					char want[48];
+					snprintf(want, sizeof want, ">%s</text>", list[last].text);
+					ok(last == 4 && !has(doc, want), "with no text either");
+				}
+			}
+			ok(count(doc, "<rect") - 1 == 5 && count(doc, "<text") == 3,
+			   "five boxes, three of them whole enough to carry a label");
+		}
+
+		/* 5. hit sees the viewport */
+		{
+			wsk_rect_t r;
+			p.scroll = 0;
+			ok(wsk_hit(&p, 160, 50) == 0, "at 0, the pane's first row is under (160,50)");
+			p.scroll = 26;
+			ok(wsk_hit(&p, 160, 50) == 1, "scrolled one row, the same point names the next");
+			r = wsk_rect(&p, 0);
+			ok(r.y <= 25 && r.y + r.h > 25,
+			   "CONTROL: row 0's rectangle is still laid out over (160,25)");
+			ok(wsk_hit(&p, 160, 25) == WSK_E_NOTFOUND,
+			   "but it is scrolled off, so nothing is under that point");
+			ok(wsk_hit(&p, 160, 145) == WSK_E_NOTFOUND,
+			   "nor under one just below the pane, where later rows are laid out");
+		}
+
+		/* 6. out of range is refused, before a byte */
+		{
+			p.scroll = -1;
+			ok(render_into(&p, doc, sizeof doc, 4096) == WSK_E_SCROLL && doc[0] == '\0',
+			   "scroll -1 is refused, and nothing is written");
+			p.scroll = (short)(max + 1);
+			ok(render_into(&p, doc, sizeof doc, 4096) == WSK_E_SCROLL,
+			   "scroll max+1 is refused");
+			p.scroll = (short)max;
+			ok(render_into(&p, doc, sizeof doc, 4096) > 0 && has(doc, ">Row 199</text>"),
+			   "scroll max is drawn, and shows the last row");
+			p.scroll = 0;
+			ok(render_into(&p, doc, sizeof doc, 4096) > 0, "scroll 0 is drawn");
+		}
+
+		/* 7. rows is clipped to the viewport */
+		{
+			const char *ids[2];
+			int y0, y1;
+			p.scroll = 26 * 5;
+			ids[0] = "i000";
+			ok(wsk_rows(&p, ids, 1, &y0, &y1) == WSK_E_EMPTY,
+			   "a row scrolled wholly out has nothing to repaint");
+			p.scroll = 12;
+			ok(wsk_rows(&p, ids, 1, &y0, &y1) == WSK_OK && y0 == 40,
+			   "a row cut by the top edge repaints from the pane's band, not its own");
+			ids[1] = "i006";
+			p.scroll = 26 * 5;
+			ok(wsk_rows(&p, ids, 2, &y0, &y1) == WSK_OK,
+			   "CONTROL: one visible in the set is enough to answer");
+			ok(wsk_area_rows(&p, &y0, &y1) == WSK_OK && y0 == 40 && y1 == 144,
+			   "a scroll step repaints the pane's rows, band-snapped: 40..144");
+		}
+
+		/* what a coordinate can say: a rectangle is four shorts */
+		{
+			static wsk_widget_t many[1400];
+			wsk_tree_t m;
+			for (i = 0; i < 1400; i++) many[i] = list[i % 200];
+			m = p; m.item = many; m.scroll = 0;
+			m.n = 1200;                      /* 2 + 1200*26 + 2 + 40 = 31244 */
+			ok(wsk_check(&m, 0) == WSK_OK,
+			   "CONTROL: 1,200 rows end at row 31,244, which a short can hold");
+			m.n = 1400;
+			ok(wsk_check(&m, &which) == WSK_E_FIT && which == 1258,
+			   "1,400 do not: refused at the row that would wrap (1258), not drawn");
+		}
+
+		/* a long list a slice at a time draws the same document */
+		{
+			static const int AT[] = { 0, 1, 12, 25, 26, 27, 1000, 3333, -1 };
+			wsk_tree_t sl;
+			int k, same = 0, smax = wsk_slice_max(&p, 200, 24), first = 0;
+			ok(smax == max, "the slice's range is the whole list's range");
+			for (k = 0; k < 9; k++) {
+				int at = (AT[k] < 0) ? max : AT[k];
+				sl = p;
+				if (wsk_slice(&sl, 200, 24, at, &first) != WSK_OK) continue;
+				sl.item = &list[first];
+				p.scroll = (short)at;
+				render_into(&p, doc, sizeof doc, 4096);
+				render_into(&sl, other, sizeof other, 4096);
+				same += (doc[0] != '\0' && strcmp(doc, other) == 0 && sl.n < 8);
+			}
+			ok(same == 9, "a slice of a few rows draws the whole list's document, at nine offsets");
+			sl = p;
+			wsk_slice(&sl, 200, 24, 1000, &first);
+			sl.item = &list[first + 1];          /* the slice one row out */
+			p.scroll = 1000;
+			render_into(&p, doc, sizeof doc, 4096);
+			render_into(&sl, other, sizeof other, 4096);
+			ok(strcmp(doc, other) != 0,
+			   "CONTROL: a slice one row out does not, so the comparison can fail");
+			sl = p;
+			ok(wsk_slice(&sl, 200, 24, max + 1, &first) == WSK_E_SCROLL &&
+			   wsk_slice(&sl, 200, 24, -1, &first) == WSK_E_SCROLL,
+			   "and an offset past either end of the whole list is refused");
+			sl = p;
+			ok(wsk_slice(&sl, 0, 24, 0, &first) == WSK_OK && sl.n == 0 && first == 0,
+			   "an empty list is an empty pane, not row -1");
+			sl = p;
+			ok(wsk_slice(&sl, 100000, 24, 2000000, &first) == WSK_OK &&
+			   first == 2000000 / 26 && sl.n < 8,
+			   "a hundred thousand rows, two million rows down: a handful handed over");
+			p.scroll = 0;
+		}
+
+		/* across the other axis: a row of buttons, scrolled sideways */
+		{
+			static wsk_widget_t keys[12];
+			wsk_tree_t h;
+			for (i = 0; i < 12; i++) {
+				memset(&keys[i], 0, sizeof keys[i]);
+				keys[i].kind = WSK_BUTTON;
+				keys[i].size = 60;
+				keys[i].fill = WSK_INHERIT;
+				keys[i].ink = WSK_INHERIT;
+				snprintf(keys[i].id, WSK_ID_MAX, "k%d", i);
+				snprintf(keys[i].text, WSK_TEXT_MAX, "K%d", i);
+			}
+			wsk_init(&h, WSK_ROW, 320, 172);
+			h.pad = 0; h.gap = 4; h.ids = 1;
+			wsk_area(&h, 20, 0, 200, 40);
+			h.item = keys; h.n = 12;
+			h.overflow = WSK_SCROLL;
+			h.scroll = 30;
+			render_into(&h, doc, sizeof doc, 4096);
+			ok(has(doc, "<rect id=\"k0\" x=\"20\" width=\"30\""),
+			   "ROW: the first key is cut at the pane's left edge");
+			ok(!has(doc, ">K0</text>") && has(doc, ">K1</text>"),
+			   "ROW: and its label is gone while the next one's is not");
+			ok(wsk_hit(&h, 10, 20) == WSK_E_NOTFOUND && wsk_hit(&h, 25, 20) == 0,
+			   "ROW: left of the pane is nothing; just inside it is the cut key");
+		}
+		p.scroll = 0;
+	}
+
 	printf("\n-- justify\n");
 	{
 		static wsk_widget_t three[3];

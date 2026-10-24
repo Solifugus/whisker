@@ -9,9 +9,18 @@ armoured robot cat; this is the part that feels where you touched.*
 `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c, §5d and §7 — **154 checks** plus the profile gate, the
-pixels through RV-9's own rasteriser, four module builds with the double-link,
-and a person looking at the pictures. `host/linux/run.sh --test` adds **19** more.
+`design.md` §5, §5b, §5c, §5d, §5e and §7 — **219 checks** plus the profile gate,
+the pixels through RV-9's own rasteriser, eight module builds with the
+double-link, and a person looking at the pictures. `host/linux/run.sh --test`
+adds **19** more.
+
+**And any stack can scroll** (§5e, 2026-10-24) — the first step toward
+gBASIC's Qt-era `window` and a desktop. `overflow = WSK_SCROLL` and an offset
+the caller holds; a widget half in view is cut by arithmetic, because there is
+no `clipPath` to cut it with, and its text is drawn whole or not at all. A long
+list is handed over a slice at a time (`wsk_slice`), which draws byte for byte
+what the whole list would: `wscroll` drags ten thousand rows on the P4 while
+holding none of them.
 
 **And there is now a program to leave running.** `src/module_stat.c` — staged
 in RV-9's tree as `wstat` — puts the board's die temperature, free heap and
@@ -99,7 +108,7 @@ component kinds and whisker has all five.
   read by a backend.
 - `docs/window-gap.md` — the current answer, measured against `window` and
   Studio on it: Studio's window is now a pure record that touches no toolkit,
-  and whisker answers 15 of the 25 words it uses.
+  and whisker answered 15 of the 25 words it uses — 16 since §5e's scrolling.
 - `docs/rv9-ask-2026-10-02.md` and `docs/rv9-answers-2026-10-02.md` — a defect
   reported to RV-9, what they did about it, and the stack finding that came
   back the other way. Question and answer kept separable, as before.

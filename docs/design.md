@@ -1408,6 +1408,179 @@ well rather than as a button beside the one next to it.
 
 ---
 
+## 5e. Iteration 5 — scrolling, because the desktop asked for it
+
+**Written 2026-10-24, before any code**, per the house rule. Matthew: *"go
+ahead and start on scrolling"*, on `window-gap.md`'s ordering. It is the
+first iteration since §5d said nothing after `input` had a caller, so the
+caller is named first: **gBASIC's `window`**, where `scroll`, `table`,
+`tree` and `memo` are all a viewport onto more rows than fit, and Matthew's
+hope that whisker serves a desktop as well as a panel (2026-10-24). On the P4
+it has a second caller, which is any list longer than 600 rows.
+
+**Scope:** a stack may scroll along its own axis. Not a new widget kind and
+not a container: **a property of a stack**, which is already the only
+container whisker has. Two fields on the tree and nothing else —
+
+```
+t.overflow = WSK_SCROLL;     /* WSK_REFUSE, the default, is D10 */
+t.scroll   = 120;            /* pixels along the axis, the caller's to move */
+```
+
+— and three small functions: `wsk_scroll_max(t)`, the furthest it may go;
+`wsk_area_rows(t, &y0, &y1)`, the band-snapped rows a scroll step damages;
+and the existing `hit`, `rows` and `part`, which learn the viewport.
+
+**Why a property and not a kind.** Studio's `scroll` wraps one child, and that
+child is always a column. whisker has no nesting (D3), and a stack *is* a
+column, so the wrapper has nothing to wrap. `table`, `tree` and `memo` are
+then each a scrolling stack of rows, which is the order `window-gap.md` gave.
+
+**The viewport is the area.** The content is the stack laid out at its
+natural extents — padding, widgets, gaps, padding — and slid back by
+`scroll`. A stack whose content fits its area lays out **exactly** as it does
+today, byte for byte, which is the control on everything below: scrolling
+changes nothing until there is something to scroll.
+
+**Five decisions, made here because they are cheap to state and expensive to
+retrofit.**
+
+1. **The caller holds the offset (D5).** whisker remembers nothing between
+   calls, so there is no momentum, no drag tracking and no wheel: a wheel
+   click or a finger's travel is the host's, and the host turns it into a new
+   `scroll` before asking for a picture. That is the typing loop's shape
+   (§5d) and D7's: on Linux the mouse wheel and a drag stand in for the
+   finger.
+2. **Out of range is refused, not clamped.** `scroll < 0` or past
+   `wsk_scroll_max` is `WSK_E_SCROLL`, before a byte. The argument is D10's
+   and D8's: clamping is a substitution, and the caller is the one that knows
+   whether an overshoot is a bug or a bounce. Clamping is one line for a
+   caller that wants it, and `wsk_scroll_max` is there so it is one line.
+3. **whisker clips by arithmetic, and only what arithmetic can clip.** There
+   is no `clipPath` on `/w0` (§2.4), and `/w0`'s row clip is both a property
+   of one display system (§2.8) and *vertical only today* — the layout model
+   must not lean on either. So a widget half in view is drawn **cut**: its
+   box is intersected with the viewport, which is integer arithmetic on a
+   rectangle. **Text cannot be cut that way**, so text is drawn **whole or
+   not at all**: it appears when its cell is wholly inside the viewport and
+   not before. The corner marks and the caret go with the text. A flat
+   substrate's price, recorded rather than hidden: a label pops in at the
+   edge instead of sliding in.
+4. **Nothing outside the viewport answers `hit`.** A widget scrolled off the
+   top still has a rectangle, and that rectangle may sit over a neighbouring
+   stack. A hit test that consulted it would name a widget the person cannot
+   see — the gap-is-nothing argument of §5b, one level up.
+5. **`rows` is clipped too**, and a widget wholly out of view contributes no
+   rows: asking to repaint only such widgets is `WSK_E_EMPTY`, which is the
+   truth — nothing visible changed.
+
+**What a scroll step costs is already priced** (`tools/evidence/scroll/`,
+corrected against the P4 2026-10-11): the bytes track the viewport, not the
+list, and a step damages the whole viewport. So a scroll is a repaint of
+`wsk_area_rows`, which is a composite repaint whenever another stack shares
+those bands — §5c's machinery, unchanged. The one new cost is that two
+widgets at the edges are drawn cut, which is at most two boxes.
+
+**Done means:**
+
+1. **Bytes track the viewport.** A 200-item scrolling list draws the same
+   document as a 20-item one at the same offset — and the control is that
+   the same 200 items, not scrolling, are refused (`WSK_E_FIT`, D10), so the
+   overflow being scrolled is real.
+2. **A list that fits is byte-identical to one that does not scroll** — the
+   control on the whole iteration, and the reason `WSK_REFUSE` is zero.
+3. **Nothing crosses the viewport, at the pixels.** A scrolled pane between
+   two neighbours, through RV-9's rasteriser: every pixel outside the pane is
+   identical to the unscrolled picture, and the control is that pixels
+   inside it changed.
+4. **A cut widget has its box and not its text**, and the control is the same
+   widget, wholly in view, with its text.
+5. **`hit` sees the viewport.** A point inside it names the widget drawn
+   there, and after scrolling one item the same point names the next one; a
+   point over a scrolled-off widget's rectangle names nothing — the control
+   being that the unscrolled tree names it there.
+6. **Out of range is refused** with `WSK_E_SCROLL` and nothing written, at
+   `-1` and at `max + 1`; `0` and `max` are drawn.
+7. **`rows` is clipped**: a widget scrolled wholly out is `WSK_E_EMPTY`; one
+   cut by the edge gets the viewport's side of the band, not its own.
+8. **§7's question, answered with a number**: which profile scrolling is in,
+   what it costs, and that the reduced build refuses it by name.
+9. Module rules and the double-link, as §5 criterion 7.
+10. A person looks at it.
+
+**Explicitly not in iteration 5:** a scroll *bar* (a position mark is
+something a caller can compose as a sized widget in a stack beside the pane,
+from `scroll` and `wsk_scroll_max`; whether whisker should draw one waits for
+somebody to want it), momentum, a second axis in one stack, scrolling a
+composite as a whole, `table`, `tree` and `memo` themselves — each is a
+scrolling stack and each is its own question — and anything a host does to
+turn a gesture into an offset.
+
+### What it came to, 2026-10-24
+
+Built, the same day, criteria 1–9 met and 10 waiting for Matthew's eye.
+**219 checks** in `src/run.sh --module`, where §5d and D10 left 168: 40 in the
+suite, 9 at the pixels, 1 profile control and 1 module link. Not a byte of
+any existing document moved — the five §5e controls that compare against the
+non-scrolling path are the assertion, and `git status` on the goldens is the
+other one.
+
+**At the pixels** (`scroll_pane.ppm`): a 200-row list in a pane between a
+toolbar and a status line, scrolled 12 rows. **17,191 pixels changed inside
+the pane and 0 outside it.** Row 0's box is cut at the top in its own fill
+with no ink in it; row 1's label is there. And a *banded* scroll step — a
+composite repaint of `wsk_area_rows`, 40..144, which carries the status line
+because it shares the last band — leaves the screen **byte-identical** to a
+full redraw. 538 bytes a step.
+
+**Three things the building found, and none was in the design above.**
+
+1. **A rectangle is four shorts, so a stack ends at row 32,767.** Found by
+   timing a 20,000-row list, which drew 17 KB of rows from the wrong places
+   with no error: rows past the limit wrapped to negative coordinates and
+   some wrapped into view. Now refused, `WSK_E_FIT` naming the row that
+   would wrap — 1,200 rows of 24 are accepted, 1,400 refused at 1,258. The
+   non-scrolling path always had the same limit and never met it, because
+   D10 keeps a stack inside its area and no screen is 32,767 rows tall.
+2. **A document costs the square of the list.** `wsk_rect` lays out from
+   the top of the stack every time, which is D2's protection against two
+   layouts drifting, so `wsk_part` is quadratic. Measured on the host: 0.11
+   ms for 200 rows, 5.2 ms for 2,000. Fine for a pane, wrong for a table.
+3. **Both have the same answer, and it is D5's: hand whisker the slice.**
+   The caller holds the list; whisker only needs the rows in view.
+   `wsk_slice(pane, total, size, scroll, &first)` is the arithmetic for rows
+   of one size — which rows, how many, and the offset into them — and the
+   document it produces is checked **byte-identical to the whole list's at
+   nine offsets**, with a control that a slice one row out differs. A
+   hundred thousand rows, two million rows down, hands over a handful. It is
+   a shortcut to the same picture, not a second layout.
+
+**§7's question: 496 bytes, in the default, out of `WSK_MINIMAL`.**
+`module_shape.c` is 4,168 bytes without scrolling and 4,692 with; with
+`-DWSK_NO_SCROLL` it is 4,196, the 28 being the refusal (`WSK_E_KIND`,
+`which = -1` because a scroll belongs to the stack rather than to a
+widget). The C5 profile is unchanged in what it draws and refuses a
+scrolling stack by name, checked in `src/run.sh` beside the field and the
+mark. A P4 program that never scrolls may define `WSK_NO_SCROLL` itself.
+
+**The board program is written and not yet run.** `src/module_scroll.c`,
+`wscroll`: ten thousand rows in a pane, dragged with a finger, built a
+slice at a time on the stack — the program holds no rows at all. It links
+as a module at 6,628 bytes, position independent, and its own chain to
+`write()` is **1,856 bytes**, so with the rasteriser's ≥4,528 it wants more
+than 6,384: declare 8,192 until RV-9 bisects it. It times every drag frame
+twice, the repaint alone and the finger's report to the last byte, which is
+the measurement `tools/evidence/scroll/` could only derive. Before the
+board, `tools/evidence/drag/` runs the module itself here against RV-9's
+window and a scripted finger: a 300-row drag ends on row 6, and a tap at
+y 330 is named `r11` and lands on the row labelled 11.
+
+**Recorded for Matthew rather than ratified**, because the ledger holds only
+what he has agreed: the five decisions above (the caller holds the offset;
+out of range is refused, not clamped; text whole or not at all; nothing
+outside the viewport answers `hit`; `rows` is clipped), and that scrolling
+is in the default profile and out of the C5's.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this
