@@ -127,12 +127,16 @@ belong to different widgets). In pixels *and* millimetres, via
 rather than true of one. **This now needs a finger, not a program.**
 
 **✅ Measured 2026-10-24**, on the third run (`tools/evidence/slop/`):
-**scatter 12–26 px worst (1.7–3.8 mm), drift zero**, recorded in §5b. And it
-found something bigger than itself: **the P4 draws ~45 rows low**, so taps
-land that far below what they aimed at. That is RV-9's panel timing
-(`rv9-ask-2026-10-24.md`) and it blocks any whisker interface on the P4 until
-it is fixed — any widget shorter than ~45 rows takes taps meant for the one
-above. Whether `hit` forgives gap taps waits on that fix.
+**scatter 12–26 px worst (1.7–3.8 mm), drift zero**, recorded in §5b.
+**Bias is still owed.** The taps landed ~45 rows low and I asked RV-9 about
+the panel; RV-9 found it was `wslop`'s own marks, unsized buttons laid out 64
+rows tall (`rv9-answers-2026-10-24.md`). Fixed in both trees; one more run
+with sized marks measures bias, and then whether `hit` forgives gap taps has
+both of its numbers.
+
+**And one design question that run raised, not yet answered:** a widget's
+natural size silently beats its area. Nothing refuses it and nothing
+reports it; the widget paints outside the space it was given. See §4.3.
 
 **And one thing that is not a measurement:** somebody using a whisker interface
 on the P4 for something real. That is half of §6's bar — and the C5 half of it
@@ -191,11 +195,12 @@ decision was already made *in favour of* the rule whisker uses (D4, and its
 
 ---
 
-## 4. Two decisions that are Matthew's, not mine
+## 4. Three decisions that are Matthew's, not mine
 
-G1 was the third and is now D9. These two block nothing today, but both will be
-reopened forever if they are not answered, and **one of them has just acquired
-a trigger**.
+G1 was the third and is now D9. The first two block nothing today, but both
+will be reopened forever if they are not answered, and **one of them has just
+acquired a trigger**. The third, §4.3, arrived on 2026-10-24 with a cost
+already attached.
 
 ### 4.1 Is the compact keyboard form built into whisker?
 
@@ -304,6 +309,35 @@ without a rebuild?* That is answerable the first time a sensor readout exists
 on the C5 and somebody wants to add a second sensor. If the answer is that
 reflashing is fine because the panel changes once a month, it stays unshipped
 and §1 of its own sketch is the reason it was never on the wire anyway.
+
+### 4.3 When a widget's natural size does not fit its area — added 2026-10-24
+
+**What happens today.** `wsk_rect` lays out fixed extents first and shares
+what is left; when nothing is left it clamps the surplus at zero and carries
+on. So a column whose children want more than its span draws them past its
+end, into whatever is below, and `hit` agrees with the drawing. No error, no
+warning. A button with `size = 0` wants 64 rows, so any button in an area
+shorter than that overflows.
+
+**What it cost.** `wslop`'s marks and edge bars were exactly that, and the
+result was a day's wrong conclusion and an ask sent to the wrong layer
+(`rv9-answers-2026-10-24.md`). RV-9 put it plainly: *"Item 1 is what not
+deciding cost."*
+
+**The three answers:**
+
+1. **Refuse** — rendering returns an error before writing a byte, the way a
+   document over budget already is (§2.3, `WSK_E_BUDGET`) and a reduced build
+   refuses a kind it lacks (D8). The same rule whisker already follows twice.
+2. **Clamp** — the widget shrinks to the span. Draws inside its area, but it
+   is a silent substitution, which is what D8 was written to forbid.
+3. **Document it** and change nothing.
+
+**My recommendation: refuse.** It is the rule whisker already has, and the
+failure it would have caught was silent for a whole session on hardware. What
+I have **not** checked is whether any existing test tree overflows its area
+on purpose, which is the first thing to find out before it is built — a golden
+that moves would be a deliberate, listed rebaseline.
 
 ## 5. What is explicitly *not* on this map
 

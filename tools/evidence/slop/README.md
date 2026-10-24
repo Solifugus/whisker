@@ -29,14 +29,21 @@ Matthew's finger, one person, board on a café table. Five marks of 14 px
 | bottom-left | 28,572 | −13, +19 | 5 px (0.7 mm) | 12 px (1.7 mm) | 0 |
 | bottom-right | 996,572 | 0, +22 | 5 px (0.7 mm) | 11 px (1.6 mm) | 0 |
 
-**Trust the top three for scatter, not the bottom two.** The bottom marks were
-drawn half off the glass (see the bias, below), so the finger aimed at a
+**Trust the top three for scatter, not the bottom two.** The bottom marks ran
+half off the glass (see the bias, below), so the finger aimed at a
 centre it could not see and the taps piled against the bottom of the touch
 range — y 587 to 597 of 599. That flattens the vertical spread, so their
 scatter is an underestimate, not a good corner.
 
-**The bias is not the touch's.** The picture is drawn about 45 px low on the
-glass: a red bar meant for rows 0–3 showed as a band of about a centimetre at
-the top, and a cyan one at rows 596–599 did not show at all. The taps land
-+37 to +48 px low by the same amount. That is RV-9's panel timing, asked in
-`docs/rv9-ask-2026-10-24.md`; whisker should not compensate for it.
+**The bias is void, and the first reading of it was wrong.** It was put to
+RV-9 as the panel drawing ~45 rows low (`docs/rv9-ask-2026-10-24.md`). It was
+`wslop`: every mark and edge bar was a button with `size = 0`, which in a
+column is 64 rows whatever its area says, so each mark was a 12×64 bar whose
+middle sat 26 rows below the target, and the 4-row red edge was a centimetre
+thick (`docs/rv9-answers-2026-10-24.md`). Fixed in both trees on the same
+day. The bias wants a fresh run with the sized marks.
+
+**What that does to the scatter:** it mostly stands, because a constant
+offset drops out of a spread. It is the spread of aims at the middle of a
+tall bar rather than at a point, and the bottom two marks also ran off the
+glass, which is the squeeze described above.

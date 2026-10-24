@@ -1138,12 +1138,21 @@ press and its release belong to the same widget. Against the default 64 px
 target that is comfortable: a tap aimed at the centre lands inside it with
 room to spare, and one in a 4–8 px gap is a near miss, not a choice.
 
-**`hit` stays exact for now**, and not only for lack of a reason to change it:
-the same run found the picture drawn ~45 rows low on the glass (RV-9's panel
-timing, `rv9-ask-2026-10-24.md`), and that offset is twice the scatter. A
-tolerance tuned before it is fixed would be tuned to the wrong error. Whether
-a gap tap should resolve to its nearer neighbour is now a question with
-numbers behind it, to be asked once the picture is where `/w0` says it is.
+**Bias was not measured, and the first account of it was wrong.** Every tap
+landed +37 to +48 rows low, and I reported it to RV-9 as the panel drawing
+~45 rows low. It was whisker's: the marks were buttons with `size = 0`, which
+in a column take `WSK_BTN_ROWS` (64) whatever their area says and overflow
+it downwards — so each "mark" was a 12×64 bar hanging below its target, and
+the 4-row edge bar meant to check the panel was a centimetre thick
+(`rv9-answers-2026-10-24.md`). The scatter stands, since a constant offset
+drops out of a spread, with two qualifications: it is the spread of aims at
+the middle of a tall bar rather than at a point, and the bottom two marks ran
+off the glass, which squeezed their taps. A re-run with sized marks is what
+measures bias, and is owed.
+
+**`hit` stays exact** until that re-run, because the bias is the half of the
+answer still missing. Whether a gap tap should resolve to its nearer
+neighbour then has both numbers behind it.
 
 **And the measurement nobody has taken**: finger-down to pixel-changed, end to
 end. That number includes an I²C controller, an interrupt, a process wakeup and

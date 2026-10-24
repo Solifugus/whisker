@@ -101,10 +101,13 @@ to read when picking this up cold. Three gates, and only one is code:
   `tools/evidence/scroll/` among them, whose "never as an animation" became
   "not for a whole screen, but a pane of ~110 rows fits a 30 fps frame".
   **Check what a figure was derived from before quoting it.**
-- **Touch slop is measured, 2026-10-24** (§5b): 12–26 px worst, zero drift.
-  The same run found **the P4 draws ~45 rows low** on the glass — RV-9's
-  panel timing, asked in `docs/rv9-ask-2026-10-24.md`. Until that is fixed
-  every tap lands ~45 rows below its target, so **do not tune `hit` to it**.
+- **Touch scatter is measured, 2026-10-24** (§5b): 12–26 px worst, zero
+  drift. **Bias is not** — the "P4 draws ~45 rows low" I sent to RV-9 was
+  `wslop`'s own marks, unsized buttons laid out 64 rows tall
+  (`docs/rv9-answers-2026-10-24.md`). **A button with `size = 0` in a column
+  is 64 rows whatever its area says, and overflows silently.** Before blaming
+  a layer below, check what whisker drew — RV-9 settled it by turning the
+  picture over and watching the fault follow the colour.
 - **G2 — the four things only the P4 can measure**: finger-down to
   pixel-changed (never measured, §2.2), ~~touch slop (§5b)~~, the stack bisected
   there rather than carried over (§5), and a panel where `SRC_MAX` actually
