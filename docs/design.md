@@ -1130,6 +1130,21 @@ count. That one is deliberately left open, because the right tolerance depends
 on how accurate the controller's centroid actually is, and nobody has measured
 it. Exact rectangles today, and a number after the board says what it needs.
 
+**Measured on the P4, 2026-10-24** (`wslop`, `tools/evidence/slop/`). One
+finger, five marks, eight taps each. **Scatter about the mean is 7–17 px rms
+and 12–26 px worst — 1.7 to 3.8 mm**, the worst in the corner furthest from
+the hand. **Drift between DOWN and UP was zero on every one of 40 taps**, so a
+press and its release belong to the same widget. Against the default 64 px
+target that is comfortable: a tap aimed at the centre lands inside it with
+room to spare, and one in a 4–8 px gap is a near miss, not a choice.
+
+**`hit` stays exact for now**, and not only for lack of a reason to change it:
+the same run found the picture drawn ~45 rows low on the glass (RV-9's panel
+timing, `rv9-ask-2026-10-24.md`), and that offset is twice the scatter. A
+tolerance tuned before it is fixed would be tuned to the wrong error. Whether
+a gap tap should resolve to its nearer neighbour is now a question with
+numbers behind it, to be asked once the picture is where `/w0` says it is.
+
 **And the measurement nobody has taken**: finger-down to pixel-changed, end to
 end. That number includes an I²C controller, an interrupt, a process wakeup and
 a repaint, and the 19 ms of §2.2 is only the last of those. It is the first

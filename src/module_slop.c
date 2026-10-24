@@ -58,6 +58,9 @@
 #define TARGETS   5
 #define MAX_TAPS  32
 #define MARK      14          /* the mark's box, device pixels */
+#define STRAY     100         /* further than this, it was not aimed here */
+#define SETTLE    400         /* ms after a mark moves, a tap was meant for the last one */
+#define EDGE      4           /* the edge bars' thickness, device pixels */
 
 typedef struct { const rv9_mod_env_t *env; int path; } out_t;
 
@@ -132,8 +135,8 @@ static void say_px_mm(const rv9_mod_env_t *env, const rv9_physical_t *p,
 __attribute__((section(".text.entry")))
 int rv9_module_entry(const rv9_mod_env_t *env)
 {
-	wsk_widget_t mark[1], head[1];
-	wsk_tree_t part[2];
+	wsk_widget_t mark[1], head[1], bar[2];
+	wsk_tree_t part[4];
 	wsk_doc_t doc;
 	wsk_sink_t s;
 	out_t out;
@@ -142,7 +145,8 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 	int dx[MAX_TAPS], dy[MAX_TAPS], drift[MAX_TAPS];
 	uint32_t size = 0;
 	int w, h, taps = 8, t, i, n, touch;
-	int down_x = 0, down_y = 0, have_down = 0;
+	int down_x = 0, down_y = 0, have_down = 0, fresh = 0;
+	uint32_t last_up = 0;
 
 	if (env == NULL || env->abi_version < 11) return 1;
 
@@ -197,6 +201,7 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 		int sx = 0, sy = 0, mx, my, worst = 0, worst_drift = 0, rms = 0;
 
 		n = 0;
+		fresh = (t > 0);
 		while (n < taps) {
 			/* Draw the mark where this target is, and a count above it. */
 			{
@@ -237,6 +242,31 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 			wsk_area(&part[1], 0, 0, w, 28);
 			part[1].item = head; part[1].n = 1;
 
+			/* A bar along the top and bottom rows of the panel, red above
+			   and cyan below, so a band of colour at an edge says which
+			   rows it is. If either is missing or thick, the picture is
+			   not where the window says it is, and every bias below is
+			   the display's, not the touch's -- which the first run on the
+			   P4 could not tell apart, because nobody could see the bottom
+			   marks whole. */
+			for (i = 0; i < 2; i++) {
+				int k;
+				for (k = 0; k < (int)sizeof bar[i].id; k++) bar[i].id[k] = '\0';
+				for (k = 0; k < (int)sizeof bar[i].text; k++) bar[i].text[k] = '\0';
+				bar[i].kind = WSK_BUTTON;
+				bar[i].size = 0; bar[i].weight = 1;
+				bar[i].ink = WSK_INHERIT; bar[i].mark = 0;
+				bar[i].id[0] = 'e';
+				bar[i].id[1] = (char)('0' + i);
+				wsk_init(&part[2 + i], WSK_COL, w, h);
+				part[2 + i].pad = 0; part[2 + i].gap = 0;
+				part[2 + i].item = &bar[i]; part[2 + i].n = 1;
+			}
+			bar[0].fill = 0xe04040u;
+			bar[1].fill = 0x40e0e0u;
+			wsk_area(&part[2], 0, 0, w, EDGE);
+			wsk_area(&part[3], 0, h - EDGE, w, EDGE);
+
 			wsk_doc_init(&doc, &part[0]);
 			{
 				uint32_t v = 0;
@@ -246,6 +276,8 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 			wsk_open(&doc, &s);
 			wsk_part(&doc, &part[0], &s);
 			wsk_part(&doc, &part[1], &s);
+			wsk_part(&doc, &part[2], &s);
+			wsk_part(&doc, &part[3], &s);
 			wsk_shut(&s);
 
 			/* Collect one tap: a DOWN, then the UP that ends it. */
@@ -256,6 +288,23 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 				if (env->read(touch, &ev, sizeof ev) < (int)sizeof ev) continue;
 
 				if (ev.kind == RV9_TOUCH_DOWN) {
+					int ox = (int)ev.x - tx[t], oy = (int)ev.y - ty[t];
+
+					/* Two ways a tap is not about this mark, each said
+					   aloud so a rejection is never silent: it came while
+					   the person was still aiming at the last one, or it
+					   landed nowhere near this one. Neither may enter the
+					   scatter, which is the spread of taps that were aimed. */
+					if (fresh && ev.at_ms - last_up < SETTLE) {
+						say_num(env, "  ignored ", (int32_t)ev.x, ",");
+						say_num(env, 0, (int32_t)ev.y, " -- too soon after the mark moved\n");
+						continue;
+					}
+					if (ox < -STRAY || ox > STRAY || oy < -STRAY || oy > STRAY) {
+						say_num(env, "  ignored ", (int32_t)ev.x, ",");
+						say_num(env, 0, (int32_t)ev.y, " -- not aimed at this mark\n");
+						continue;
+					}
 					down_x = (int)ev.x; down_y = (int)ev.y; have_down = 1;
 				} else if (ev.kind == RV9_TOUCH_UP && have_down) {
 					int ddx = (int)ev.x - down_x, ddy = (int)ev.y - down_y;
@@ -270,6 +319,13 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 					drift[n] = d;
 					sx += dx[n]; sy += dy[n];
 					have_down = 0;
+					fresh = 0;
+					last_up = ev.at_ms;
+					say_num(env, "  tap ", n + 1, "  down ");
+					say_num(env, 0, down_x, ",");
+					say_num(env, 0, down_y, "  up ");
+					say_num(env, 0, (int32_t)ev.x, ",");
+					say_num(env, 0, (int32_t)ev.y, "\n");
 					n++;
 					break;
 				}

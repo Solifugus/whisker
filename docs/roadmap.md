@@ -126,6 +126,14 @@ belong to different widgets). In pixels *and* millimetres, via
 `RV9_GS_PHYSICAL`, so the answer is portable between panels of different pitch
 rather than true of one. **This now needs a finger, not a program.**
 
+**✅ Measured 2026-10-24**, on the third run (`tools/evidence/slop/`):
+**scatter 12–26 px worst (1.7–3.8 mm), drift zero**, recorded in §5b. And it
+found something bigger than itself: **the P4 draws ~45 rows low**, so taps
+land that far below what they aimed at. That is RV-9's panel timing
+(`rv9-ask-2026-10-24.md`) and it blocks any whisker interface on the P4 until
+it is fixed — any widget shorter than ~45 rows takes taps meant for the one
+above. Whether `hit` forgives gap taps waits on that fix.
+
 **And one thing that is not a measurement:** somebody using a whisker interface
 on the P4 for something real. That is half of §6's bar — and the C5 half of it
 is already started, see G3.

@@ -1,0 +1,78 @@
+rv9> wslop > /w0
+wslop: tap the CENTRE of each mark, 8 times. Aim; do not hurry.
+  tap 1  down 518,342  up 518,342
+  tap 2  down 500,349  up 500,349
+  tap 3  down 503,357  up 503,357
+  tap 4  down 517,348  up 517,348
+  tap 5  down 512,341  up 512,341
+  tap 6  down 506,360  up 506,360
+  tap 7  down 513,340  up 513,340
+  tap 8  down 504,350  up 504,350
+
+mark 1 at 512,300
+  bias    -2,48 px -- a constant offset is the driver's, not whisker's
+  scatter rms   9 px (1.3 mm)
+  scatter worst 12 px (1.7 mm)
+  drift down-up 0 px (0.0 mm)
+  tap 1  down 18,72  up 18,72
+  tap 2  down 25,89  up 25,89
+  tap 3  down 20,73  up 20,73
+  tap 4  down 28,79  up 28,79
+  tap 5  down 22,63  up 22,63
+  tap 6  down 27,70  up 27,70
+  tap 7  down 19,75  up 19,75
+  tap 8  down 26,81  up 26,81
+
+mark 2 at 28,28
+  bias    -4,47 px -- a constant offset is the driver's, not whisker's
+  scatter rms   7 px (1.0 mm)
+  scatter worst 14 px (2.0 mm)
+  drift down-up 0 px (0.0 mm)
+  tap 1  down 997,65  up 997,65
+  tap 2  down 978,82  up 978,82
+  tap 3  down 981,88  up 981,88
+  tap 4  down 994,46  up 994,46
+  tap 5  down 990,60  up 990,60
+  tap 6  down 978,63  up 978,63
+  tap 7  down 983,76  up 983,76
+  tap 8  down 1000,41  up 1000,41
+
+mark 3 at 996,28
+  bias    -8,37 px -- a constant offset is the driver's, not whisker's
+  scatter rms   17 px (2.5 mm)
+  scatter worst 26 px (3.8 mm)
+  drift down-up 0 px (0.0 mm)
+  ignored 998,25 -- too soon after the mark moved
+  tap 1  down 27,587  up 27,587
+  tap 2  down 13,593  up 13,593
+  tap 3  down 8,591  up 8,591
+  tap 4  down 11,594  up 11,594
+  tap 5  down 10,593  up 10,593
+  tap 6  down 19,593  up 19,593
+  tap 7  down 13,592  up 13,592
+  tap 8  down 18,590  up 18,590
+
+mark 4 at 28,572
+  bias    -13,19 px -- a constant offset is the driver's, not whisker's
+  scatter rms   5 px (0.7 mm)
+  scatter worst 12 px (1.7 mm)
+  drift down-up 0 px (0.0 mm)
+  tap 1  down 998,594  up 998,594
+  tap 2  down 995,595  up 995,595
+  tap 3  down 993,594  up 993,594
+  tap 4  down 1003,593  up 1003,593
+  tap 5  down 985,594  up 985,594
+  tap 6  down 1001,597  up 1001,597
+  tap 7  down 995,596  up 995,596
+  tap 8  down 995,595  up 995,595
+
+mark 5 at 996,572
+  bias    0,22 px -- a constant offset is the driver's, not whisker's
+  scatter rms   5 px (0.7 mm)
+  scatter worst 11 px (1.6 mm)
+  drift down-up 0 px (0.0 mm)
+
+the worst SCATTER is the radius a hit test must forgive, and two
+widgets must be further apart than that or a confident tap lands on
+the neighbour. BIAS is a different fault and belongs further down.
+rv9> 

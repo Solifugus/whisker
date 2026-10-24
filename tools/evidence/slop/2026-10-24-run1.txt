@@ -1,0 +1,48 @@
+wslop > /w0
+wslop: tap the CENTRE of each mark, 8 times. Aim; do not hurry.
+W (31810) rv9-touch: polls 1472  bus errors 0  ready 0  fingers seen 0  bits 0x00
+W (31811) rv9-touch: /touch: the controller answers the bus and reports no finger. It has no reset line, so this cannot be cleared from here -- take the board's power away and put it back. Flashing leaves it like this; an ordinary reset does not.
+W (36820) rv9-touch: polls 1784  bus errors 0  ready 0  fingers seen 0  bits 0x00
+W (41828) rv9-touch: polls 2097  bus errors 0  ready 0  fingers seen 0  bits 0x00
+W (46837) rv9-touch: polls 2410  bus errors 0  ready 0  fingers seen 0  bits 0x00
+W (51846) rv9-touch: polls 2723  bus errors 0  ready 0  fingers seen 0  bits 0x00
+W (56855) rv9-touch: polls 3036  bus errors 0  ready 0  fingers seen 0  bits 0x00
+W (61864) rv9-touch: polls 3349  bus errors 0  ready 0  fingers seen 0  bits 0x00
+W (66872) rv9-touch: polls 3662  bus errors 0  ready 0  fingers seen 0  bits 0x00
+W (71880) rv9-touch: polls 3975  bus errors 0  ready 0  fingers seen 0  bits 0x00
+W (76888) rv9-touch: polls 4288  bus errors 0  ready 0  fingers seen 0  bits 0x00
+
+mark 1 at 512,300
+  bias    -13,54 px -- a constant offset is the driver's, not whisker's
+  scatter rms   11 px (1.6 mm)
+  scatter worst 19 px (2.8 mm)
+  drift down-up 0 px (0.0 mm)
+
+mark 2 at 28,28
+  bias    382,293 px -- a constant offset is the driver's, not whisker's
+  scatter rms   184 px (27.5 mm)
+  scatter worst 441 px (66.0 mm)
+  drift down-up 12 px (1.7 mm)
+
+mark 3 at 996,28
+  bias    -12,43 px -- a constant offset is the driver's, not whisker's
+  scatter rms   10 px (1.4 mm)
+  scatter worst 22 px (3.2 mm)
+  drift down-up 8 px (1.1 mm)
+
+mark 4 at 28,572
+  bias    -2,5 px -- a constant offset is the driver's, not whisker's
+  scatter rms   7 px (1.0 mm)
+  scatter worst 15 px (2.2 mm)
+  drift down-up 0 px (0.0 mm)
+
+mark 5 at 996,572
+  bias    -134,11 px -- a constant offset is the driver's, not whisker's
+  scatter rms   314 px (47.0 mm)
+  scatter worst 831 px (124.4 mm)
+  drift down-up 1 px (0.1 mm)
+
+the worst SCATTER is the radius a hit test must forgive, and two
+widgets must be further apart than that or a confident tap lands on
+the neighbour. BIAS is a different fault and belongs further down.
+rv9> 
