@@ -5,7 +5,8 @@
 > Qt-only (gBASIC `19a830f`; last GTK commit `d997c94`), and Studio moved with
 > it. GUI work there now goes through a declarative `window` read by a backend,
 > `qt` the first. Kept as the record of what was measured then; its figures are
-> not to be quoted about gBASIC as it is now until re-measured against `window`.
+> not to be quoted about gBASIC as it is now. **Re-measured 2026-10-24 in
+> `window-gap.md`**, which is the current answer.
 
 **Written 2026-10-03.** Matthew: *"eventually I am hoping to build a gbasic
 library around this and adapt the gbasic-studio project to it."*

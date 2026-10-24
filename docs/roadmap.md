@@ -185,8 +185,11 @@ Qt-only** (gBASIC `19a830f`). Two consequences, neither yet worked through:
 - **The distance is unmeasured.** `gbasic-gap.md`, `studio-gap.md` and §7.1's
   "all five kinds" were all counted against the GTK tree. `window` has many
   more kinds than `gui` had, so the gap is certainly larger than "four
-  capabilities" — by how much is the next measurement on this gate, and it
-  is the same job for both documents.
+  capabilities". **Measured the same day, `window-gap.md`:** Studio's window
+  record uses 25 words and whisker answers 15 (five without their
+  interaction); eight kinds are missing, in three families — scrolling
+  (`scroll`, `table`, `tree`), overlays (`choice`, menus), and editors
+  (`memo`, `source`) — plus `check`. The order is unchanged: scrolling first.
 
 **And there is a named destination beyond it, as of 2026-10-03.** Matthew:
 *"eventually I am hoping to build a gbasic library around this and adapt the

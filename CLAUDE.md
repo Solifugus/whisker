@@ -28,8 +28,9 @@ It serves two hosts and belongs to neither:
 sense, a second reader of the same `window` declaration — and has to earn the
 place. `docs/design.md` §6 records what would have to be true first. **Every
 whisker document written before 2026-10-22 that measures gBASIC measured its
-GTK tree** (last GTK commit `d997c94`): `gbasic-gap.md` and `studio-gap.md` in
-particular are history until re-measured against `window`.
+GTK tree** (last GTK commit `d997c94`): `gbasic-gap.md` and `studio-gap.md`
+are history. **`docs/window-gap.md` (2026-10-24) is the current distance**:
+Studio's window is a pure record, and whisker answers 15 of its 25 words.
 
 ## Status
 

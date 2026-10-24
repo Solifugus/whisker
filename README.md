@@ -96,7 +96,10 @@ component kinds and whisker has all five.
   the same way: four capabilities, not a port.
 - **Both gap documents measured gBASIC's GTK tree, which no longer exists.**
   gBASIC removed GTK on 2026-10-22 and is Qt-only, with a declarative `window`
-  read by a backend; they are history until re-measured against that.
+  read by a backend.
+- `docs/window-gap.md` — the current answer, measured against `window` and
+  Studio on it: Studio's window is now a pure record that touches no toolkit,
+  and whisker answers 15 of the 25 words it uses.
 - `docs/rv9-ask-2026-10-02.md` and `docs/rv9-answers-2026-10-02.md` — a defect
   reported to RV-9, what they did about it, and the stack finding that came
   back the other way. Question and answer kept separable, as before.

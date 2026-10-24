@@ -1451,8 +1451,8 @@ evidence and stability rather than about missing widgets.
 **Stale since 2026-10-22:** `gui` was removed with GTK. gBASIC's `window`
 declaration has far more than five kinds (`table`, `tabs`, `cells`, `text`,
 `memo`, `choice`, `source`, dialogs and menus among them), so "the large end is
-already reached" is not true of gBASIC as it now is. It wants recounting
-against `window`, which is the same job as re-measuring `gbasic-gap.md`.
+already reached" is not true of gBASIC as it now is. **Recounted the same
+day in `window-gap.md`**: Studio's record uses 25 words and whisker answers 15.
 
 So the work is the **small** end, and the question is sharper than it looks:
 not *can* the C5 run whisker — it does — but **does it pay for the parts it
