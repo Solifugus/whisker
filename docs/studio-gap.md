@@ -1,5 +1,12 @@
 # The distance to gBASIC Studio — measured
 
+> **Measured against a gBASIC that no longer exists.** On 2026-10-22 gBASIC
+> removed GTK, the `gi` bridge and the `gui`/`gtkui` libraries and became
+> Qt-only (gBASIC `19a830f`; last GTK commit `d997c94`), and Studio moved with
+> it. GUI work there now goes through a declarative `window` read by a backend,
+> `qt` the first. Kept as the record of what was measured then; its figures are
+> not to be quoted about gBASIC as it is now until re-measured against `window`.
+
 **Written 2026-10-03.** Matthew: *"eventually I am hoping to build a gbasic
 library around this and adapt the gbasic-studio project to it."*
 

@@ -60,7 +60,7 @@ bytes of stack and spends 4,096 of statics, out of one process footprint
 
 Which settles what an RV-9 *module* should pass, and nothing more. `/w0` is **a**
 display system, not **the** display system — RV-9 has a second driver on the same
-panel, the P4 moves every figure, and gBASIC's GTK renders on its own loop where
+panel, the P4 moves every figure, and gBASIC's Qt renders on its own loop where
 none of this arithmetic exists. whisker streams so that buffering stays the
 *caller's* choice: a sink that appends to an array is the buffer form. The
 design's §2.8 is the standing form of that caution.
@@ -93,8 +93,10 @@ component kinds and whisker has all five.
 - `docs/gbasic-gap.md` — the distance to gBASIC's declarative `gui`, measured
   rather than argued. It is one widget, and it chose what iteration 3 would be.
 - `docs/studio-gap.md` — the distance to **gBASIC Studio**, the IDE, measured
-  the same way. 324 of its 33,878 lines touch GTK, in six files, and none use
-  the layer that could not be ported. The gap is four capabilities, not a port.
+  the same way: four capabilities, not a port.
+- **Both gap documents measured gBASIC's GTK tree, which no longer exists.**
+  gBASIC removed GTK on 2026-10-22 and is Qt-only, with a declarative `window`
+  read by a backend; they are history until re-measured against that.
 - `docs/rv9-ask-2026-10-02.md` and `docs/rv9-answers-2026-10-02.md` — a defect
   reported to RV-9, what they did about it, and the stack finding that came
   back the other way. Question and answer kept separable, as before.
@@ -141,9 +143,9 @@ whisker never touches a framebuffer.
   turns SVG into pixels, and `font.c` already draws text.
 - **Not a window system.** RV-9's `/w0` already is one: a device you write SVG
   to, in the OS-9 tradition where a window is a path.
-- **Not a GTK replacement for gBASIC.** gBASIC keeps GTK. whisker is a
-  *candidate second backend*, and it earns that place by working, or it does
-  not get it.
+- **Not a Qt replacement for gBASIC.** gBASIC keeps Qt (it dropped GTK on
+  2026-10-22). whisker is a *candidate second backend* to the same `window`
+  declaration, and it earns that place by working, or it does not get it.
 - **Not a browser.** Presentation attributes only, no CSS — the same line RV-9
   drew, for the same reason: a style language means a cascade, a selector engine
   and a box model.
@@ -156,7 +158,7 @@ neither should own it.
 | | |
 |---|---|
 | **RV-9** (`~/development/esp32/rv9`) | Has the surface — `/w0`, plus a row-range setstat for banded repaint. A quarter of a megabyte of RAM, one RISC-V core at 240 MHz. **The harder constraint, so it sets the budget.** |
-| **gBASIC** (`~/development/gbasic`) | Already emits deterministic SVG from pure gBASIC (`stdlib/chart.bas`, 1,612 lines, zero dependencies). Wants an addressable widget tree; see its `docs/gui_addressability_design.md` §0.3. |
+| **gBASIC** (`~/development/gbasic`) | Already emits deterministic SVG from pure gBASIC (`stdlib/chart.bas`, 1,612 lines, zero dependencies). Its GUI is Qt since 2026-10-22: a declarative `window` read by a backend, `qt` the first (its `docs/qt_gui_design.md`). |
 
 But RV-9 runs on **two boards that differ where it matters**, so the contract
 faces three surfaces, not two (`docs/design.md` §2.7):

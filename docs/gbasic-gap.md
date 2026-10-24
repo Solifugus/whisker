@@ -1,5 +1,12 @@
 # What stands between whisker and gBASIC
 
+> **Measured against a gBASIC that no longer exists.** On 2026-10-22 gBASIC
+> removed GTK, the `gi` bridge and the `gui`/`gtkui` libraries and became
+> Qt-only (gBASIC `19a830f`; last GTK commit `d997c94`), and Studio moved with
+> it. GUI work there now goes through a declarative `window` read by a backend,
+> `qt` the first. Kept as the record of what was measured then; its figures are
+> not to be quoted about gBASIC as it is now until re-measured against `window`.
+
 **Written 2026-10-01**, measured against `~/development/gbasic` rather than
 argued. `docs/design.md` §6 sets three bars whisker must clear before gBASIC
 would take it; one is now done (`host/linux`), one waits on a board, and this

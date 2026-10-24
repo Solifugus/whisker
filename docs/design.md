@@ -472,6 +472,19 @@ Source: `~/development/gbasic`, read 2026-09-29.
 - **No SVG rasteriser is installed**: librsvg absent, no rsvg typelib. Pango is
   present (6 typelibs), so text metrics are reachable on a Linux host if needed.
 
+**Superseded 2026-10-22: gBASIC removed GTK and is Qt-only** (gBASIC
+`19a830f`; the last GTK commit is `d997c94`). Every GTK fact above, the `gi`
+bridge, and both `gui` and `gtkui` are gone, and so is the addressability
+question as it was put. What replaced them is a declarative **`window`**, read
+by a backend, with `qt` the first (gBASIC `docs/qt_gui_design.md`). For
+whisker that is a better seam than the one this section found: a second backend
+is now a second reader of one declaration rather than a rival toolkit. Two
+things from that design are worth carrying here, as facts about gBASIC rather
+than arguments for whisker: Qt **cannot be statically linked** under LGPL-3, so
+a gBASIC GUI program always needs an installed Qt, where gBASIC's releases
+otherwise link statically to start on a bare machine; and the `chart.bas`
+point above still stands. None of it is re-measured yet.
+
 ### 2.6 The input: none today, touch in October
 
 **Revised 2026-09-29.** What follows about the *present* is measured and still
@@ -553,7 +566,7 @@ and will face more:
 | **RV-9 `/w0`, P4** | same driver, MIPI-DSI, pixels in PSRAM | who owns the framebuffer, whether a horizontal clip exists, and every stack figure (§2.7) |
 | **RV-9 `lcdcon`** | a text console on the **same panel** | not a whisker target — but it is why `/w0` is not privileged even inside RV-9. `panel.h`: *"shared by every driver that draws on it"* |
 | **whisker's Linux host** | SDL2 over RV-9's own `raster.c` | the same pixels, with megabytes of stack and an allocator, so §5's trade is real and irrelevant at once |
-| **gBASIC** | GTK — *"GTK is still the only backend"* | a toolkit that renders on its own loop, where none of this arithmetic applies. An SVG backend is foreseeable, and §0.3 of its addressability design was decided *because* of it |
+| **gBASIC** | Qt, since 2026-10-22 (GTK removed) — a declarative `window` read by a backend, `qt` the first | a toolkit that renders on its own loop, where none of this arithmetic applies. A second backend to the same declaration is foreseeable; the GTK-era seam this row used to describe is gone (§2.5) |
 
 **So the rule for this document, and for anything added to it: name the
 substrate a finding came from.** A measurement on `/w0` is evidence about
@@ -1413,7 +1426,7 @@ argued later when something is:
   is the number rather than the adjective.
 
 If those are not true, the right answer is that whisker served RV-9 and gBASIC
-kept GTK. That is a success, not a failure: the reason for a separate project is
+kept its toolkit — GTK when this was written, Qt since 2026-10-22. That is a success, not a failure: the reason for a separate project is
 to make *not* adopting it cheap.
 
 ---
@@ -1434,6 +1447,12 @@ and `horiz`. whisker has all five: `WSK_LABEL`, `WSK_BUTTON`, `WSK_FIELD`, and
 said the gap was one widget; that widget is built, and nothing in `gui` is
 left over. What remains before gBASIC takes this is §6's bar, which is about
 evidence and stability rather than about missing widgets.
+
+**Stale since 2026-10-22:** `gui` was removed with GTK. gBASIC's `window`
+declaration has far more than five kinds (`table`, `tabs`, `cells`, `text`,
+`memo`, `choice`, `source`, dialogs and menus among them), so "the large end is
+already reached" is not true of gBASIC as it now is. It wants recounting
+against `window`, which is the same job as re-measuring `gbasic-gap.md`.
 
 So the work is the **small** end, and the question is sharper than it looks:
 not *can* the C5 run whisker — it does — but **does it pay for the parts it

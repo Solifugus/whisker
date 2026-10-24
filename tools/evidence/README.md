@@ -171,7 +171,7 @@ turns out to be.
 **What that settles and what it does not.** It settles which sink an RV-9
 *module* should pass. It says nothing about whisker's API, which streams
 precisely so the choice stays the caller's: a sink that appends to an array is
-the buffer form, so a host with an allocator and a real stack — gBASIC's GTK,
+the buffer form, so a host with an allocator and a real stack — gBASIC's Qt,
 whisker's own SDL host — buffers by passing a different sink, and none of the
 arithmetic above applies to it. Section 1's figures are the host-neutral part,
 because they are whisker's own frames and nothing else.

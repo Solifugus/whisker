@@ -59,6 +59,8 @@ they are not re-litigated. They are *scope* decisions rather than design ones.
 - **2026-09-29 — gBASIC keeps GTK, and whisker must earn adoption.** Matthew.
   `docs/design.md` §6 sets the bar now, while nothing is invested, so that *not*
   adopting whisker stays cheap. If it serves only RV-9, that is a success.
+  **Toolkit superseded 2026-10-22: gBASIC removed GTK and is Qt-only**
+  (gBASIC `19a830f`); the rule stands with Qt in GTK's place.
 - **2026-09-29 — RV-9 reviews this before a whisker session starts.** Matthew.
   Because every claim about RV-9 here was read rather than run, and three of the
   first ones were wrong (`docs/rv9-review.md` §3).

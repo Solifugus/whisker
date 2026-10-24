@@ -19,12 +19,17 @@ It serves two hosts and belongs to neither:
   *"Open — damage tracking, before the GUI direction."*
 - **gBASIC** — `~/development/gbasic`. A C11 BASIC-family interpreter. Already
   emits deterministic SVG from pure gBASIC (`stdlib/chart.bas`, zero
-  dependencies). Has an open question whisker would answer, in its
-  `docs/gui_addressability_design.md` §0.3.
+  dependencies). **Its GUI is Qt as of 2026-10-22** (gBASIC `19a830f`): GTK,
+  the `gi` bridge and the `gui`/`gtkui` libraries are gone, and gBASIC Studio
+  moved with it. What it has instead is a declarative `window` read by a
+  backend, with `qt` the *first* backend (gBASIC `docs/qt_gui_design.md`).
 
-**gBASIC keeps GTK.** whisker is a candidate second backend and has to earn the
-place. `docs/design.md` §6 records what would have to be true first, set now
-while nothing is invested.
+**gBASIC keeps Qt.** whisker is a candidate second backend — now in a literal
+sense, a second reader of the same `window` declaration — and has to earn the
+place. `docs/design.md` §6 records what would have to be true first. **Every
+whisker document written before 2026-10-22 that measures gBASIC measured its
+GTK tree** (last GTK commit `d997c94`): `gbasic-gap.md` and `studio-gap.md` in
+particular are history until re-measured against `window`.
 
 ## Status
 
@@ -77,7 +82,9 @@ and the corner marks for **668 bytes, 20 %** of a small panel's code. A reduced
 build draws **byte-identically** for the widgets it keeps and **refuses**
 (`WSK_E_KIND`) what it lacks rather than substituting — both checked in
 `src/run.sh`, the refusals being the control on the first. gBASIC's end needed
-nothing: its `gui` names five component kinds and whisker has all five.
+nothing *at the time*: its `gui` named five component kinds and whisker had all
+five — but `gui` was removed with GTK, so that count wants redoing against
+`window`.
 
 **What is left is in `docs/roadmap.md`** (2026-10-03), which is the first thing
 to read when picking this up cold. Three gates, and only one is code:
@@ -257,7 +264,7 @@ budget above. Counted honestly whisker already faces several display systems:
 `/w0` on the C5; `/w0` on the P4, where RV-9 owns the pixels in PSRAM and every
 figure moves; RV-9's own `lcdcon`, a second driver on the *same panel*
 (`panel.h`: *"shared by every driver that draws on it"*); whisker's SDL host;
-and gBASIC's GTK, which renders on its own loop where none of this arithmetic
+and gBASIC's Qt, which renders on its own loop where none of this arithmetic
 exists at all. `design.md` §2.8 is the table.
 
 **So name the substrate a finding came from.** A measurement on `/w0` is

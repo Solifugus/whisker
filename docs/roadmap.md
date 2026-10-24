@@ -171,16 +171,31 @@ other two:
   build (D8), which is exactly the kind of thing a seam has to be written
   against knowingly.
 
-Then gBASIC either writes the binding or keeps GTK. Both end this project's
-obligation.
+Then gBASIC either writes the binding or keeps its toolkit. Both end this
+project's obligation.
+
+**The toolkit changed under this gate, 2026-10-22: gBASIC removed GTK and is
+Qt-only** (gBASIC `19a830f`). Two consequences, neither yet worked through:
+
+- **The seam is better than it was.** GUI work in gBASIC now goes through a
+  declarative `window` read by a backend, with `qt` the first, so whisker
+  would be a second reader of the same declaration rather than a rival to a
+  toolkit library. That is the shape §6 always assumed and gBASIC did not
+  have.
+- **The distance is unmeasured.** `gbasic-gap.md`, `studio-gap.md` and §7.1's
+  "all five kinds" were all counted against the GTK tree. `window` has many
+  more kinds than `gui` had, so the gap is certainly larger than "four
+  capabilities" — by how much is the next measurement on this gate, and it
+  is the same job for both documents.
 
 **And there is a named destination beyond it, as of 2026-10-03.** Matthew:
 *"eventually I am hoping to build a gbasic library around this and adapt the
 gbasic-studio project to it."* `docs/studio-gap.md` measures that distance
-rather than arguing it, and the headline is better than anyone had a right to
-expect: **324 of Studio's 33,878 lines touch GTK — 0.96 %, in six files — and
-none of them use `gtkui`**, the layer gBASIC's own §0.3 called unportable. Its
-domain model is already headless; the shell is mounted over it.
+rather than arguing it, and the headline *then* was better than anyone had a
+right to expect: **324 of Studio's 33,878 lines touched GTK — 0.96 %, in six
+files — and none of them used `gtkui`**, the layer gBASIC's own §0.3 called
+unportable. Its domain model was already headless; the shell was mounted over
+it. *(Measured against the GTK tree; Studio is Qt now — see above.)*
 
 The gap is **four capabilities**, all of which `roadmap.md` §5 currently lists
 as *not on this map*: a multi-line editor, scrolling, a table, and a tree with
