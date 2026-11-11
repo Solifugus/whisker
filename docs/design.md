@@ -1581,6 +1581,41 @@ out of range is refused, not clamped; text whole or not at all; nothing
 outside the viewport answers `hit`; `rows` is clipped), and that scrolling
 is in the default profile and out of the C5's.
 
+### On the board, 2026-11-11
+
+`wscroll` ran on the P4 with Matthew dragging. Staged in RV-9's tree
+(`modules/wscroll/`, `whisker.h` refreshed to `c109eee`) and **fetched onto
+the card over WiFi rather than flashed**, so the GT911 kept scanning — the
+first whisker program to reach the board without costing a power cycle.
+Declared 8,192 bytes of stack and ran without overflow; not bisected.
+
+| pane | drag frames | repaint mean / worst | finger to pixels, worst | what the person said |
+|---|---|---|---|---|
+| 112 rows | 67 | **37.5 / 39.6 ms** | **42 ms** | "works very nicely" |
+| 552 rows (the screen below the header) | 116 | 228.7 / 235.8 ms | 236 ms | "not super smooth but it works" |
+
+- **The derivation was close and on the wrong side.** `tools/evidence/scroll/`
+  said a pane of ~110 rows repaints inside a 30 fps frame; measured, 112 rows
+  is 37.5 ms, about 27 fps, and every frame was over 33. Twelve per cent
+  optimistic — near enough that a person called it smooth, not near enough to
+  quote "30 fps" again. **The figure to quote is 37.5 ms for 112 rows.**
+- **A screen of rows costs more than the 175 ms "full redraw".** 552 rows of
+  whisker buttons took 229 ms. The 175 was measured on a different, lighter
+  document, so it is not a bound on a dense one — CLAUDE.md's rule about
+  checking what a figure was derived from, met again. Per row the two runs
+  are 0.33 and 0.41 ms, so the cost is roughly the rows repainted; where it
+  goes between whisker's emit and RV-9's rasteriser is **not bisected**.
+- **`hit` through a scrolled pane named the right rows.** A tap at (580, 77)
+  at offset 0 was `r0`; after a drag, (588, 125) was `r7`, both by the row
+  arithmetic. The selection drew in its orange, which Matthew saw; which
+  label his finger was on was not asked, so the name is checked against the
+  geometry and not yet against an eye.
+
+What it settles for the design: a **pane** scrolls smoothly on the P4 and a
+**screen** steps, as §2.2's arithmetic said it would, and the line between
+them sits a little under 112 rows rather than at 110. Nothing in §5e's five
+decisions moved.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

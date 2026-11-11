@@ -57,8 +57,10 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   (a rectangle is four shorts) and **a document costs the square of the
   list**, so a long list goes to whisker **a slice at a time** —
   `wsk_slice`, proven byte-identical to the whole list. In the default
-  profile, out of `WSK_MINIMAL` (496 bytes). `wscroll` is written for the P4
-  and not yet run there; `tools/evidence/drag/` runs it here first.
+  profile, out of `WSK_MINIMAL` (496 bytes). **On the P4, 2026-11-11** (`wscroll`, §5e):
+  a 112-row pane repaints in **37.5 ms** (finger to pixels 42) and a whole
+  screen of rows in **229** — a pane drags smoothly, a screen steps. The
+  "~110 rows at 30 fps" derivation was 12 % optimistic; quote the measured.
 
 `src/run.sh --module` is the whole of it: **219 checks**, the pixels through
 RV-9's own rasteriser, eight module builds with the double-link, and a person
