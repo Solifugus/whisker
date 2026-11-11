@@ -1,5 +1,10 @@
 # whisker — design
 
+**2026-11-11: the charter changed (D16).** whisker is to be a complete GUI
+system, and everything in §1–§7 is its bottom layer, drawing. §8 is the
+toolkit above it, proposed and not built. Read §8 with D16 before taking
+anything earlier as a statement of what whisker is *for*.
+
 **Status:** **Both functions are built** (`src/whisker.h`, 2026-09-30).
 Iteration 1 is done. All eight
 done-criteria in §5 pass — the suite, the XML check, the pixels through RV-9's
@@ -1764,3 +1769,216 @@ program budget is not where a C5 program runs out of room; `SRC_MAX` and the
 stack (§5) are. The point of this section is that a host does not carry a
 widget it was told it cannot have — a correctness and honesty property that
 happens to save bytes, not a byte optimisation.
+
+---
+
+## 8. The toolkit — whisker as a complete GUI system
+
+**Written 2026-11-11. Proposed, nothing built.** D16 is the decision behind
+it; this section is the design that decision asks for, written before any
+code as the conventions require. Where it says *propose*, it may be wrong.
+
+### 8.1 What changed
+
+Matthew, the same day `wscroll` first ran on the P4:
+
+> *"I was wanting whisker to become a complete GUI system."*
+> *"I would like whisker to work on those tiny devices for what it can do — at
+> least presentation but also on the P4 with touch controls and ultimately on
+> desktops to include as an alternative for Qt in gBASIC."*
+
+Until now whisker was two pure functions and said "nothing else" in its first
+paragraph. That was the right start and it is the wrong finish: every program
+that scrolls has to turn a finger into an offset itself (`wscroll` spends about
+twenty lines on it), every program with a field carries a typing loop
+(`host/linux/input.c`), and a widget never tells anyone what happened to it —
+the program has to work it out from a point. A toolkit is the layer that does
+those once.
+
+### 8.2 Three layers, three tiers
+
+| layer | what it does | state | C5 (presentation) | P4 (touch) | desktop |
+|---|---|---|---|---|---|
+| **1. drawing** — built, §5–§5e | a tree becomes SVG; a point becomes a widget | none | **yes** | yes | yes |
+| **2. toolkit** — this section | an input event updates the widgets and says what changed, and which rows to repaint | the caller's structs, updated in place | **no** | yes | yes |
+| **3. host** — one per platform | reads the device, runs the loop, owns the window | the host's | RV-9 module | RV-9 module | SDL; the gBASIC backend |
+
+A tier is a set of layers, and the line between them is **hardware**, as D6
+drew it: a device with nothing to press compiles layer 2 out. That is D8's
+mechanism with one more switch — **`WSK_NO_INPUT`**, defined by
+`WSK_MINIMAL` — and D8's rules hold: the default is everything, a reduced
+build draws byte-identically, and a call into what it lacks is refused by
+name rather than quietly ignored.
+
+### 8.3 What survives, and what does not
+
+- **D5 survives in the form that mattered.** Its argument was that a tree
+  retained *inside* whisker is a third copy that can disagree with the host's
+  and the application's. The toolkit retains nothing either: its state —
+  which button is held, where a drag started, which field has focus, where the
+  caret is — lives in a struct **the caller allocates**, and the widgets it
+  changes are the caller's array. whisker still allocates nothing and keeps no
+  static data, which the module rules demand anyway.
+- **What does not survive is "the caller decides everything".** In the
+  toolkit a scrolling list moves when it is dragged and *reports* that it
+  moved; a field takes a key and reports its new text. The program reads what
+  changed instead of deriving it. That is §5e's choice 1, restated (D16a).
+- **D2, D4, D8, D10–D15 are untouched.** One implementation; the id is the
+  address, so a notice names a widget by id; refuse, never substitute.
+- **The module rules bind layer 2 like layer 1.** That rules out the usual
+  shape of a toolkit — a table of handlers, callbacks registered per widget —
+  and is the reason for §8.5.
+
+### 8.4 An event in
+
+One struct, the same on every host, so a host's whole job is translation:
+
+    typedef struct {
+        unsigned char kind;    /* WSK_EV_DOWN, _MOVE, _UP, _WHEEL, _KEY, _TEXT */
+        short x, y;            /* device pixels: pointer events, and the wheel's target */
+        short d;               /* wheel: pixels along the stack's axis */
+        unsigned short key;    /* WSK_KEY_TAB, _ENTER, _LEFT ... for _KEY */
+        char  text[8];         /* one character, UTF-8, for _TEXT */
+        unsigned int ms;       /* when the device saw it */
+    } wsk_event_t;
+
+**Touch and the mouse are the same three events** — D7 already found a click
+and a tap are both one point, and the P4's five contacts are used as one.
+Right-click and multi-touch are left out of the first version and named as
+such, not forgotten. `_KEY` is a key that means something to a widget;
+`_TEXT` is a character typed, so a host's keyboard layout stays the host's
+business (the reason `input.c` keeps its keymap outside whisker).
+
+### 8.5 What changed, out
+
+    typedef struct {
+        unsigned char kind;    /* WSK_NOTE_CLICK, _SCROLL, _TEXT, _SELECT, _FOCUS */
+        unsigned char stack;   /* which stack */
+        short         item;    /* which widget in it */
+        int           value;   /* the new scroll, selection, caret ... */
+    } wsk_note_t;
+
+    int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
+                 wsk_note_t *note, int max, short *y0, short *y1);
+
+**Proposed: notices returned, not callbacks.** The program passes an event
+and an array; `wsk_feed` returns how many things changed and the rows that
+need repainting, and the program does what it likes with them. Three reasons,
+in order of weight:
+
+1. It is the shape gBASIC's `window` already has: a backend reports events to
+   the program, and gBASIC's Qt backend turns Qt's signals into exactly this.
+2. It obeys the module rules with nothing to prove — a function pointer may be
+   *passed*, but a stack of them per widget is the table §4.1 forbids.
+3. It keeps the order of things visible: the widget has changed, the program
+   is told, the program decides what else changes, the host repaints once.
+
+Callbacks can be built *on* this, in a host that can afford them; the other
+way round cannot.
+
+**The repaint comes back with the notice.** `y0..y1` is the union of every row
+the event changed — a pressed button, a scrolled pane, a field's line — so
+the host makes one banded repaint per event and the program never calls
+`wsk_rows` itself. That is layer 1's machinery (`wsk_rows`, `wsk_area_rows`,
+`wsk_doc_rows`) used where it belongs.
+
+### 8.6 The toolkit's state
+
+    typedef struct {
+        wsk_tree_t   *stack;   /* the caller's stacks, drawn in order */
+        int           n;
+        wsk_widget_t *item[...]; /* mutable widgets -- see below */
+        /* pointer: down?, where, which widget, dragging?, scroll at down */
+        /* focus: which stack and widget; caret in the focused field */
+    } wsk_ui_t;
+
+One structural change is needed in layer 1: `wsk_tree_t.item` is
+`const wsk_widget_t *`, so that a panel can live in rodata. A toolkit changes
+widgets — a mark when held, the text of a field — so it needs the caller's
+*mutable* copy, which every interactive program already makes with
+`wsk_clone`. The toolkit takes that copy; layer 1 keeps reading through the
+const pointer. To be settled in the first iteration, by building it.
+
+New widget state, for the same reason: a selected row, a checked box, a
+caret position. Today a caret is a mark and its position is "the end". Each
+is a field in `wsk_widget_t`, so each costs every widget a few bytes — §7's
+question, asked as each arrives.
+
+### 8.7 Focus and the keyboard
+
+D9 said *never build a focus model*, and D16 narrows that to the C5. A
+desktop and a P4 with a keyboard need it: one widget has focus, Tab moves it,
+a key goes to it, and the focused widget is marked. **Focus order is
+declaration order** — which D0 kept stable for exactly this. A tap or a click
+moves focus to what it hit. Focus is toolkit state (§8.6), so the C5 build
+does not contain it.
+
+### 8.8 What "complete" means, so that it ends
+
+**gBASIC Studio's window running on whisker.** That is checkable, it is the
+user the charter names, and `window-gap.md` already measured it: 25 widget
+words, 16 answered. What remains, grouped by the layer that owns it:
+
+- **toolkit (layer 2):** press and click; drag-scroll and the wheel; field
+  editing (moved out of `input.c`); focus and Tab; `check`; selection in a
+  list.
+- **drawing (layer 1):** `check`'s mark; `table` and `tree` as scrolling
+  stacks of rows; overlays for `choice`, `menu`, `popup` — the one design
+  question in layer 1 still open (`window-gap.md` §3); `memo` as a viewer,
+  then an editor; `source`, last.
+- **host (layer 3):** a desktop host with mouse, wheel and keyboard — the SDL
+  host grows into it; the clipboard; dialogs; more than one window;
+  proportional text, which is the host's to measure (§2.8) and is the largest
+  thing a desktop asks that `/w0` never did.
+
+### 8.9 Order of building
+
+Each a working product, as the conventions ask, and each **proved by an
+existing program shrinking onto it** — the same behaviour from less code is
+the test that the toolkit did what the program used to.
+
+1. **Iteration 6 — `wsk_feed` with press, click and drag-scroll.** `wtap` and
+   `wscroll` are rewritten on it, and must behave identically: the same taps
+   named, the same drags ending on the same rows (`tools/evidence/drag/`
+   already scripts a finger, so the comparison is mechanical). The SDL host
+   gets the wheel.
+2. **Iteration 7 — the field and focus.** `input.c`'s typing loop moves into
+   the toolkit; Tab, a focus mark, `_KEY` and `_TEXT`.
+3. **Iteration 8 — `check`, and selection in a list.**
+4. **Overlays** — a design section of their own first, because they touch
+   layer 1's model rather than adding a branch to it.
+5. **`table`, `tree`, `memo` as a viewer**; then the gBASIC backend, measured
+   against Studio's record.
+
+### 8.10 Done criteria for iteration 6
+
+1. `wsk_feed` exists, with `wsk_event_t`, `wsk_note_t` and `wsk_ui_t`, in
+   the default profile; `WSK_MINIMAL` compiles it out and a reduced build
+   still draws byte-identically (§7.4's gate).
+2. A press marks the button and repaints its rows; a release over it notices
+   `_CLICK`; a release elsewhere does not. A control: a release in a gap
+   notices nothing.
+3. A drag past the slop scrolls the stack under the finger and notices
+   `_SCROLL` with the new offset, clamped to the range **by the toolkit** —
+   layer 1 still refuses out of range (D11), and the toolkit is a caller that
+   never asks for it.
+4. A tap without a drag in a scrolled list notices `_CLICK` on the row under
+   it, by D13's rule.
+5. The repaint rows returned equal what `wsk_rows`/`wsk_area_rows` give for
+   the same change, checked against a full redraw byte for byte (§5e's test,
+   reused).
+6. `wscroll` on `wsk_feed` reproduces `tools/evidence/drag/`'s six checks
+   unchanged, and is shorter.
+7. The module rules: it links as a module and passes the double link.
+8. On the P4: `wscroll` and `wtap` rebuilt, run by a person, timings no worse
+   than 2026-11-11's (37.5 ms a frame, 112 rows).
+
+### 8.11 Not decided here
+
+- **The gBASIC backend's home** — in gBASIC beside `qt`, or in whisker. It
+  depends on gBASIC's backend interface, which is gBASIC's to say.
+- **Proportional text on a desktop.** Named, and pushed to the host (§2.8);
+  how a host tells layer 1 how wide a string is will be decided when the
+  desktop host needs it.
+- **Callbacks.** Possible on top of notices (§8.5) in a host that wants them;
+  not proposed.

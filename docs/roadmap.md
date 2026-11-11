@@ -4,6 +4,12 @@ Written 2026-10-03, at Matthew's asking, after D8. The other documents say what
 whisker *is* and why each piece is the way it is. This one says what is left,
 in what order, and what would let us stop.
 
+**2026-11-11: "complete" was redefined (D16).** whisker is to be a complete
+GUI system, and the test is gBASIC Studio's window running on it. The order
+of building toward that is design §8.9, which supersedes this map's order
+where they differ; this document's gates (G2's measurements on the P4, G3's
+gBASIC bar) still hold as gates.
+
 ---
 
 ## 1. What "complete" means here, since there is no feature list

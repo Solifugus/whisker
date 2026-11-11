@@ -1,12 +1,20 @@
 # whisker
 
-**A widget layer for a window you write SVG to.**
+**A GUI system for a window you write SVG to** — presentation on the
+smallest boards, touch controls on the P4, and in time a desktop toolkit that
+gBASIC can use in place of Qt (`docs/decisions.md` D16, `docs/design.md` §8).
 
 *A cat's whiskers are how it reads a surface it cannot see. RV-9's mascot is an
 armoured robot cat; this is the part that feels where you touched.*
 
-**Status: whisker does everything gBASIC's declarative `gui` asks for.**
-`src/whisker.h` renders a panel, repaints one band of it, says which widget is
+**Where it is going (D16, 2026-11-11).** What is built is the bottom layer:
+two pure functions, a widget tree to SVG and a point to a widget. Above it
+comes a **toolkit** — input events in, widget state updated, *what changed*
+out — for the devices that have input, and below both a **host** per
+platform. A device with nothing to press compiles the toolkit out. Designed
+in `design.md` §8; nothing of it is built yet.
+
+**Status of the drawing layer.** `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
 `design.md` §5, §5b, §5c, §5d, §5e and §7 — **219 checks** plus the profile gate,
@@ -20,7 +28,8 @@ the caller holds; a widget half in view is cut by arithmetic, because there is
 no `clipPath` to cut it with, and its text is drawn whole or not at all. A long
 list is handed over a slice at a time (`wsk_slice`), which draws byte for byte
 what the whole list would: `wscroll` drags ten thousand rows on the P4 while
-holding none of them.
+holding none of them. **On the board, 2026-11-11:** a 112-row pane drags
+at 37.5 ms a frame, a full screen of rows at 229.
 
 **And there is now a program to leave running.** `src/module_stat.c` — staged
 in RV-9's tree as `wstat` — puts the board's die temperature, free heap and

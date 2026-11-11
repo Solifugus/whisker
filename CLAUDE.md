@@ -4,10 +4,20 @@ Guidance for Claude Code working in this repository.
 
 ## What this is
 
-**whisker** — a widget layer for a window you write SVG to. Two pure functions:
-a widget tree becomes SVG text, and a point becomes the id of the widget under
-it. Nothing else: no framebuffer, no device, no event loop, no allocation of
-pixels.
+**whisker** — a GUI system for a window you write SVG to. **Its charter
+changed on 2026-11-11 (D16):** it is to become a *complete* GUI system, in
+tiers set by what the device can do — presentation only on the C5, touch
+controls on the P4, and a desktop toolkit gBASIC can use instead of Qt.
+
+What is **built** is the bottom layer: two pure functions, a widget tree
+becomes SVG text and a point becomes the id of the widget under it — no
+framebuffer, no device, no event loop, no allocation. What is **designed and
+not built** (`docs/design.md` §8) is a **toolkit** above it — input events in,
+the caller's widget structs updated in place, *what changed* out, with the
+rows to repaint — and a **host** per platform below both. The C5 compiles the
+toolkit out (`WSK_NO_INPUT`, in `WSK_MINIMAL`). Older documents that say
+"nothing else" or "no event loop" describe the drawing layer, and are history
+about whisker as a whole.
 
 It serves two hosts and belongs to neither:
 
@@ -109,7 +119,9 @@ to read when picking this up cold. Three gates, and only one is code:
   console or ssh. GPIO is for *sensors* — data in, not a person acting on a
   widget — so that panel is a **readout**, and a readout needs `rows` plus a
   clipped repaint, both of which exist. §2.6's row 2 (`focus_next`/`activate`,
-  a focus mark) is **never built**, not deferred. Do not build a focus model.
+  a focus mark) is **never built on the C5**. *D16 narrowed this:* a desktop
+  needs keyboard focus, and design §8.7 puts it in the toolkit, which the C5
+  build does not contain.
 - **A readout exists.** `src/module_stat.c` / RV-9's `modules/wstat/` is the
   first whisker program meant to be used rather than demonstrated, and it is
   D9's shape: values on a write-only panel, only the changed rows repainted,
@@ -146,7 +158,7 @@ layout is compiled in cannot change without a reflash).
 
 ## Read before working
 
-1. `docs/decisions.md` — ten ratified outcomes, one screen. **First**, so that
+1. `docs/decisions.md` — seventeen ratified outcomes (D0–D16), one screen. **First**, so that
    the design's §4 arguments read as history rather than as open questions.
    Then `docs/roadmap.md`, which is what is left and what would let us stop.
 2. `docs/design.md` — all of it. It is the whole project, and it has been
