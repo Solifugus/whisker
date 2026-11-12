@@ -3,6 +3,7 @@
  *
  *     ./run.sh --edit                1024x600, the P4's panel
  *     ./run.sh --edit 800 480 1      something else
+ *     host/web/run.sh                the same program, in a browser (§5k)
  *
  * design.md §5j. Three fields in a form and a list beside them that scrolls.
  * Click a field and type; Tab and Shift-Tab move between the fields; the
@@ -103,6 +104,11 @@ int main(int argc, char **argv)
 
 		if (k == WH_QUIT) break;
 		if (k == WH_NOTHING) { wh_wait(20); continue; }
+		if (k == WH_EXPOSE) {                 /* a new screen: all of it */
+			wh_clip(0, 0);
+			wsk_render(&win, &s, 0);
+			continue;
+		}
 		memset(&ev, 0, sizeof ev);
 		ev.x = (short)he.x; ev.y = (short)he.y;
 		if (k == WH_PRESS) ev.kind = WSK_EV_DOWN;

@@ -48,7 +48,7 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
 
 ## Status
 
-**Ten iterations are built, and two of them have now run on the C5.**
+**Eleven iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -120,10 +120,19 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   keyboard, is two layers because 43 keys are 4,298 bytes of 4,096 — and
   Matthew typed "hello i am matthew.  i can type 42" on it, 2026-11-11.
 
+- **§5k — the browser is a host** (2026-11-11, overnight). `host/web/`
+  implements `host.h` over plain HTTP (Server-Sent Events out, POSTed events
+  in, no library): **`edit.c`, `demo.c`, `input.c` run in a browser
+  unchanged**. The page keeps the board's banded rule on a canvas — checked in
+  headless Chrome: clipped repaints equal a full redraw, 0 pixels differ — and
+  sets `letter-spacing` so its monospace advance is whisker's half-size.
+  `WH_EXPOSE` joined the contract. `host/web/run.sh` serves on :8090.
+
 `src/run.sh --module` is the whole of it: **407 checks**, the pixels through
 RV-9's own rasteriser, fourteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 26, including the
 typing loop end to end and the real keyboard path; `--input` is the same loop with a person in it.
+`host/web/run.sh --test` adds 12 over HTTP and 6 in headless Chrome.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

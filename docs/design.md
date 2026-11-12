@@ -2231,6 +2231,103 @@ Shift on the board, the same afternoon:
 
 Three capitals, each one-shot, digits from the second layer and a full stop.
 
+
+---
+
+## 5k. Iteration 11 — the browser is a host
+
+**Written 2026-11-11, before any code**, Matthew having said go and gone to
+bed. §9.7: a browser is a full SVG renderer with a pointer and a keyboard,
+so a page that shows whisker's documents and sends back events makes every
+phone, tablet and laptop a whisker screen with nothing installed — and it
+is the first desktop-tier screen (§9.9's step 4).
+
+### The decision that shapes it: the browser is a HOST, not a new API
+
+`host/linux/host.h` is the substrate contract — a window you write SVG to
+with a row range, and events in. **The browser host implements exactly that
+contract**, over HTTP, so every program written against it — `edit.c`,
+`demo.c`, `input.c` — runs in a browser **unchanged**, by linking a
+different host. That is the strongest test there is that the seam is in the
+right place, and it costs whisker nothing: whisker does not know.
+
+### How the contract maps
+
+- **Out: a document and its rows.** `/w0`'s rule is that a document paints
+  only its rows, over what was there. A browser that replaced the whole
+  picture with each document would show a clipped repaint as a strip on
+  black. So the page keeps a **canvas the size of the device**, draws each
+  document into an image, and copies **only its rows** onto the canvas —
+  the board's banded repaint, done by the page. The page is the host's, so
+  it may do this; whisker still writes a complete SVG document every time.
+- **In: events.** Pointer down, move (while pressed) and up; the wheel;
+  keys a field cares about; text typed — the same `wh_event_t` as SDL's.
+- **Transport, with no dependencies**: the page subscribes to
+  **Server-Sent Events** for documents, and **POSTs** events, one short line
+  each. Both are plain HTTP, so the server is a few hundred lines of C over
+  sockets — no WebSocket handshake, no library. A browser that connects late
+  is sent every document since the last full one, so it starts with the
+  picture everyone else has.
+- **Text.** Layout assumes a character is half its font size wide (§2.1);
+  a browser's monospace is not. The page measures its monospace font and
+  sets `letter-spacing` so that an advance is exactly half the size — the
+  host making its renderer agree with the one whisker was written for,
+  which is the host's job (§2.8). Not CSS in whisker: in the host's page.
+
+### Done criteria
+
+1. `host/web/` implements `host.h`; `edit.c` and `demo.c` link against it
+   with no change to either.
+2. A headless check, no browser: the page is served; a subscriber receives
+   the first document; a POSTed press and typed text reach the program, and
+   the document that comes back carries what was typed.
+3. A real browser, headless Chrome in a throwaway profile: the page draws the
+   program, a scripted click and typing change it, and a screenshot is left
+   for a person (Matthew, in the morning).
+4. A clipped repaint at the pixels: the canvas after it equals the canvas
+   after a full redraw (the board's banded rule, kept by the page).
+5. Nothing in `src/` changes; every check there still passes.
+
+
+### What it came to, 2026-11-11 (overnight)
+
+Built the same night; criteria 1–5 met. `host/web/host_web.c` is about 330
+lines of C over sockets and one page of JavaScript, and `host/web/run.sh
+--test` runs two sets of checks:
+
+- **Without a browser** (`test.py`, 12 checks): the page is served; a
+  subscriber is sent the whole picture first; typed text comes back as a
+  **clipped** repaint of the field's rows; Tab and typing reach the second
+  field; a click in the list arrives as a CLICK; a page that subscribes late
+  is sent the picture since the last full document and sees what was typed
+  before it came.
+- **In headless Chrome** (`chrome.mjs`, 6 checks, a throwaway profile, driven
+  through the DevTools protocol with Node's own WebSocket): real pointer and
+  key events type "Hello web", click the city field, type "Paris" and press
+  Enter, and the program prints `enter  city = "Paris"`. Then the check only
+  a browser can make: **the canvas built from those clipped repaints equals
+  the canvas after a full redraw, pixel for pixel — 0 differ.** The page keeps
+  the board's banded rule exactly.
+
+**`edit.c`, `demo.c` and `input.c` link against the web host with no change**
+— which is the claim this iteration set out to test about where the seam is.
+`edit.c` gained one branch, for `WH_EXPOSE`, which the SDL host never sends.
+
+**Text**: the page measured its monospace at 0.6021 of the font size and set
+`letter-spacing: -0.1021em`, so a character is exactly half its size wide,
+as whisker lays it out; in `web_typed.png` the caret sits exactly after the
+last letter of "Paris", which is the visible proof.
+
+**Added to the contract**: `WH_EXPOSE`, X's Expose for X's reason — a screen
+has come that has not seen the picture. The web host sends it when a page
+subscribes.
+
+**Not done, and named:** a phone's on-screen keyboard does not open for a
+canvas (a hidden input would be needed, or a whisker keyboard like `wkeys`);
+the page replaces pixels and so does not yet use the ids to patch elements
+(§9.7's optimisation); and nothing here has been tried from a second machine,
+though the host listens on every interface for exactly that.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

@@ -44,6 +44,7 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **Text items** (§5h) | built 2026-11-11: a paragraph as one item, words in the flow, runs of a line; default profile now ~8.8 KB, so `WSK_PANEL` (D20) at 6.7 |
 | **Toolkit** (§5i) | built 2026-11-11: wsk_feed -- press, click, drag-scroll, wheel; `wnest` rewritten on it |
 | **Editing** (§5j) | built 2026-11-11: caller-owned buffers, focus, keys, Tab; desktop host types; `wkeys` (two layers: 43 keys overran SRC_MAX) |
+| **Browser host** (§5k) | built 2026-11-11: host.h over HTTP; programs run in a browser unchanged; banded rule kept on a canvas, checked in headless Chrome |
 | **Profiles** (§7, D8) | built; the C5 pays for nothing it cannot use |
 | **On the board** | `wflick` and `wcompose` run on the C5, committed in RV-9 |
 | **On a desk** | `host/linux`, typing loop closed with a mouse (D7) |

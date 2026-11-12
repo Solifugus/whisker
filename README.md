@@ -52,6 +52,12 @@ a list are whisker's now, not every program's.
 Tab walks the fields — with a real keyboard on Linux (`host/linux/run.sh
 --edit`) and with `wkeys`, an on-screen keyboard, on the P4.
 
+**And a browser is a screen** (§5k): `host/web/run.sh` serves a whisker
+program to any browser — a laptop, or a phone on the same network — with no
+change to the program. The page repaints only the rows each document names,
+exactly as the board does, and a test in headless Chrome holds it to that
+pixel for pixel.
+
 **And there is now a program to leave running.** `src/module_stat.c` — staged
 in RV-9's tree as `wstat` — puts the board's die temperature, free heap and
 uptime on the C5 panel and repaints only the rows whose value actually moved.

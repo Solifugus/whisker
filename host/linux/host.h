@@ -31,7 +31,10 @@ enum {
 	WH_MOVE,                 /* the pointer moved while pressed */
 	WH_WHEEL,                /* d: pixels, positive scrolls toward the end */
 	WH_KEY,                  /* key: one of WH_KEY_* */
-	WH_TEXT                  /* text: what was typed, UTF-8, NUL-ended */
+	WH_TEXT,                 /* text: what was typed, UTF-8, NUL-ended */
+	WH_EXPOSE                /* draw everything again: a screen has come
+	                            that has not seen the picture (§5k) -- X's
+	                            Expose, for the same reason */
 };
 
 /* The keys a field cares about. The same numbers as whisker's WSK_KEY_*, so
