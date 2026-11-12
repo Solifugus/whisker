@@ -117,7 +117,8 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   else leaves focus alone** (so keyboard keys don't steal it). TEXT and KEY
   events edit; Tab/Shift-Tab walk fields in declaration order. The Linux host
   has real keys, text, drag and wheel (`run.sh --edit`). **`wkeys`**, the P4
-  keyboard, is two layers because 43 keys are 4,298 bytes of 4,096.
+  keyboard, is two layers because 43 keys are 4,298 bytes of 4,096 — and
+  Matthew typed "hello i am matthew.  i can type 42" on it, 2026-11-11.
 
 `src/run.sh --module` is the whole of it: **407 checks**, the pixels through
 RV-9's own rasteriser, fourteen module builds with the double-link, and a person

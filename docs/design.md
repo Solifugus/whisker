@@ -2209,6 +2209,15 @@ byte-identical: a field with no buffer is §5d's field.
 key widgets are 4.8 KB of it. Its own stack chain is about 2,500 counting
 its nesting; declared 8,192.
 
+**On the P4, the same day**, fetched over WiFi and typed on by Matthew:
+
+    entered: hello i am matthew
+    entered: hello i am matthew.  i can type 42
+
+Letters, space, the period, and the digit layer for the 4 and the 2 — the
+first text typed into an RV-9 board with no keyboard attached. The 8,192
+bytes of stack held; not bisected.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this
