@@ -1884,9 +1884,10 @@ page's edge and gone whole (D12). One word, recoloured and repainted alone
    would fix. Widths are now checked first.
 2. **One `gap` both ways makes text look double-spaced.** Words want a
    space's width between them; lines want much less, and a wrapping stack
-   uses the same `gap` for both — so the paragraph above has 8 rows between
-   lines of 24. A line gap of its own is the obvious fix and is not made here:
-   it is a new field, so it is a decision.
+   uses the same `gap` for both — so the paragraph above had 8 rows between
+   lines of 24. **Fixed the same day, on Matthew's word:** `lgap`, the gap
+   between lines, `WSK_SAME` (the word gap) unless set — so every wrapped
+   stack already built keeps its spacing, and a paragraph says `lgap = 0`.
 
 **§7's question: 752 bytes, in the default, out of `WSK_MINIMAL`**, which
 refuses a wrapping stack by name (`which = -1`, as a scroll). The C5's build

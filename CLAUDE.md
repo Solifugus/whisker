@@ -90,10 +90,10 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   and justify a line at a time. A wrapping stack asks only for its widest
   item along its axis and for its lines' depth at the width it will get
   across. **A text window is composition**: word labels in a wrapping row
-  inside a scrolling column. 752 bytes, default only (`WSK_NO_WRAP`). Open:
-  one `gap` both ways spaces lines too far apart.
+  inside a scrolling column. 752 bytes, default only (`WSK_NO_WRAP`). `lgap` spaces
+  lines apart from words.
 
-`src/run.sh --module` is the whole of it: **319 checks**, the pixels through
+`src/run.sh --module` is the whole of it: **321 checks**, the pixels through
 RV-9's own rasteriser, eleven module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 19, including the
 typing loop end to end; `--input` is the same loop with a person in it.

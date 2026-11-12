@@ -191,6 +191,9 @@ enum {
  */
 #define WSK_INHERIT   0u
 
+/* A length that is whatever its sibling setting says: lgap is gap. */
+#define WSK_SAME      (-1)
+
 typedef struct {
 	unsigned char kind;
 	char          id[WSK_ID_MAX];
@@ -277,8 +280,15 @@ typedef struct wsk_tree {
 	 * refused with WSK_E_SCROLL rather than clamped -- whether an overshoot
 	 * is a bug or a bounce is the caller's to know.
 	 */
-	unsigned char overflow;      /* WSK_REFUSE, or WSK_SCROLL */
+	unsigned char overflow;      /* WSK_REFUSE, WSK_SCROLL or WSK_WRAP */
 	short         scroll;        /* pixels along the axis, from the start */
+
+	/*
+	 * Between the lines of a wrapping stack (§5g), or WSK_SAME for `gap`.
+	 * Words want a space's width between them and lines want far less; one
+	 * gap both ways made a paragraph look double-spaced.
+	 */
+	short         lgap;
 
 	/*
 	 * Nesting (design.md §5f). The trees a WSK_STACK widget's `sub` indexes,
@@ -682,6 +692,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->justify = WSK_START;
 	t->overflow = WSK_REFUSE;
 	t->scroll = 0;
+	t->lgap = WSK_SAME;
 	t->nest = 0;
 	t->nests = 0;
 	t->clipped = 0;
@@ -903,7 +914,7 @@ static inline int wsk__flow(const wsk_tree_t *nest, int nests,
 		}
 		cross += deep;
 		i = end;
-		if (i < t->n) cross += t->gap;
+		if (i < t->n) cross += (t->lgap == WSK_SAME) ? t->gap : t->lgap;
 	}
 	return cross;
 }

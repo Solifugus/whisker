@@ -872,7 +872,7 @@ int main(void)
 		k[0].pad = 6; k[0].gap = 0; k[0].item = PAGE; k[0].n = 1;
 		k[0].overflow = WSK_SCROLL;
 		wsk_nest_init(&k[1], &w, WSK_ROW);
-		k[1].pad = 0; k[1].gap = 8; k[1].item = word; k[1].n = n;
+		k[1].pad = 0; k[1].gap = 8; k[1].lgap = 0; k[1].item = word; k[1].n = n;
 		k[1].overflow = WSK_WRAP;
 
 		printf("\n  wrap (§5g)\n");

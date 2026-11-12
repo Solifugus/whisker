@@ -1761,6 +1761,13 @@ int main(void)
 		   "a weighted item takes its own line's leftover, and the line with none is untouched");
 		tags[6].weight = 0;
 
+		/* Lines have a gap of their own, and WSK_SAME is the word gap. */
+		ok(w.lgap == WSK_SAME, "a new stack's line gap is its gap");
+		w.lgap = 0;
+		ok(wsk_rect(&w, 6).y == 68 && wsk_rect(&w, 5).x == 272,
+		   "lgap 0: the second line sits right under the first, words unmoved");
+		w.lgap = WSK_SAME;
+
 		/* hit and rows ask wsk_rect, so they follow the lines. */
 		ok(wsk_hit(&w, 10, 100) == 6, "hit on the second line is Eta");
 		ok(wsk_hit(&w, 10, 70) == WSK_E_NOTFOUND, "CONTROL: the gap between lines is nothing");
