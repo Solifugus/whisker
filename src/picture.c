@@ -674,6 +674,151 @@ int main(void)
 		c.d.y0 = 0; c.d.y1 = PH;
 	}
 
+	/*
+	 * Nesting, at the pixels (design.md §5f).
+	 *
+	 * A window that is one tree: a toolbar row, a body row holding a
+	 * scrolling list beside a column of buttons, and a filled status row.
+	 * The suite asserts the rectangles; what only pixels can say is that a
+	 * scroll inside a NESTED pane stays inside it -- the column of buttons
+	 * beside it shares every one of its rows -- and that repainting a branch
+	 * or one widget two deep leaves exactly what a full redraw does.
+	 */
+	{
+		static wsk_widget_t list[6];
+		static uint16_t before[PW * PH], full[PW * PH];
+		static const wsk_widget_t WIN[] = {
+			{ .kind = WSK_STACK, .id = "tb",   .sub = 0, .size = 40 },
+			{ .kind = WSK_STACK, .id = "body", .sub = 1, .weight = 1 },
+			{ .kind = WSK_STACK, .id = "st",   .sub = 4, .size = 24, .fill = 0x203040u },
+		};
+		static const wsk_widget_t BODY[] = {
+			{ .kind = WSK_STACK, .id = "left",  .sub = 2, .weight = 1 },
+			{ .kind = WSK_STACK, .id = "right", .sub = 3, .weight = 1 },
+		};
+		static const wsk_widget_t RIGHT[] = {
+			{ .kind = WSK_BUTTON, .id = "yes", .text = "Yes", .size = 40 },
+			{ .kind = WSK_BUTTON, .id = "no",  .text = "No",  .size = 40 },
+		};
+		static const wsk_widget_t ST[] = {
+			{ .kind = WSK_LABEL, .id = "msg", .text = "nested" },
+		};
+		wsk_widget_t tb[3];
+		wsk_tree_t w, k[5];
+		wsk_sink_t s;
+		const char *ids[1];
+		int i, y0, y1, outside = 0, inside = 0, lo, hi;
+		uint32_t v;
+		wsk_rect_t pane;
+
+		for (i = 0; i < 6; i++) {
+			memset(&list[i], 0, sizeof list[i]);
+			list[i].kind = WSK_BUTTON;
+			list[i].size = 24;
+			list[i].fill = (i % 2) ? 0x2a6b8fu : 0x3a7b4fu;
+			snprintf(list[i].id, WSK_ID_MAX, "L%d", i);
+			snprintf(list[i].text, WSK_TEXT_MAX, "Item %d", i);
+		}
+		wsk_clone(tb, TOOLBAR, 3);
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 0; w.gap = 0; w.bg = 0x10203au;
+		w.item = WIN; w.n = 3; w.nest = k; w.nests = 5;
+		wsk_nest_init(&k[0], &w, WSK_ROW); k[0].pad = 4; k[0].gap = 4; k[0].item = tb; k[0].n = 3;
+		wsk_nest_init(&k[1], &w, WSK_ROW); k[1].pad = 4; k[1].gap = 4; k[1].item = BODY; k[1].n = 2;
+		wsk_nest_init(&k[2], &w, WSK_COL); k[2].pad = 2; k[2].gap = 2; k[2].item = list; k[2].n = 6;
+		k[2].overflow = WSK_SCROLL;
+		wsk_nest_init(&k[3], &w, WSK_COL); k[3].pad = 0; k[3].gap = 4; k[3].item = RIGHT; k[3].n = 2;
+		wsk_nest_init(&k[4], &w, WSK_ROW); k[4].pad = 2; k[4].item = ST; k[4].n = 1;
+
+		printf("\n  nesting (§5f)\n");
+		ok(wsk_check(&w, 0) == WSK_OK, "a window of five nested stacks is accepted");
+		/* Where whisker put the pane, rather than where arithmetic in a
+		   comment said it would be: a weighted child gets its natural width
+		   plus its share, so the list, whose labels are longer, is wider
+		   than the column beside it. */
+		{
+			wsk_tree_t at;
+			int li = wsk__lookup(&w, "/body/left", &at, 0);
+			pane = wsk_rect(&at, li);
+			printf("    the nested pane: %d,%d %dx%d\n", pane.x, pane.y, pane.w, pane.h);
+		}
+		s.put = to_window; s.ctx = &dev; s.len = 0;
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		{
+			int n = wsk_render(&w, &s, 4096);
+			printf("    the whole window: %d bytes\n", n);
+			ok(n > 0, "it renders");
+		}
+		memcpy(before, screen, sizeof screen);
+
+		/* Scrolled 10, drawn whole: the reference. */
+		k[2].scroll = 10;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		wsk_render(&w, &s, 4096);
+		memcpy(full, screen, sizeof screen);
+		shot("nest_window.ppm");
+		for (int y = 0; y < PH; y++)
+			for (int x = 0; x < PW; x++) {
+				int d = before[y * PW + x] != full[y * PW + x];
+				if (x >= pane.x && x < pane.x + pane.w && y >= pane.y && y < pane.y + pane.h)
+					inside += d;
+				else
+					outside += d;
+			}
+		ok(inside > 0, "CONTROL: scrolling the nested pane changed pixels inside it");
+		ok(outside == 0, "and none outside it -- not the column of buttons sharing its rows");
+		printf("    %d pixels changed inside the nested pane, %d outside\n", inside, outside);
+
+		/* Its first row, cut by the pane two levels down: its fill is at the
+		   pane's top edge, and none of its label's ink. */
+		{
+			wsk_rect_t top = { (short)(pane.x + 2), pane.y, (short)(pane.w - 4), 14 };
+			int fill = span(top, pix565(0x3a7b4fu), &lo, &hi);
+			ok(fill == top.w * top.h, "row 0's cut box fills the pane's top strip, in its own fill, and no ink");
+		}
+
+		/* The same scroll as a banded repaint of the branch, by path. */
+		memcpy(screen, before, sizeof screen);
+		k[2].scroll = 10;
+		ids[0] = "/body/left";
+		ok(wsk_rows(&w, ids, 1, &y0, &y1) == WSK_OK, "the branch's rows, by path");
+		v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		{
+			int n = wsk_render_clipped(&w, ids, 1, &s, 4096);
+			printf("    the branch repainted: rows %d..%d, %d bytes\n", y0, y1, n);
+		}
+		ok(memcmp(screen, full, sizeof screen) == 0,
+		   "a banded repaint of a nested branch leaves exactly what a full redraw does");
+
+		/* And one widget two deep, pressed. */
+		tb[1].fill = 0xff8040u;
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		wsk_render(&w, &s, 4096);
+		memcpy(full, screen, sizeof screen);
+		tb[1].fill = 0x8f2a2au;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		wsk_render(&w, &s, 4096);
+		tb[1].fill = 0xff8040u;
+		ids[0] = "stop";
+		wsk_rows(&w, ids, 1, &y0, &y1);
+		v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		wsk_render_clipped(&w, ids, 1, &s, 4096);
+		ok(memcmp(screen, full, sizeof screen) == 0,
+		   "a nested button repainted alone leaves exactly what a full redraw does");
+		shot("nest_pressed.ppm");
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

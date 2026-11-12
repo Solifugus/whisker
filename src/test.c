@@ -218,6 +218,48 @@ static const wsk_widget_t RAGGED[] = {
 	{ .kind = WSK_BUTTON, .id = "c", .text = "C", .size = 30 },
 };
 
+/* §5f: a window that is a tree. A toolbar row, a body column holding a
+   field, a button and a row of its own, and a status row -- each child tree
+   named by its index in NEST, so these panels stay static (§5f). */
+static const wsk_widget_t WIN[] = {
+	{ .kind = WSK_STACK, .id = "toolbar", .sub = 0 },
+	{ .kind = WSK_STACK, .id = "body",    .sub = 1, .weight = 1 },
+	{ .kind = WSK_STACK, .id = "status",  .sub = 2, .fill = 0x203040u },
+};
+static const wsk_widget_t TB[] = {
+	{ .kind = WSK_BUTTON, .id = "new",   .text = "New" },
+	{ .kind = WSK_BUTTON, .id = "save",  .text = "Save" },
+	{ .kind = WSK_LABEL,  .id = "title", .text = "Untitled", .weight = 1 },
+};
+static const wsk_widget_t BODY[] = {
+	{ .kind = WSK_FIELD,  .id = "name" },
+	{ .kind = WSK_BUTTON, .id = "ok",   .text = "OK" },
+	{ .kind = WSK_STACK,  .id = "opts", .sub = 3 },
+};
+static const wsk_widget_t STATUS[] = {
+	{ .kind = WSK_LABEL, .id = "msg", .text = "Ready", .weight = 1 },
+	{ .kind = WSK_LABEL, .id = "pos", .text = "1:1" },
+};
+static const wsk_widget_t OPTS[] = {
+	{ .kind = WSK_BUTTON, .id = "a", .text = "A" },
+	{ .kind = WSK_BUTTON, .id = "b", .text = "B" },
+};
+
+static int rect_is(wsk_rect_t r, int x, int y, int w, int h)
+{
+	return r.x == x && r.y == y && r.w == w && r.h == h;
+}
+
+/* A widget's rectangle at any depth, through the same lookup wsk_rows uses. */
+static wsk_rect_t rect_of(const wsk_tree_t *t, const char *key)
+{
+	wsk_tree_t at;
+	wsk_rect_t r = { -1, -1, -1, -1 };
+	int i = wsk__lookup(t, key, &at, 0);
+	if (i >= 0) r = wsk_rect(&at, i);
+	return r;
+}
+
 int main(void)
 {
 	static char doc[8192], clip[8192], other[8192];
@@ -1389,6 +1431,267 @@ int main(void)
 			       "coordinate digits\n", n0, n1, n1 - n0);
 		}
 		j.justify = WSK_START;
+	}
+
+	/* ---- §5f. nesting: a window is a tree ---- */
+	printf("\n-- §5f  nesting\n");
+	{
+		wsk_tree_t win, nest[4];
+		const wsk_tree_t *in = 0;
+		wsk_widget_t live[3], body[3];
+		char nd[4096];
+		int which = -2, y0 = 0, y1 = 0, n;
+
+		wsk_init(&win, WSK_COL, 1024, 600);
+		win.pad = 0; win.gap = 4; win.ids = 1;
+		win.item = WIN; win.n = 3;
+		win.nest = nest; win.nests = 4;
+		wsk_nest_init(&nest[0], &win, WSK_ROW);
+		nest[0].pad = 4; nest[0].gap = 4; nest[0].item = TB; nest[0].n = 3;
+		wsk_nest_init(&nest[1], &win, WSK_COL);
+		nest[1].item = BODY; nest[1].n = 3;           /* pad 8, gap 8: the defaults */
+		wsk_nest_init(&nest[2], &win, WSK_ROW);
+		nest[2].pad = 2; nest[2].gap = 8; nest[2].item = STATUS; nest[2].n = 2;
+		wsk_nest_init(&nest[3], &win, WSK_ROW);
+		nest[3].pad = 4; nest[3].font = 20; nest[3].item = OPTS; nest[3].n = 2;
+
+		ok(wsk_check(&win, &which) == WSK_OK, "a window of four nested stacks is accepted");
+
+		/* Rule 1, by hand. The toolbar row is as tall as its tallest child,
+		   a 64-row button, plus 4 of padding each side: 72. The status row's
+		   labels are band(16 + 8) = 24, plus 2 each side: 28. The body takes
+		   the rest by weight: 600 - 72 - 28 - two gaps of 4 = 492. */
+		ok(rect_is(rect_of(&win, "toolbar"), 0, 0, 1024, 72),
+		   "the toolbar row is its tallest button plus padding: 0,0 1024x72");
+		ok(rect_is(rect_of(&win, "body"), 0, 76, 1024, 492),
+		   "the body takes what is left by weight: 0,76 1024x492");
+		ok(rect_is(rect_of(&win, "status"), 0, 572, 1024, 28),
+		   "the status row is its labels plus padding: 0,572 1024x28");
+		/* Inside the toolbar, a row in the rectangle it was given: "New" is
+		   3 cells of 8 plus 4 each side = 32 wide at x 4; "Save" 40 at 40;
+		   the title takes the rest -- 1016 - (32+40+72) - 8 = 864 over its
+		   own 72 -- and ends at 1020, inside the padding. Across, 72 - 8. */
+		ok(rect_is(rect_of(&win, "new"), 4, 4, 32, 64), "new: 4,4 32x64");
+		ok(rect_is(rect_of(&win, "save"), 40, 4, 40, 64), "save: 40,4 40x64");
+		ok(rect_is(rect_of(&win, "title"), 84, 4, 936, 64),
+		   "title: 84,4 936x64 -- the weighted child ends at the padding");
+		/* And two deep: the body's own padding, then a row in a column. */
+		ok(rect_is(rect_of(&win, "name"), 8, 84, 1008, 24), "name, in the body: 8,84 1008x24");
+		ok(rect_is(rect_of(&win, "ok"), 8, 116, 1008, 64), "ok: 8,116 1008x64");
+		ok(rect_is(rect_of(&win, "opts"), 8, 188, 1008, 72),
+		   "opts, a row in the body, sized by its buttons and padding: 8,188 1008x72");
+		/* a: 4 in, one cell of 10 at font 20 plus 4 each side = 18; b after
+		   a gap of 8, at 38. Across, 72 - 8. */
+		ok(rect_is(rect_of(&win, "b"), 38, 192, 18, 64),
+		   "b, in a row in a column in a column, at font 20: 38,192 18x64");
+
+		/* Rule 5: the deepest widget; a stack in its own gaps; nothing in
+		   the root's. */
+		ok(wsk_hit_id(&win, 50, 30) != 0 && strcmp(wsk_hit_id(&win, 50, 30), "save") == 0,
+		   "hit, two deep: (50,30) is save");
+		ok(wsk_hit_in(&win, 50, 30, &in) == 1 && in == &nest[0],
+		   "and wsk_hit_in says which tree: save is item 1 of the toolbar's");
+		ok(wsk_hit(&win, 50, 30) == 0,
+		   "wsk_hit keeps its old answer, an index in the root: the toolbar");
+		ok(wsk_hit_id(&win, 37, 30) != 0 && strcmp(wsk_hit_id(&win, 37, 30), "toolbar") == 0,
+		   "a point in the toolbar's own gap is the toolbar -- a stack is a widget");
+		ok(wsk_hit_id(&win, 40, 200) != 0 && strcmp(wsk_hit_id(&win, 40, 200), "b") == 0,
+		   "three deep: (40,200) is b");
+		ok(wsk_hit_id(&win, 500, 74) == 0 && wsk_hit_in(&win, 500, 74, &in) < 0,
+		   "CONTROL: the root's own gap is nothing -- the root is not a widget");
+
+		/* Rule 4: ids at any depth, paths checked link by link. */
+		ok(wsk_find_in(&win, "save", &in) == 1 && in == &nest[0], "a bare id is found at any depth");
+		ok(wsk_find_in(&win, "/toolbar/save", &in) == 1 && in == &nest[0],
+		   "the path /toolbar/save names it too");
+		ok(wsk_find_in(&win, "/body/opts/b", &in) == 1 && in == &nest[3],
+		   "and /body/opts/b, three deep");
+		ok(wsk_find_in(&win, "/body/save", &in) == WSK_E_NOTFOUND,
+		   "a wrong chain is refused although the id exists: save is not in the body");
+		ok(wsk_find_in(&win, "/save", &in) == WSK_E_NOTFOUND,
+		   "and /save is refused: save is not at the root");
+		ok(wsk_find_in(&win, "/toolbar", &in) == 0 && in == &win, "a path to a stack names the branch");
+		{
+			const char *k1[1] = { "name" }, *k2[1] = { "/toolbar" }, *k3[1] = { "opts" };
+			ok(wsk_rows(&win, k1, 1, &y0, &y1) == WSK_OK && y0 == 80 && y1 == 112,
+			   "rows of a nested leaf, band-snapped: name is 84..108, so 80..112");
+			ok(wsk_rows(&win, k2, 1, &y0, &y1) == WSK_OK && y0 == 0 && y1 == 72,
+			   "rows of a branch are its whole rectangle: /toolbar is 0..72");
+			ok(wsk_rows(&win, k3, 1, &y0, &y1) == WSK_OK && y0 == 184 && y1 == 264,
+			   "and of a nested row: opts 188..260, so 184..264");
+		}
+
+		/* Rule 7: a stack says only what it has to. */
+		n = render_into(&win, nd, sizeof nd, 4096);
+		ok(n > 0, "the window renders");
+		printf("    %d bytes: four stacks, nine widgets\n", n);
+		ok(has(nd, "<g id=\"toolbar\">") && has(nd, "<g id=\"body\">"),
+		   "with ids on, a nested stack is a <g> with its id");
+		ok(has(nd, "<g id=\"opts\" font-size=\"20\">"),
+		   "a stack with its own font says so on its <g>");
+		ok(has(nd, "<g id=\"status\"><rect y=\"572\" width=\"1024\" height=\"28\" fill=\"#203040\"/>"),
+		   "a stack with a fill draws it behind its children, on its <g>");
+		ok(count(nd, "<text") == 8, "eight labels: every leaf but the field's empty text");
+		{
+			FILE *f = fopen("/tmp/wsk_nest.svg", "wb");
+			fputs(nd, f); fclose(f);
+		}
+		{
+			wsk_tree_t q = win;
+			q.ids = 0;
+			for (int k = 0; k < 4; k++) nest[k].ids = 0;
+			nest[3].font = 16;
+			n = render_into(&q, nd, sizeof nd, 4096);
+			ok(n > 0 && count(nd, "<g") == 1 && !has(nd, "id="),
+			   "without ids, and nothing to say, nesting adds no <g> at all");
+			for (int k = 0; k < 4; k++) nest[k].ids = 1;
+			nest[3].font = 20;
+		}
+		{
+			const char *k[1] = { "save" };
+			n = clip_into(&win, k, 1, nd, sizeof nd, 4096);
+			ok(n > 0 && has(nd, ">Save<") && !has(nd, ">Ready<") && !has(nd, ">OK<"),
+			   "a clipped repaint of a nested widget draws its rows and not the others");
+		}
+
+		/* Rule 6: refusals, each beside the same tree minus the fault. */
+		wsk_clone(live, WIN, 3);
+		win.item = live;
+		live[2].sub = 9;
+		ok(wsk_check_in(&win, &which, &in) == WSK_E_KIND && which == 2 && in == &win,
+		   "a sub out of range is refused, naming the widget and its tree");
+		live[2].sub = 2;
+		ok(wsk_check(&win, 0) == WSK_OK, "CONTROL: and in range it is accepted");
+		win.nest = 0;
+		ok(wsk_check(&win, &which) == WSK_E_KIND && which == 0,
+		   "a stack with no nest to look in is refused");
+		win.nest = nest;
+		live[2].sub = 0;
+		ok(wsk_check_in(&win, &which, &in) == WSK_E_KIND && in == &win && which == 2,
+		   "one tree inside two stacks is refused: its ids would be drawn twice");
+		live[2].sub = 2;
+		wsk_clone(body, BODY, 3);
+		nest[1].item = body;
+		body[2].sub = 1;
+		ok(wsk_check(&win, &which) == WSK_E_KIND,
+		   "a tree that holds itself is inside two stacks, and refused as that");
+		body[2].sub = 3;
+		/* D10 at depth needs a stack given less than its content: one left
+		   at size 0 is as big as its content by rule 1, and then it is the
+		   WINDOW that does not fit -- refused at the root, rightly. */
+		body[1].size = 500;
+		ok(wsk_check_in(&win, &which, &in) == WSK_E_FIT && which == 1 && in == &win,
+		   "a child grown past the window makes the window not fit: refused at the root");
+		body[1].size = 200;
+		live[1].weight = 0; live[1].size = 200;
+		ok(wsk_check_in(&win, &which, &in) == WSK_E_FIT && which == 1 && in == &nest[1],
+		   "D10 at depth: a body given 200 rows, whose ok wants 200, is refused in the body");
+		nest[1].overflow = WSK_SCROLL;
+		ok(wsk_check(&win, 0) == WSK_OK, "CONTROL: the same body, scrolling, is accepted");
+		nest[1].overflow = WSK_REFUSE;
+		body[1].size = 0;
+		live[1].weight = 1; live[1].size = 0;
+		ok(wsk_check(&win, 0) == WSK_OK, "CONTROL: and at its own sizes it fits");
+		live[0].id[0] = 'a'; live[0].id[1] = '/'; live[0].id[2] = 'b'; live[0].id[3] = '\0';
+		ok(wsk_check(&win, &which) == WSK_E_TEXT && which == 0,
+		   "an id holding '/' is refused: it would be two links of a path");
+		wsk__scpy(live[0].id, "toolbar", WSK_ID_MAX);
+		ok(wsk_check(&win, 0) == WSK_OK, "CONTROL: renamed back, accepted");
+	}
+
+	/* Rule 6's last refusal: too deep. A chain of stacks, each holding the
+	   next, ends in a label; WSK_DEPTH_MAX levels are refused. A cycle never
+	   gets here -- every tree in one is inside two stacks -- so this is the
+	   limit itself, and the control is the chain one shorter. */
+	{
+		static const wsk_widget_t LEAF[] = { { .kind = WSK_LABEL, .id = "leaf", .text = "x" } };
+		wsk_widget_t link[WSK_DEPTH_MAX + 1];
+		wsk_tree_t root, ch[WSK_DEPTH_MAX + 1];
+		int which = -2;
+
+		wsk_init(&root, WSK_COL, 320, 400);
+		root.nest = ch; root.nests = WSK_DEPTH_MAX + 1;
+		for (int j = 0; j <= WSK_DEPTH_MAX; j++) {
+			link[j].kind = WSK_STACK; link[j].sub = (short)j;
+			link[j].size = 0; link[j].weight = 0; link[j].fill = 0;
+			link[j].ink = 0; link[j].mark = 0;
+			link[j].id[0] = 'c'; link[j].id[1] = (char)('0' + j); link[j].id[2] = '\0';
+			link[j].text[0] = '\0';
+			wsk_nest_init(&ch[j], &root, WSK_COL);
+			ch[j].pad = 0; ch[j].gap = 0;
+		}
+		root.item = &link[0]; root.n = 1;
+		for (int j = 0; j < WSK_DEPTH_MAX; j++) { ch[j].item = &link[j + 1]; ch[j].n = 1; }
+		ch[WSK_DEPTH_MAX].item = LEAF; ch[WSK_DEPTH_MAX].n = 1;
+		ok(wsk_check(&root, &which) == WSK_E_DEPTH,
+		   "WSK_DEPTH_MAX + 1 levels of stack are refused, WSK_E_DEPTH");
+		ch[WSK_DEPTH_MAX - 2].item = LEAF;
+		ok(wsk_check(&root, 0) == WSK_OK, "CONTROL: two shorter, accepted");
+	}
+
+	/* Rule 3: a row nested in a scrolled pane is cut by the pane. */
+	{
+		static const wsk_widget_t OUT[] = {
+			{ .kind = WSK_LABEL, .id = "head", .text = "Head", .size = 48 },
+			{ .kind = WSK_STACK, .id = "pane", .sub = 0, .weight = 1 },
+			{ .kind = WSK_LABEL, .id = "foot", .text = "Foot", .size = 48 },
+		};
+		static const wsk_widget_t PANE[] = {
+			{ .kind = WSK_STACK, .id = "row0", .sub = 1, .size = 48 },
+			{ .kind = WSK_STACK, .id = "row1", .sub = 2, .size = 48 },
+			{ .kind = WSK_STACK, .id = "row2", .sub = 3, .size = 48 },
+			{ .kind = WSK_STACK, .id = "row3", .sub = 4, .size = 48 },
+		};
+		static const wsk_widget_t R0[] = { { .kind = WSK_BUTTON, .id = "a0", .text = "a0", .weight = 1 },
+		                                   { .kind = WSK_BUTTON, .id = "b0", .text = "b0", .weight = 1 } };
+		static const wsk_widget_t R1[] = { { .kind = WSK_BUTTON, .id = "a1", .text = "a1", .weight = 1 },
+		                                   { .kind = WSK_BUTTON, .id = "b1", .text = "b1", .weight = 1 } };
+		static const wsk_widget_t R2[] = { { .kind = WSK_BUTTON, .id = "a2", .text = "a2", .weight = 1 },
+		                                   { .kind = WSK_BUTTON, .id = "b2", .text = "b2", .weight = 1 } };
+		static const wsk_widget_t R3[] = { { .kind = WSK_BUTTON, .id = "a3", .text = "a3", .weight = 1 },
+		                                   { .kind = WSK_BUTTON, .id = "b3", .text = "b3", .weight = 1 } };
+		wsk_tree_t o, k[5];
+		char sd[4096];
+		int y0 = 0, y1 = 0;
+
+		wsk_init(&o, WSK_COL, 320, 200);
+		o.pad = 0; o.gap = 0; o.ids = 1; o.item = OUT; o.n = 3;
+		o.nest = k; o.nests = 5;
+		wsk_nest_init(&k[0], &o, WSK_COL);
+		k[0].pad = 0; k[0].gap = 2; k[0].item = PANE; k[0].n = 4;
+		k[0].overflow = WSK_SCROLL;
+		for (int j = 1; j < 5; j++) {
+			wsk_nest_init(&k[j], &o, WSK_ROW);
+			k[j].pad = 0; k[j].gap = 0; k[j].n = 2;
+		}
+		k[1].item = R0; k[2].item = R1; k[3].item = R2; k[4].item = R3;
+
+		/* The pane is 48..152; four rows of 48 and three gaps of 2 are 198,
+		   so it may scroll 94. At 30: row0 is 18..66, row2 118..166, row3
+		   168..216 -- cut to 48..66, 118..152, and nothing. */
+		k[0].scroll = 30;
+		ok(wsk_check(&o, 0) == WSK_OK, "a scrolled pane of nested rows is accepted");
+		k[0].scroll = 95;
+		ok(wsk_check(&o, 0) == WSK_E_SCROLL, "and one past its end is refused, at depth (D11)");
+		k[0].scroll = 30;
+		render_into(&o, sd, sizeof sd, 4096);
+		ok(has(sd, "<rect id=\"a0\" y=\"48\" width=\"160\" height=\"18\""),
+		   "a button in a row cut by the pane above it: a0 is 48..66");
+		ok(!has(sd, ">a0<") && has(sd, ">a1<") && has(sd, ">a2<") && !has(sd, ">a3<"),
+		   "its text is whole or not at all: a0 cut away, a2 whole in its cut row, a3 out");
+		ok(!has(sd, "id=\"a3\"") && has(sd, "<g id=\"row3\">") == 0,
+		   "a row wholly out of view draws nothing, not even its <g>");
+		ok(wsk_hit_id(&o, 10, 60) != 0 && strcmp(wsk_hit_id(&o, 10, 60), "a0") == 0,
+		   "hit in the cut part of a0 is a0");
+		ok(wsk_hit_id(&o, 10, 40) != 0 && strcmp(wsk_hit_id(&o, 10, 40), "head") == 0,
+		   "above the pane, where a0's uncut rectangle reaches, is the header (D13)");
+		{
+			const char *ka[1] = { "a0" }, *kb[1] = { "/pane/row3/a3" };
+			ok(wsk_rows(&o, ka, 1, &y0, &y1) == WSK_OK && y0 == 48 && y1 == 72,
+			   "rows of a0 are its cut rows: 48..66, so 48..72");
+			ok(wsk_rows(&o, kb, 1, &y0, &y1) == WSK_E_EMPTY,
+			   "and of a3, by path, out of view: nothing to repaint (D14)");
+		}
 	}
 
 	/* Leave the documents where run.sh can hand them to a real XML parser. */

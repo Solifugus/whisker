@@ -166,7 +166,9 @@ be. An unnamed site is reported rather than ignored.
 
 **Buffering saves 256 bytes of stack and spends 4,096 of statics**, out of one
 process footprint — a bad trade by 3,840 bytes whatever the rasteriser's depth R
-turns out to be.
+turns out to be. *2026-11-11, after nesting (§5f): streaming 960 + R, saving
+400, a bad trade by 3,696 — and each level of nesting adds 256, which
+`run.sh` now prints, because a call graph cut at its first cycle cannot.*
 
 **What that settles and what it does not.** It settles which sink an RV-9
 *module* should pass. It says nothing about whisker's API, which streams

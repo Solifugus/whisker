@@ -48,7 +48,7 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
 
 ## Status
 
-**Five iterations are built, and two of them have now run on the C5.**
+**Six iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -75,8 +75,17 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   screen of rows in **229** — a pane drags smoothly, a screen steps. The
   "~110 rows at 30 fps" derivation was 12 % optimistic; quote the measured.
 
-`src/run.sh --module` is the whole of it: **219 checks**, the pixels through
-RV-9's own rasteriser, eight module builds with the double-link, and a person
+- **§5f — nesting** (2026-11-11). A widget may be a stack (`WSK_STACK`),
+  named by **index** into the root's `nest` so panels stay `static const`.
+  Layout, check, hit, rows and render all descend; **the id is prime and a
+  path is checked link by link** (D19); clipping accumulates through every
+  scrolling viewport above. A scrolling stack asks only its padding along its
+  axis. **1,780 bytes, default profile only** (`WSK_NO_NEST`, in
+  `WSK_MINIMAL`); **each level costs 256 bytes of stack** beneath the
+  rasteriser. `wnest` is written for the P4 and not yet run there.
+
+`src/run.sh --module` is the whole of it: **286 checks**, the pixels through
+RV-9's own rasteriser, ten module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 19, including the
 typing loop end to end; `--input` is the same loop with a person in it.
 
@@ -316,9 +325,9 @@ stack **on that host**, and three things follow:
 
 - **An RV-9 module should not buffer, and that is measured, not assumed.**
   `tools/evidence/stack/` builds `module_compose.c` against a buffering twin
-  that differs only in the sink: buffering saves **256 bytes of stack** and
+  that differs only in the sink: buffering saves **400 bytes of stack** and
   spends **4,096 of statics**, out of one process footprint. A bad trade by
-  3,840 bytes. Note the scope — this settles what an RV-9 *module* passes, not
+  3,696 bytes. (256 and 3,840 before §5f moved the drawing loop out of line.) Note the scope — this settles what an RV-9 *module* passes, not
   what whisker's API is. A sink that appends to an array *is* the buffer form,
   so a host with an allocator and a real stack buffers by passing a different
   sink, and whisker never knows. Keep it that way.
@@ -328,7 +337,8 @@ stack **on that host**, and three things follow:
   least **4,528** bytes, and the figure moves by at least 1,232 bytes between
   two different documents. There is no single number for "drawing to `/w0`".
 - **What a program can be told is its own chain**, which is what
-  `tools/evidence/stack/run.sh` prints — 560 bytes for one stack, 800 for a
-  composite. That part is host-neutral, because it is measured from whisker's
+  `tools/evidence/stack/run.sh` prints — **640 bytes for one stack, 960 for a
+  composite, and 256 more for each level of nesting** (§5f; it was 560 and
+  800 before nesting, which made drawing recursive). That part is host-neutral, because it is measured from whisker's
   own frames and nothing else. The rest has to be bisected on the hardware, and
   bisected again on the P4 rather than carried over from the C5.

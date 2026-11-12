@@ -931,6 +931,10 @@ with the sink changed and nothing else:
 **Buffering saves 256 bytes of stack and spends 4,096 of statics**, and both
 come out of one process footprint — `rv9/module.h`: *"its own stack, statics
 and descriptor"*. It is a bad trade by 3,840 bytes whatever R turns out to be.
+
+*Remeasured 2026-11-11, after §5f made drawing recursive:* one stack 640,
+a composite 960, each level of nesting 256 more; buffering now saves 400 and
+is a bad trade by 3,696. The conclusion did not move.
 Note where the buffer would have to live: not a local array, which is the
 stack this was meant to save, and not `.bss`, which a module does not have —
 only `env->statics`, declared in `build.conf`, which at least makes the cost
@@ -1621,6 +1625,171 @@ What it settles for the design: a **pane** scrolls smoothly on the P4 and a
 them sits a little under 112 rows rather than at 110. Nothing in §5e's five
 decisions moved.
 
+
+---
+
+## 5f. Iteration 6 — nesting, because a window is a tree
+
+**Written 2026-11-11, before any code.** D17 (nesting is built), D19 (the id
+is prime and every widget is also reachable by path) and §9.9 (layout before
+the toolkit) are the decisions behind it.
+
+### Scope
+
+A widget may be a **stack**: a new kind, `WSK_STACK`, whose contents are
+another tree laid out inside the widget's own rectangle. Everything that
+walks a tree — check, layout, render, hit, rows, find — descends into it.
+Not in this iteration: wrap (D18, next), alignment across the axis, the
+toolkit.
+
+### How a child is named: an index, not a pointer
+
+A widget gets `short sub`, an **index** into an array of trees the caller
+supplies once, on the root: `t.nest = trees; t.nests = N`. A pointer would be
+simpler to read and is what a desktop toolkit would use, but **a pointer in a
+`static const` panel is an address in rodata**, and that is exactly what an
+RV-9 module may not link (§4.1). With an index, a panel stays `static const`
+in a module — `{ .kind = WSK_STACK, .id = "toolbar", .sub = 1 }` — and the one
+pointer, `nest`, is set at runtime, as `item` already is. It is also closer to
+how gBASIC's record would be walked: a flat list, children by position.
+
+`sub` fits in the padding `wsk_widget_t` already has: the struct stays 64
+bytes.
+
+A child tree is **laid out in a copy** whose device, area and `nest` come from
+the parent — the area being the stack widget's rectangle — so a caller sets
+only what the child *is*: axis, pad, gap, justify, overflow, scroll, colours,
+font, items. `wsk_nest_init(child, parent, axis)` starts a child with the
+parent's look; nothing is inherited silently.
+
+### The rules
+
+1. **A stack's natural extent** (when `size` is 0) is its content: along its
+   own axis, the sum of its children and gaps; across, the largest child; plus
+   its padding both ends. A toolbar row in a column is as tall as its tallest
+   button and its padding. **Except along the axis a stack scrolls on**, where
+   it asks only for its padding: being shorter than its content is what a
+   scrolling stack is for, so its extent there comes from `size` or `weight`.
+   (Found by the first test of a nested pane, which the root refused because
+   the pane had asked for all 198 rows of its list.)
+2. **D10 holds at every level.** A nested stack whose children want more than
+   its rectangle is refused, `WSK_E_FIT`, naming the widget — unless it scrolls.
+3. **Clipping accumulates.** A scrolling stack's viewport cuts everything
+   inside it, at any depth; a widget inside a nested stack inside a scrolled
+   pane is cut by the pane. The rectangle is cut by arithmetic and text is whole
+   or not at all (D12) — against the intersection of every viewport above it,
+   along both axes.
+4. **The id is prime (D19)**, document-unique across the whole tree, so every
+   lookup by id descends. **A path** is ids from the root, `/toolbar/save`,
+   checked link by link: refused if `save` is not inside `toolbar`. An id may
+   not contain `/`. A stack is a widget: its id names **the branch**, and its
+   rows are its whole rectangle, so `rows("/main/sidebar")` repaints a subtree.
+5. **`hit` returns the deepest widget under the point** — a leaf, or a stack
+   when the point is in that stack's padding or gaps. In the root's padding,
+   still nothing. `wsk_hit` keeps its old answer, an index in the root, so
+   every flat caller is unchanged; `wsk_hit_in` returns the index *and* the
+   tree it is in, and `wsk_hit_id` returns the id from any depth.
+6. **Refused, by name** (`which` the widget, or -1): a `sub` out of range or a
+   tree with no `nest` (`WSK_E_KIND`); a tree used twice, which would draw the
+   same ids twice (`WSK_E_KIND`); deeper than `WSK_DEPTH_MAX`, which is also
+   how a tree that contains itself is caught (`WSK_E_DEPTH`).
+7. **In the document**, a nested stack is a `<g>` only when it has something
+   to say — an `id` (when ids are on), a different font or ink — and a filled
+   rectangle behind its children only when its widget has a `fill`. A stack
+   that says nothing costs nothing. The `<g id>` is what the browser client
+   will replace (§9.7).
+
+### Profile (§7's question)
+
+`WSK_NO_NEST`, in `WSK_MINIMAL`: the C5 keeps flat stacks (D17 narrowing D3)
+and refuses `WSK_STACK` by name. The nesting code sits behind that macro in
+every shared loop, so the minimal build is **the same code it was**, and its
+module size is the evidence.
+
+### Done criteria
+
+1. **No flat tree moves.** All 219 checks pass, every golden byte-identical,
+   and the PPMs compare equal to the ones made before the change.
+2. A column holding a toolbar row, a body and a status row lays out to the
+   rectangles the rules give, written out by hand in the test.
+3. A size-0 stack takes its content's extent, along and across.
+4. `hit`: the deepest widget; a stack in its own gap; **nothing** in the root's
+   padding (the control); `wsk_hit` on a flat tree unchanged.
+5. ids and paths: a nested id found; `rows` of a leaf and of a branch; a path
+   resolved, a wrong chain refused, an id with `/` refused.
+6. The refusals in rule 6, each with a control that the same tree minus the
+   fault is accepted.
+7. A scrolling list nested between a header and a footer, and a row nested
+   inside a scrolled pane, cut by the pane.
+8. The profile: `WSK_MINIMAL` byte-identical on the shared panel, refusing a
+   nested tree as the control; the cost of nesting in bytes.
+9. Through RV-9's rasteriser, a nested panel as a PPM, for a person to look at.
+10. It links as a module, double-linked; and **the stack**: recursion adds to
+    the rasteriser's depth on `/w0` (CLAUDE.md), so whisker's own chain for a
+    nested document is measured and printed, not guessed.
+
+
+### What it came to, 2026-11-11
+
+Built the same day, criteria 1–10 met except a person looking at the
+pictures and a run on the board. **286 checks** in `src/run.sh --module`,
+where §5e left 219: 55 in the suite, 8 at the pixels, 1 XML, 1 profile
+control, 2 module links. `host/linux/run.sh --test` still passes.
+
+**No flat tree moved** (criterion 1): the 219 earlier checks pass unchanged,
+and every saved output — ten PPMs, six SVG documents — was compared byte for
+byte against a copy taken before the first line changed. All identical.
+
+**At the pixels** (`nest_window.ppm`, `nest_pressed.ppm`): a toolbar row, a
+body row holding a scrolling list beside a column of buttons, a filled status
+row. Scrolling the list, three levels down, changed 8,425 pixels inside it
+and **0 outside** — not the column beside it, which shares every one of its
+rows. The list's first row is cut at the pane's edge in its own fill, with no
+ink. A banded repaint of the branch **by path** (`/body/left`), and of one
+button two deep, each leave exactly what a full redraw does.
+
+**Three things the building found.**
+
+1. **A scrolling stack must not ask for its content along its axis.** The
+   first nested pane was refused by the root because the pane, measured by
+   rule 1, wanted all 198 rows of its list. Rule 1 now says so (above).
+2. **Depth has to be refused before layout.** Natural size measures every
+   tree beneath a stack, so a chain one past the limit was measured short from
+   the root and long from the level below, and its refusal came out as
+   `WSK_E_FIT`. A structural pass now refuses it as `WSK_E_DEPTH` first. A
+   cycle never reaches it: every tree in a cycle is inside two stacks, and is
+   refused as that.
+3. **A row with no padding cuts the last character of every label.** Not
+   nesting's: a widget in a row is its text's width plus padding, and a
+   label wants two pixels of slack, so at `pad = 0` "OK" draws "O". True of a
+   flat row since §5 and never met, because every row had padding. Recorded,
+   not fixed here — fixing it moves every row's layout by two pixels.
+
+**§7's question.** Nesting is **1,780 bytes** of the default profile
+(`module_shape.c` 6,608 with it, 4,732 with `-DWSK_NO_NEST`); with it off the
+refusal costs 40, and `WSK_MINIMAL` is 28 bytes larger than before, the same
+refusal. The bulk is real work — recursion stops the compiler inlining the
+emit loop, plus the recursive check, id and path lookup, the child copy and
+clipping by every viewport above. A tree copied field by field was 460 bytes
+of it; a byte loop the compiler is told not to turn into `memcpy` is a few
+dozen.
+
+**The stack, measured** (criterion 10, `tools/evidence/stack/`). Drawing is
+now recursive, and a call graph cut at its first cycle counts the loop once,
+so the tool prints the rest: **each level of nesting adds 256 bytes** —
+`wsk__items` 112 and `wsk__stack` 144 — all of it live while RV-9's
+rasteriser runs beneath. The nested branch was moved out of line for this:
+inside the loop, its child copy sat in every stack's frame and cost flat
+programs 144 bytes for nothing. Flat programs now pay 640 (one stack) and 960
+(a composite), from 560 and 800. `wnest`, three levels deep, is 2,288 of its
+own; with the rasteriser's ≥ 4,528 it wants more than 6,816, so declare
+8,192 until the board says otherwise.
+
+**`wnest`** (`src/module_nest.c`) is the board program: the window above at
+1024×600, a tap naming the deepest widget and its tree, a button pressed by
+repainting only its rows, found by id at any depth. It links at 9,040 bytes,
+position independent. Not yet run on the P4.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this
@@ -1937,20 +2106,21 @@ Each a working product, as the conventions ask, and each **proved by an
 existing program shrinking onto it** — the same behaviour from less code is
 the test that the toolkit did what the program used to.
 
-1. **Iteration 6 — `wsk_feed` with press, click and drag-scroll.** `wtap` and
+1. **Iteration 7 — `wsk_feed` with press, click and drag-scroll** (iteration 6
+   became nesting, §5f, when §9.9 put layout first). `wtap` and
    `wscroll` are rewritten on it, and must behave identically: the same taps
    named, the same drags ending on the same rows (`tools/evidence/drag/`
    already scripts a finger, so the comparison is mechanical). The SDL host
    gets the wheel.
-2. **Iteration 7 — the field and focus.** `input.c`'s typing loop moves into
+2. **Iteration 8 — the field and focus.** `input.c`'s typing loop moves into
    the toolkit; Tab, a focus mark, `_KEY` and `_TEXT`.
-3. **Iteration 8 — `check`, and selection in a list.**
+3. **Iteration 9 — `check`, and selection in a list.**
 4. **Overlays** — a design section of their own first, because they touch
    layer 1's model rather than adding a branch to it.
 5. **`table`, `tree`, `memo` as a viewer**; then the gBASIC backend, measured
    against Studio's record.
 
-### 8.10 Done criteria for iteration 6
+### 8.10 Done criteria for the toolkit's first iteration
 
 1. `wsk_feed` exists, with `wsk_event_t`, `wsk_note_t` and `wsk_ui_t`, in
    the default profile; `WSK_MINIMAL` compiles it out and a reduced build
@@ -2082,7 +2252,7 @@ widgets come first; these are why SVG was worth choosing.
 ### 9.5 The on-screen keyboard — the P4's first real app
 
 Most of it is prototyped: `host/linux/input.c` types through a drawn
-keyboard, and `tools/evidence/keyboard/` priced it. It is §8.9's iteration 7
+keyboard, and `tools/evidence/keyboard/` priced it. It is §8.9's iteration 8
 (the field and focus) made useful — a P4 that types with no USB keyboard —
 and it settles the compact-keyboard decision still open in `roadmap.md` §4.
 

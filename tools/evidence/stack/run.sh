@@ -29,7 +29,7 @@ FLAGS=(-march=rv32imac_zicsr_zifencei_zaamo_zalrsc -mabi=ilp32 -mcmodel=medany
 # and the body wsk_compose takes. Naming them is what makes the call graph
 # complete; a site left unnamed is reported rather than ignored.
 SITES=(wsk__w wsk__s wsk__n wsk__col wsk__box wsk__corner wsk__doc wsk__field
-       wsk_open wsk_part wsk_shut wsk__emit.constprop.0
+       wsk_open wsk_part wsk_shut wsk__emit.constprop.0 wsk__items wsk__stack
        wsk_render.constprop.0 wsk_render_clipped.constprop.0
        wsk_render_clipped.constprop.0.isra.0)
 PUT=()
@@ -37,7 +37,8 @@ for S in "${SITES[@]}"; do PUT+=("$S=to_path,to_buf"); done
 # These call out through env->, which leaves the module: that is where RV-9's
 # rasteriser begins, and its depth is not in this object file.
 OUT=(rv9_module_entry= to_path= to_buf= flush= report= clip_rows.isra.0=
-     m_say.constprop.0.isra.0=)
+     m_say.constprop.0.isra.0= repaint.isra.0=to_path
+     wsk__natural=wsk__nat_on wsk_check_in= wsk_check_in.constprop.0=)
 
 build () { ( cd "$W" && "$CC9" "${FLAGS[@]}" "${@:3}" -w -fstack-usage -c -o "$1.o" "$2" ); }
 depth () {
@@ -66,13 +67,27 @@ paths () {
 
 echo "== 1. whisker's own frames: the deepest path through each module"
 echo
-for M in module_shape module_compose module_input module_stat; do
+for M in module_shape module_compose module_input module_stat module_nest; do
 	build "$M" "$SRC/$M.c"
 	echo "src/$M.c"
 	depth "$M"
 	echo "      $(paths "$M")"
 	echo
 done
+
+# Nesting (design.md §5f) makes drawing recursive -- wsk__items draws a
+# stack, wsk__stack lays out the tree inside it and calls wsk__items again --
+# and a call graph cut at its first cycle counts that loop once. So the
+# figures above hold for ONE level of stack; each level more adds the two
+# frames again, both of which are live when the rasteriser runs beneath.
+frame () { awk -F'\t' -v f="$2" '$1 ~ ":"f"$" {print $2}' "$W/$1.su"; }
+I=$(frame module_nest wsk__items); K=$(frame module_nest wsk__stack)
+echo "   Each level of nesting adds wsk__items ($I) + wsk__stack ($K) = $((I + K))"
+echo "   bytes. src/module_nest.c draws three levels deep, so its own chain is the"
+echo "   figure above plus $((2 * (I + K))); at WSK_DEPTH_MAX it would be $(( (8 - 1) * (I + K) ))"
+echo "   over one level. A flat tree never enters wsk__stack: the graph counts"
+echo "   it because the call is there, so a flat program's figure is $K high."
+echo
 echo "   Corner marks are the ONLY <path> whisker emits -- one site in"
 echo "   whisker.h, in wsk__marks -- so -DWSK_NO_MARKS turns \"this document"
 echo "   happens to contain no path\" into a property of the binary:"
@@ -96,10 +111,13 @@ printf "   %d changed lines of code, in %d place(s)\n" \
 	"$(printf '%s\n' "$D" | grep -c '^@@' || true)"
 echo
 build buffered "$HERE/buffered.c"
-S=$(bytes module_compose --must=to_path)
+# module_compose is flat, so its deepest path to put() through wsk__stack is
+# one it never takes (section 1); taken off, so the comparison is real.
+S=$(( $(bytes module_compose --must=to_path) - K ))
 B=$(bytes buffered --must=flush)
 echo "   streaming  src/module_compose.c, put() writes as it is produced"
 depth module_compose --must=to_path
+echo "   (less wsk__stack's $K, which a flat composite never enters: $S)"
 echo
 echo "   buffering  buffered.c, put() copies and the write happens at the top"
 depth buffered --must=flush

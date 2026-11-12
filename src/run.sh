@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Every done-criterion in design.md §5 (the renderer), §5b (hit),
-# §5c (composition), §5d (input) and §5e (scrolling).
+# §5c (composition), §5d (input), §5e (scrolling) and §5f (nesting).
 #
 #   ./run.sh              the suite, the picture, and the XML check
 #   ./run.sh --module     and the module build, which is criterion 7
@@ -20,7 +20,7 @@ echo
 echo "-- 1  the document parses, by something that is not us"
 python3 - <<'PY'
 import xml.dom.minidom as m
-for f in ("/tmp/wsk_full.svg", "/tmp/wsk_clip.svg", "/tmp/wsk_compose.svg"):
+for f in ("/tmp/wsk_full.svg", "/tmp/wsk_clip.svg", "/tmp/wsk_compose.svg", "/tmp/wsk_nest.svg"):
 	m.parse(f)
 	print("ok    %s is well-formed XML" % f)
 PY
@@ -40,7 +40,7 @@ else
 fi
 # The controls. Without these, "byte for byte" is satisfied by a minimal build
 # that draws a field as a label and says nothing.
-for W in field marked scrolled; do
+for W in field marked scrolled nested; do
 	F="$(/tmp/wsk_prof_full $W)"; M="$(/tmp/wsk_prof_min $W)"
 	case "$F$M" in
 	drew*refused\ -6*) echo "ok    CONTROL: $W -- full ${F%% bytes*} bytes, minimal ${M}" ;;
@@ -85,12 +85,14 @@ link_check () {   # link_check <source> <label> [extra flags...]
 		exit 1
 	fi
 }
-for SRC in module_shape.c module_compose.c module_input.c module_stat.c module_font.c module_slop.c module_scroll.c; do
+for SRC in module_shape.c module_compose.c module_input.c module_stat.c module_font.c module_slop.c module_scroll.c module_nest.c; do
 	link_check "$SRC" "$SRC"
 	# Named, not "whichever came last": this has been the wrong number twice,
 	# both times because a module was added to the loop after it.
 	[[ "$SRC" == module_shape.c ]] && FULL="$SIZE"
 done
+link_check module_shape.c "module_shape.c -DWSK_NO_NEST" -DWSK_NO_NEST
+NONEST="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
 echo "      so the C5 profile of module_shape.c is $(( FULL - SIZE )) bytes smaller,"
 echo "      which is criterion 10: a host that cannot afford a widget leaves it"
@@ -105,3 +107,6 @@ echo "      module_stat.c is a readout -- D9's shape, and the only one of the"
 echo "      four that is a program somebody would leave running."
 echo "      module_scroll.c is wscroll: ten thousand rows dragged on the P4,"
 echo "      a slice at a time, holding none of them (§5e)."
+echo "      module_nest.c is wnest: a window that is one tree, nested three"
+echo "      deep, its panels static and nested by index (§5f). Nesting costs"
+echo "      module_shape.c $(( FULL - NONEST )) bytes, in the default profile only."
