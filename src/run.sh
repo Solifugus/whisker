@@ -38,6 +38,26 @@ else
 	diff <(fold -w100 /tmp/wsk_prof_full.svg) <(fold -w100 /tmp/wsk_prof_min.svg) | head
 	exit 1
 fi
+${CC:-gcc} -O1 -Wall -Wextra -Werror -DWSK_PANEL -o /tmp/wsk_prof_panel profile.c
+/tmp/wsk_prof_panel panel > /tmp/wsk_prof_panel.svg
+if cmp -s /tmp/wsk_prof_full.svg /tmp/wsk_prof_panel.svg; then
+	echo "ok    WSK_PANEL draws the shared panel byte for byte too (D20)"
+else
+	echo "FAIL  WSK_PANEL draws the shared panel differently"; exit 1
+fi
+# The panel profile keeps nesting and scrolling and refuses wrap and text.
+for W in scrolled nested; do
+	case "$(/tmp/wsk_prof_panel $W)" in
+	drew*) echo "ok    WSK_PANEL draws $W" ;;
+	*) echo "FAIL  WSK_PANEL refused $W"; exit 1 ;;
+	esac
+done
+for W in wrapped text; do
+	case "$(/tmp/wsk_prof_panel $W)" in
+	refused\ -6*) echo "ok    WSK_PANEL refuses $W, by name" ;;
+	*) echo "FAIL  WSK_PANEL did not refuse $W"; exit 1 ;;
+	esac
+done
 # The controls. Without these, "byte for byte" is satisfied by a minimal build
 # that draws a field as a label and says nothing.
 for W in field marked scrolled nested wrapped text; do
@@ -97,6 +117,8 @@ link_check module_shape.c "module_shape.c -DWSK_NO_WRAP" -DWSK_NO_WRAP
 NOWRAP="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_TEXT" -DWSK_NO_TEXT
 NOTEXT="$SIZE"
+link_check module_shape.c "module_shape.c -DWSK_PANEL" -DWSK_PANEL
+PANEL="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
 echo "      so the C5 profile of module_shape.c is $(( FULL - SIZE )) bytes smaller,"
 echo "      which is criterion 10: a host that cannot afford a widget leaves it"
@@ -116,3 +138,4 @@ echo "      deep, its panels static and nested by index (§5f). Nesting costs"
 echo "      module_shape.c $(( FULL - NONEST )) bytes, in the default profile only."
 echo "      Wrapping costs it $(( FULL - NOWRAP )) (§5g), likewise."
 echo "      Text items cost it $(( FULL - NOTEXT )) (§5h), likewise."
+echo "      WSK_PANEL, a touch panel's worth without wrap or text (D20): $PANEL."

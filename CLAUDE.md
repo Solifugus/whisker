@@ -100,10 +100,10 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   §5g paragraph drew the same pixels in 610 bytes instead of 1,415.
   `wsk_hit_word` names the word. 1,104 bytes, default only (`WSK_NO_TEXT`).
   **The default profile is now ~8.8 KB for a small panel** (4.7 before
-  nesting); a middle profile is an open decision.
+  nesting), so **`WSK_PANEL` (D20)** drops wrap and text: 6.7 KB.
 
-`src/run.sh --module` is the whole of it: **349 checks**, the pixels through
-RV-9's own rasteriser, twelve module builds with the double-link, and a person
+`src/run.sh --module` is the whole of it: **355 checks**, the pixels through
+RV-9's own rasteriser, thirteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 19, including the
 typing loop end to end; `--input` is the same loop with a person in it.
 
@@ -188,7 +188,7 @@ layout is compiled in cannot change without a reflash).
 
 ## Read before working
 
-1. `docs/decisions.md` — twenty ratified outcomes (D0–D19), one screen. **First**, so that
+1. `docs/decisions.md` — twenty-one ratified outcomes (D0–D20), one screen. **First**, so that
    the design's §4 arguments read as history rather than as open questions.
    Then `docs/roadmap.md`, which is what is left and what would let us stop.
 2. `docs/design.md` — all of it. It is the whole project, and it has been

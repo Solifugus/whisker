@@ -82,6 +82,9 @@
  *                       `hit` assumes a pointing device and the C5 has
  *                       none (§2.6) -- its panel is write-only, so there
  *                       is no focus traversal and there will not be (D9).
+ *     -DWSK_PANEL       a touch panel's worth: field, marks, scrolling and
+ *                       nesting, without wrap and text items (D20) -- for a
+ *                       P4 program that draws controls rather than prose
  *     -DWSK_NO_FIELD    drop the text field       (364 bytes)
  *     -DWSK_NO_MARKS    drop the corner marks     (288 bytes)
  *     -DWSK_NO_SCROLL   drop scrolling            (496 bytes)
@@ -97,6 +100,14 @@
  * as a label is the silent-wrong-answer shape this project keeps finding in
  * other people's code (§2.3).
  */
+#ifdef WSK_PANEL
+#  ifndef WSK_NO_WRAP
+#    define WSK_NO_WRAP 1
+#  endif
+#  ifndef WSK_NO_TEXT
+#    define WSK_NO_TEXT 1
+#  endif
+#endif
 #ifdef WSK_MINIMAL
 #  ifndef WSK_NO_FIELD
 #    define WSK_NO_FIELD 1
