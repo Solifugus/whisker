@@ -1043,6 +1043,71 @@ int main(void)
 		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
 	}
 
+	/*
+	 * Editing, at the pixels (design.md §5j): a keystroke's rows, repainted
+	 * alone, against a full redraw -- for a character typed, for the caret
+	 * moved, and for focus moving from one field to another, whose rows are
+	 * two places at once.
+	 */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_LABEL, .id = "l", .text = "Name and city", .size = 24 },
+			{ .kind = WSK_FIELD, .id = "a", .sub = 0, .size = 32 },
+			{ .kind = WSK_FIELD, .id = "b", .sub = 1, .size = 32 },
+		};
+		static uint16_t want[PW * PH];
+		char ab[24] = "", bb[24] = "";
+		wsk_buf_t buf[2];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[2];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		uint32_t v;
+		int y0, y1, good = 1;
+
+		buf[0].b = ab; buf[0].cap = 24; buf[0].len = 0; buf[0].caret = 0;
+		buf[1].b = bb; buf[1].cap = 24; buf[1].len = 0; buf[1].caret = 0;
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 8; w.gap = 8; w.bg = 0x10203au; w.item = F; w.n = 3;
+		w.buf = buf; w.bufs = 2;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		s.put = to_window; s.ctx = &dev;
+
+		printf("\n  editing (§5j)\n");
+#define DRAW_ALL() do { v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); \
+                        s.len = 0; wsk_render(&w, &s, 4096); } while (0)
+#define DRAW_ROWS() do { v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu); \
+                         svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); s.len = 0; \
+                         wsk_render_rows(&w, y0, y1, &s, 4096); } while (0)
+#define CHECK(what) do { DRAW_ROWS(); memcpy(want, screen, sizeof screen); DRAW_ALL(); \
+                         if (memcmp(screen, want, sizeof screen) != 0) { good = 0; \
+                         printf("    differs after %s\n", what); } } while (0)
+		DRAW_ALL();
+		wsk_ui_focus(&ui, "a", &y0, &y1);           CHECK("focus");
+		ev.kind = WSK_EV_TEXT;
+		snprintf(ev.text, sizeof ev.text, "whisk");
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);         CHECK("typing");
+		snprintf(ev.text, sizeof ev.text, "er");
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);         CHECK("typing more");
+		ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_LEFT;
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);         CHECK("the caret moved");
+		ev.key = WSK_KEY_TAB;
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);         CHECK("focus moving");
+		ev.kind = WSK_EV_TEXT;
+		snprintf(ev.text, sizeof ev.text, "P4");
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);         CHECK("typing in the second");
+		ok(good, "every keystroke's rows, repainted alone, leave exactly what a full redraw does");
+		ok(strcmp(ab, "whisker") == 0 && strcmp(bb, "P4") == 0, "and the buffers say what was typed");
+		shot("edit_fields.ppm");
+#undef CHECK
+#undef DRAW_ALL
+#undef DRAW_ROWS
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

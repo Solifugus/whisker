@@ -48,7 +48,7 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
 
 ## Status
 
-**Nine iterations are built, and two of them have now run on the C5.**
+**Ten iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -110,10 +110,19 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   16-px slop scrolls the deepest scrolling stack, clamped by the toolkit.
   `WSK_NO_INPUT`, in `WSK_MINIMAL`. ~256 bytes over hand-written pressing.
 
-`src/run.sh --module` is the whole of it: **378 checks**, the pixels through
-RV-9's own rasteriser, thirteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 19, including the
-typing loop end to end; `--input` is the same loop with a person in it.
+- **§5j — editing and focus** (2026-11-11). A field's text, when it changes,
+  lives in a **caller-owned `wsk_buf_t`** beside the tree (`root.buf`), named
+  by the field's `sub` — never in the widget. `focus` on the root; a tap on a
+  field focuses it with the caret where the finger was, **a tap on anything
+  else leaves focus alone** (so keyboard keys don't steal it). TEXT and KEY
+  events edit; Tab/Shift-Tab walk fields in declaration order. The Linux host
+  has real keys, text, drag and wheel (`run.sh --edit`). **`wkeys`**, the P4
+  keyboard, is two layers because 43 keys are 4,298 bytes of 4,096.
+
+`src/run.sh --module` is the whole of it: **407 checks**, the pixels through
+RV-9's own rasteriser, fourteen module builds with the double-link, and a person
+looking at the pictures. `host/linux/run.sh --test` adds 26, including the
+typing loop end to end and the real keyboard path; `--input` is the same loop with a person in it.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

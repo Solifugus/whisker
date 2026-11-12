@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Every done-criterion in design.md §5 (the renderer), §5b (hit),
-# §5c (composition), §5d (input), §5e (scrolling), §5f (nesting), §5g (wrap) and §5h (text items).
+# §5c (composition), §5d (input), §5e (scrolling), §5f (nesting), §5g (wrap), §5h (text items), §5i (the toolkit)
+# and §5j (editing).
 #
 #   ./run.sh              the suite, the picture, and the XML check
 #   ./run.sh --module     and the module build, which is criterion 7
@@ -105,7 +106,7 @@ link_check () {   # link_check <source> <label> [extra flags...]
 		exit 1
 	fi
 }
-for SRC in module_shape.c module_compose.c module_input.c module_stat.c module_font.c module_slop.c module_scroll.c module_nest.c; do
+for SRC in module_shape.c module_compose.c module_input.c module_stat.c module_font.c module_slop.c module_scroll.c module_nest.c module_keys.c; do
 	link_check "$SRC" "$SRC"
 	# Named, not "whichever came last": this has been the wrong number twice,
 	# both times because a module was added to the loop after it.
@@ -139,3 +140,5 @@ echo "      module_shape.c $(( FULL - NONEST )) bytes, in the default profile on
 echo "      Wrapping costs it $(( FULL - NOWRAP )) (§5g), likewise."
 echo "      Text items cost it $(( FULL - NOTEXT )) (§5h), likewise."
 echo "      WSK_PANEL, a touch panel's worth without wrap or text (D20): $PANEL."
+echo "      module_keys.c is wkeys: a field and an on-screen keyboard on the"
+echo "      toolkit, two layers so a screen of keys fits SRC_MAX (§5j)."

@@ -7,6 +7,11 @@
  *     out:  a complete SVG document, plus the row range it needs repainted
  *     in:   a point -- x, y, and whether it is a press or a release
  *
+ * and, since §5j, what a desktop has that a panel does not: the pointer
+ * moving while pressed, the wheel, a key that means something to a field,
+ * and text typed. Still input, still no widget: the toolkit turns these into
+ * what changed, on whisker's side of the seam.
+ *
  * On RV-9 that is four operations on a path: open /w0, setstat
  * RV9_SVG_SS_ROWS, write, and read a point from whatever device supplies one.
  * This is the same four, and deliberately not one more -- §6 sets the bar
@@ -22,12 +27,27 @@ enum {
 	WH_NOTHING = 0,
 	WH_PRESS,
 	WH_RELEASE,
-	WH_QUIT
+	WH_QUIT,
+	WH_MOVE,                 /* the pointer moved while pressed */
+	WH_WHEEL,                /* d: pixels, positive scrolls toward the end */
+	WH_KEY,                  /* key: one of WH_KEY_* */
+	WH_TEXT                  /* text: what was typed, UTF-8, NUL-ended */
+};
+
+/* The keys a field cares about. The same numbers as whisker's WSK_KEY_*, so
+   a host loop passes them straight through; the host does not include
+   whisker to know them, and nothing here is a widget. */
+enum {
+	WH_KEY_LEFT = 1, WH_KEY_RIGHT, WH_KEY_HOME, WH_KEY_END,
+	WH_KEY_BACKSPACE, WH_KEY_DELETE, WH_KEY_ENTER, WH_KEY_TAB, WH_KEY_BACKTAB
 };
 
 typedef struct {
-	int kind;                /* WH_* */
-	int x, y;                /* device pixels, as the panel reports them */
+	int  kind;               /* WH_* */
+	int  x, y;               /* device pixels, as the panel reports them */
+	int  d;                  /* WH_WHEEL */
+	int  key;                /* WH_KEY */
+	char text[8];            /* WH_TEXT */
 } wh_event_t;
 
 /* Open a window of this many device pixels, shown at `scale` times size.

@@ -5,6 +5,7 @@
 #   ./run.sh                 320x172 at 3x -- the C5's panel
 #   ./run.sh 1024 600 1      the P4's, at actual size
 #   ./run.sh --input         a field and a keyboard; click the keys
+#   ./run.sh --edit          fields you type into with the real keyboard (§5j)
 #   ./run.sh --test          the contract, headless, with no person
 #
 # The pixels come from RV-9's own rasteriser, built from its tree through the
@@ -23,6 +24,14 @@ if [[ "${1:-}" == "--test" ]]; then
 		"$HERE/selftest.c" "$OUT/raster.c" "$OUT/font.c" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec env SDL_VIDEODRIVER=dummy "$OUT/selftest"
+fi
+
+if [[ "${1:-}" == "--edit" ]]; then
+	shift
+	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-edit" \
+		"$HERE/edit.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
+	exec "$OUT/whisker-edit" "$@"
 fi
 
 if [[ "${1:-}" == "--input" ]]; then

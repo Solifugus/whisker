@@ -2095,6 +2095,120 @@ and the list left scrolled 54 rows, so a drag scrolled rather than clicked.
 A release elsewhere prints nothing by design, so whether it was tried is not
 in the log.
 
+
+---
+
+## 5j. Iteration 10 — fields that edit, and focus
+
+**Written 2026-11-11, before any code.** §8.9's second step: typing goes to
+the focused field, a caret that moves, and the on-screen keyboard as the
+P4's first real program.
+
+### The problem, and the answer
+
+§5i's rule — **the toolkit never writes a widget**, because a widget may be
+in flash — meets a field whose text lives *inside* its widget. Writing it
+anyway breaks the rule; sending only "a key was typed" notices hands the
+editing back to every program, which is what a toolkit exists to stop.
+
+**So editable text lives beside the tree, as `nest` and `str` do**: the
+caller supplies writable buffers —
+
+    typedef struct { char *b; short cap, len, caret; } wsk_buf_t;
+    root.buf = bufs; root.bufs = N;
+
+— and a field names one by index in `.sub`. A field **uses a buffer when the
+root has buffers and its `.sub` is in range**; otherwise it is the inline,
+read-only field of §5d, drawn byte for byte as before.
+
+### The rules
+
+1. **Focus** is `focus` on the root, as `held` is: the widget typing goes
+   to. A focused field draws its caret — at the buffer's caret, not at the
+   end — and the view slides to keep the caret in sight. This iteration
+   focuses **fields only**; a focus mark for buttons is a later question.
+2. **A tap on a field focuses it** and puts the caret at the character
+   tapped. **A tap on anything else leaves focus alone** — on a touch panel
+   the keyboard is buttons, and pressing a key must not take focus from the
+   field it is typing into.
+3. **`TEXT`** inserts its characters at the caret, if they fit the buffer
+   and the window can draw them (§2.4's 32..126, no `<&>`); anything else is
+   refused — nothing inserted, nothing changed. A notice **`WSK_NOTE_TEXT`**
+   says the field changed.
+4. **`KEY`**: `LEFT`, `RIGHT`, `HOME`, `END` move the caret; `BACKSPACE` and
+   `DELETE` remove a character (a `TEXT` notice); `ENTER` is
+   **`WSK_NOTE_ENTER`**; `TAB` and `BACKTAB` move focus to the next or
+   previous editable field in declaration order, depth first — the order
+   D0 kept stable for exactly this — with **`WSK_NOTE_FOCUS`**.
+5. **Rows**: the field's own; on a focus change, both fields'.
+6. **The host**: the Linux host grows `KEY`, `TEXT`, `MOVE` and `WHEEL`
+   events (layer 3), so a person can type into whisker on a desktop with a
+   real keyboard and drag with a real mouse.
+
+### Profile
+
+Part of the toolkit (`WSK_NO_INPUT`) and of the field (`WSK_NO_FIELD`); the
+C5 has neither.
+
+### Done criteria
+
+1. Every earlier check and golden unchanged; a field with no buffer draws as
+   before.
+2. Insert, refuse (full buffer, bad character), move, delete both ways,
+   home/end, enter, tab and backtab across nested stacks — scripted events,
+   with the buffer and the notices checked.
+3. A tap on a field puts the caret where the tap was; a tap on a button
+   leaves focus where it was (the control for the keyboard).
+4. The caret in the middle of a long field: the view keeps it in sight.
+5. At the pixels: a keystroke's rows repainted alone equal a full redraw.
+6. The Linux host types with a real keyboard (`host/linux/run.sh --edit`,
+   a person) and its self-test feeds keys through the same path.
+7. **`wkeys` on the P4**: a field and an on-screen keyboard, built on the
+   toolkit — a key's CLICK becomes a `TEXT` event — run by a person.
+
+
+### What it came to, 2026-11-11
+
+Built the same day; criteria 1–6 met, 7 written and checked here, waiting
+for the board. **407 checks** in `src/run.sh --module` (378 before): 37 in the
+suite, 2 at the pixels, 1 module link; `host/linux/run.sh --test` adds 7 more
+through the real SDL path. Every output of the commit before — 25 files —
+byte-identical: a field with no buffer is §5d's field.
+
+- **Editing**, by scripted events: insert, the all-or-nothing refusals (a
+  character the window cannot draw, a full buffer), both deletes, home, end,
+  enter, and Tab and Shift-Tab round three fields, one two stacks deep. A tap
+  puts the caret on the character under it; a tap on a key leaves focus in
+  the field — the control the keyboard rests on. At the pixels, each
+  keystroke's rows repainted alone equal a full redraw, a focus change's
+  two places included.
+- **The host** (layer 3) grew `WH_MOVE`, `WH_WHEEL`, `WH_KEY` and `WH_TEXT`,
+  and `host/linux/run.sh --edit` types into whisker with a real keyboard and
+  scrolls a list with a real wheel. `q` no longer quits: it is a letter now.
+- **`wkeys`** (`src/module_keys.c`), the P4's keyboard, run here first by
+  `tools/evidence/keys/`, which reads each key's place out of the document
+  whisker drew and taps it: "hi there", Left, Left, Del, then the digit layer
+  — all as a person would.
+
+**Two things the building found.**
+
+1. **A whole keyboard does not fit `SRC_MAX`**: 43 keys and a field came to
+   **4,298 bytes of 4,096** — the arithmetic CLAUDE.md carried ("115 bytes is
+   all a field-plus-keyboard leaves") was right in kind. Answered the way a
+   phone answers it, with **layers**: letters, and a 123 key that swaps three
+   rows for digits and symbols; 34 keys at a time, **3,518 bytes**. The swap
+   is a row's `item` pointed at another static array — trees are writable,
+   widgets are never touched. The compact-keyboard decision in
+   `roadmap.md` §4 is therefore still Matthew's, and no longer urgent.
+2. **Struct assignment is `memcpy`, sometimes.** Twice a `wsk_rect_t` copied
+   through a pointer compiled to a call the module cannot link — caught both
+   times by the module build, not by a test. The toolkit now copies
+   rectangles field by field (`wsk__rput`).
+
+**Bytes**: `wkeys` is 16,596 under `WSK_PANEL` (18,984 with everything): 75
+key widgets are 4.8 KB of it. Its own stack chain is about 2,500 counting
+its nesting; declared 8,192.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

@@ -17,8 +17,8 @@ in `design.md` §8; nothing of it is built yet.
 **Status of the drawing layer.** `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i and §7 — **378 checks** plus the profile gate,
-the pixels through RV-9's own rasteriser, thirteen module builds with the
+`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j and §7 — **407 checks** plus the profile gate,
+the pixels through RV-9's own rasteriser, fourteen module builds with the
 double-link, and a person looking at the pictures. `host/linux/run.sh --test`
 adds **19** more.
 
@@ -47,6 +47,10 @@ bytes.
 answers with what changed — this button was clicked, that list scrolled to 40
 — and the rows to repaint. Pressing, tapping with a shaky finger and dragging
 a list are whisker's now, not every program's.
+
+**And fields edit** (§5j): typing goes to the focused field, a caret moves,
+Tab walks the fields — with a real keyboard on Linux (`host/linux/run.sh
+--edit`) and with `wkeys`, an on-screen keyboard, on the P4.
 
 **And there is now a program to leave running.** `src/module_stat.c` — staged
 in RV-9's tree as `wstat` — puts the board's die temperature, free heap and

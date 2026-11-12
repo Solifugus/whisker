@@ -2060,6 +2060,138 @@ int main(void)
 #undef FEED
 	}
 
+	/* ---- §5j. fields that edit, and focus ---- */
+	printf("\n-- §5j  editing\n");
+	{
+		static const wsk_widget_t FORMW[] = {
+			{ .kind = WSK_LABEL, .id = "l1",   .text = "Name", .size = 24 },
+			{ .kind = WSK_FIELD, .id = "name", .sub = 0, .size = 32 },
+			{ .kind = WSK_LABEL, .id = "l2",   .text = "City", .size = 24 },
+			{ .kind = WSK_FIELD, .id = "city", .sub = 1, .size = 32 },
+			{ .kind = WSK_STACK, .id = "row",  .sub = 0, .size = 40 },
+		};
+		static const wsk_widget_t ROWW[] = {
+			{ .kind = WSK_BUTTON, .id = "q",    .text = "Q", .size = 40 },
+			{ .kind = WSK_FIELD,  .id = "note", .sub = 2, .weight = 1 },
+			{ .kind = WSK_BUTTON, .id = "w",    .text = "W", .size = 40 },
+		};
+		char nb[8] = "", cb[48] = "", tb[32] = "";
+		wsk_buf_t buf[3];
+		wsk_tree_t w, k[1];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int n, y0 = 0, y1 = 0;
+		char dd[4096];
+
+		buf[0].b = nb; buf[0].cap = 8;  buf[0].len = 0; buf[0].caret = 0;
+		buf[1].b = cb; buf[1].cap = 48; buf[1].len = 0; buf[1].caret = 0;
+		buf[2].b = tb; buf[2].cap = 32; buf[2].len = 0; buf[2].caret = 0;
+		wsk_init(&w, WSK_COL, 320, 300);
+		w.pad = 4; w.gap = 4; w.item = FORMW; w.n = 5; w.nest = k; w.nests = 1;
+		w.buf = buf; w.bufs = 3;
+		wsk_nest_init(&k[0], &w, WSK_ROW); k[0].pad = 0; k[0].gap = 4; k[0].item = ROWW; k[0].n = 3;
+		ok(wsk_check(&w, 0) == WSK_OK, "a form of three editable fields, one two deep, is accepted");
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+
+#define TYPE(T) (ev.kind = WSK_EV_TEXT, snprintf(ev.text, sizeof ev.text, "%s", (T)), \
+                 n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define KEY(K)  (ev.kind = WSK_EV_KEY, ev.key = (K), n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define TAP(X, Y) (ev.kind = WSK_EV_DOWN, ev.x = (X), ev.y = (Y), \
+                   n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1), \
+                   ev.kind = WSK_EV_UP, n += wsk_feed(&ui, &ev, nt + 1, 3, &y0, &y1))
+
+		TYPE("x");
+		ok(n == 0 && nb[0] == '\0', "CONTROL: with nothing focused, typing goes nowhere");
+		ok(wsk_ui_focus(&ui, "name", &y0, &y1) == WSK_OK && w.focus == &FORMW[1] &&
+		   y0 == 32 && y1 == 64, "a program focuses a field by id; its rows come back");
+		render_into(&w, dd, sizeof dd, 4096);
+		ok(count(dd, "width=\"2\"") == 1, "and the focused field, empty, draws its caret");
+		ok(wsk_ui_focus(&ui, "l1", &y0, &y1) == WSK_E_NOTFOUND, "CONTROL: a label cannot take focus");
+
+		TYPE("ab");
+		ok(n == 1 && nt[0].kind == WSK_NOTE_TEXT && nt[0].value == 2 && strcmp(nb, "ab") == 0 &&
+		   buf[0].caret == 2 && y0 == 32 && y1 == 64, "TEXT inserts at the caret: \"ab\", a TEXT notice, the field's rows");
+		TYPE("<");
+		ok(n == 0 && strcmp(nb, "ab") == 0, "a character the window cannot draw is refused");
+		TYPE("cdefg");
+		ok(strcmp(nb, "abcdefg") == 0 && buf[0].len == 7, "seven characters fill a buffer of 8");
+		TYPE("h");
+		ok(n == 0 && strcmp(nb, "abcdefg") == 0, "and the eighth is refused: all of it or none of it");
+		KEY(WSK_KEY_LEFT); KEY(WSK_KEY_LEFT);
+		ok(buf[0].caret == 5 && n == 0 && y1 > y0, "LEFT twice: the caret at 5, rows to repaint, no notice");
+		KEY(WSK_KEY_BACKSPACE);
+		ok(strcmp(nb, "abcdfg") == 0 && buf[0].caret == 4 && n == 1, "BACKSPACE takes the e");
+		KEY(WSK_KEY_DELETE);
+		ok(strcmp(nb, "abcdg") == 0 && buf[0].caret == 4, "DELETE takes the f");
+		KEY(WSK_KEY_HOME);
+		TYPE("X");
+		ok(strcmp(nb, "Xabcdg") == 0 && buf[0].caret == 1, "HOME, then X goes in at the start");
+		KEY(WSK_KEY_END);
+		ok(buf[0].caret == 6, "END");
+		KEY(WSK_KEY_HOME); KEY(WSK_KEY_LEFT);
+		ok(n == 0 && y0 == y1 && buf[0].caret == 0, "CONTROL: LEFT at the start changes and repaints nothing");
+		KEY(WSK_KEY_ENTER);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_ENTER && nt[0].in == &w && nt[0].item == 1,
+		   "ENTER is a notice, naming the field");
+		ok(wsk_check(&w, 0) == WSK_OK, "the buffer the toolkit left is one wsk_check accepts");
+
+		/* Tab order: declaration order, depth first, round and back. */
+		KEY(WSK_KEY_TAB);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_FOCUS && w.focus == &FORMW[3], "TAB: name to city");
+		KEY(WSK_KEY_TAB);
+		ok(w.focus == &ROWW[1] && nt[0].in == &k[0] && nt[0].item == 1,
+		   "TAB: city to note, two deep in the row");
+		KEY(WSK_KEY_TAB);
+		ok(w.focus == &FORMW[1], "TAB from the last goes round to the first");
+		KEY(WSK_KEY_BACKTAB);
+		ok(w.focus == &ROWW[1], "and BACKTAB back round to the last");
+
+		/* A tap: on a field, focus and a caret where it landed; on a key,
+		   focus stays where it was. */
+		snprintf(cb, sizeof cb, "hello"); buf[1].len = 5; buf[1].caret = 5;
+		TAP(4 + WSK_FIELD_PAD + 2 * 8 + 1, 96 + 16);
+		ok(w.focus == &FORMW[3] && buf[1].caret == 2,
+		   "a tap on city, two characters in: focus, and the caret at 2");
+		TAP(20, 160);
+		ok(w.focus == &FORMW[3] && n == 1 && nt[1].kind == WSK_NOTE_CLICK && nt[1].item == 0,
+		   "a tap on the Q key clicks it and leaves focus in city -- the keyboard's control");
+		TYPE("Q");
+		ok(strcmp(cb, "heQllo") == 0, "so a key's click can type into the field it left focused");
+
+		/* A long field keeps its caret in sight. */
+		snprintf(cb, sizeof cb, "abcdefghijklmnopqrstuvwxyz0123456789");
+		buf[1].len = 36; buf[1].caret = 20;
+		render_into(&w, dd, sizeof dd, 4096);
+		{
+			/* city is 312 wide: (312 - 12 - 2) / 8 = 37 cells, so it all
+			   fits; narrow it to see the window slide. */
+			wsk_widget_t form2[5];
+			char want[64];
+			wsk_clone(form2, FORMW, 5);
+			form2[3].weight = 0;
+			w.item = form2;
+			w.axis = WSK_COL;
+			wsk_area(&w, 0, 0, 104, 300);
+			k[0].item = ROWW;
+			/* 104 - 8 = 96 wide: (96 - 12 - 2) / 8 = 10 cells. The caret at
+			   20 is at the right edge: characters 10..19 show. */
+			w.focus = &form2[3];
+			render_into(&w, dd, sizeof dd, 4096);
+			snprintf(want, sizeof want, ">%s</text>", "klmnopqrst");
+			ok(has(dd, want), "a long field with the caret at 20 shows 10..19, the caret at its edge");
+			buf[1].caret = 36;
+			render_into(&w, dd, sizeof dd, 4096);
+			ok(has(dd, ">0123456789</text>"), "and with the caret at the end, the tail -- §5d's view");
+			w.item = FORMW;
+			wsk_area(&w, 0, 0, 320, 300);
+		}
+#undef TYPE
+#undef KEY
+#undef TAP
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

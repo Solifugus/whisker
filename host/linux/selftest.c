@@ -230,6 +230,62 @@ int main(void)
 		       in2, ky0, ky1, H);
 	}
 
+	/* §5j: a real keyboard through the host and the toolkit. Text and keys
+	   are pushed as SDL events -- what a person's keyboard produces -- and
+	   come out of wh_poll as WH_TEXT and WH_KEY, which go to wsk_feed. */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_FIELD, .id = "a", .sub = 0, .size = 40 },
+			{ .kind = WSK_FIELD, .id = "b", .sub = 1, .size = 40 },
+		};
+		char ab[16] = "", bb[16] = "";
+		wsk_buf_t buf[2];
+		wsk_tree_t t2;
+		wsk_ui_t ui;
+		wsk_note_t nt[2];
+		wsk_event_t we;
+		wh_event_t ev;
+		SDL_Event e;
+		int y0, y1, got = 0;
+
+		buf[0].b = ab; buf[0].cap = 16; buf[0].len = 0; buf[0].caret = 0;
+		buf[1].b = bb; buf[1].cap = 16; buf[1].len = 0; buf[1].caret = 0;
+		wsk_init(&t2, WSK_COL, W, H);
+		t2.item = F; t2.n = 2; t2.buf = buf; t2.bufs = 2;
+		wsk_ui_init(&ui, &t2);
+		ok(wsk_ui_focus(&ui, "a", &y0, &y1) == WSK_OK, "a field takes focus");
+
+		memset(&e, 0, sizeof e);
+		e.type = SDL_TEXTINPUT;
+		snprintf(e.text.text, sizeof e.text.text, "hi");
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_TEXT && strcmp(ev.text, "hi") == 0,
+		   "typed text arrives from the host as WH_TEXT");
+		memset(&we, 0, sizeof we);
+		we.kind = WSK_EV_TEXT;
+		memcpy(we.text, ev.text, sizeof we.text);
+		got = wsk_feed(&ui, &we, nt, 2, &y0, &y1);
+		ok(got == 1 && strcmp(ab, "hi") == 0, "and the toolkit puts it in the field");
+
+		memset(&e, 0, sizeof e);
+		e.type = SDL_KEYDOWN;
+		e.key.keysym.sym = SDLK_TAB;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_KEY && ev.key == WH_KEY_TAB, "Tab arrives as WH_KEY_TAB");
+		we.kind = WSK_EV_KEY; we.key = (unsigned short)ev.key;
+		wsk_feed(&ui, &we, nt, 2, &y0, &y1);
+		ok(t2.focus == &F[1], "and moves focus to the second field");
+
+		e.key.keysym.sym = SDLK_BACKSPACE;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_KEY && ev.key == WH_KEY_BACKSPACE &&
+		   WH_KEY_BACKSPACE == WSK_KEY_BACKSPACE,
+		   "Backspace arrives as the same number whisker uses");
+		e.key.keysym.sym = SDLK_q;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) != WH_QUIT, "q no longer quits: it is a letter now");
+	}
+
 	wh_close();
 	printf(fails ? "\n%d check(s) failed\n" : "\nall host checks passed\n", fails);
 	return fails != 0;

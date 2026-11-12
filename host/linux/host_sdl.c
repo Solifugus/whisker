@@ -104,6 +104,9 @@ int wh_open(int w, int h, int scale, const char *title)
 	                         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
 	                         w * scale, h * scale, 0);
 	if (S.win == NULL) { fprintf(stderr, "whisker-host: %s\n", SDL_GetError()); return -1; }
+	/* Typed characters arrive as text, already through the keyboard's
+	   layout, which is the host's business (§5j) -- not as keys to map. */
+	SDL_StartTextInput();
 
 	S.ren = SDL_CreateRenderer(S.win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if (S.ren == NULL) S.ren = SDL_CreateRenderer(S.win, -1, 0);
@@ -169,12 +172,50 @@ int wh_poll(wh_event_t *out)
 		case SDL_QUIT:
 			out->kind = WH_QUIT;
 			return WH_QUIT;
-		case SDL_KEYDOWN:
-			if (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_q) {
-				out->kind = WH_QUIT;
-				return WH_QUIT;
+		case SDL_KEYDOWN: {
+			/* Escape quits. `q` used to as well, until a field could be
+			   typed into (§5j) and q became a letter. */
+			SDL_Keycode k = e.key.keysym.sym;
+			int key = 0;
+			if (k == SDLK_ESCAPE) { out->kind = WH_QUIT; return WH_QUIT; }
+			if (k == SDLK_LEFT) key = WH_KEY_LEFT;
+			else if (k == SDLK_RIGHT) key = WH_KEY_RIGHT;
+			else if (k == SDLK_HOME) key = WH_KEY_HOME;
+			else if (k == SDLK_END) key = WH_KEY_END;
+			else if (k == SDLK_BACKSPACE) key = WH_KEY_BACKSPACE;
+			else if (k == SDLK_DELETE) key = WH_KEY_DELETE;
+			else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) key = WH_KEY_ENTER;
+			else if (k == SDLK_TAB)
+				key = (e.key.keysym.mod & KMOD_SHIFT) ? WH_KEY_BACKTAB : WH_KEY_TAB;
+			if (key != 0) { out->kind = WH_KEY; out->key = key; return WH_KEY; }
+			break;
+		}
+		case SDL_TEXTINPUT: {
+			int i = 0;
+			while (i < (int)sizeof out->text - 1 && e.text.text[i] != '\0') {
+				out->text[i] = e.text.text[i];
+				i++;
+			}
+			out->text[i] = '\0';
+			out->kind = WH_TEXT;
+			return WH_TEXT;
+		}
+		case SDL_MOUSEMOTION:
+			if ((e.motion.state & SDL_BUTTON_LMASK) && point_of(e.motion.x, e.motion.y, out)) {
+				out->kind = WH_MOVE;
+				return WH_MOVE;
 			}
 			break;
+		case SDL_MOUSEWHEEL: {
+			int mx, my;
+			SDL_GetMouseState(&mx, &my);
+			if (point_of(mx, my, out)) {
+				out->kind = WH_WHEEL;
+				out->d = -e.wheel.y * 40;
+				return WH_WHEEL;
+			}
+			break;
+		}
 		case SDL_WINDOWEVENT:
 			if (e.window.event == SDL_WINDOWEVENT_EXPOSED) present();
 			break;
