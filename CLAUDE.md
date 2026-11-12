@@ -48,7 +48,7 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
 
 ## Status
 
-**Six iterations are built, and two of them have now run on the C5.**
+**Seven iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -85,8 +85,16 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   rasteriser. `wnest` ran on the P4 2026-11-11: seven taps, each named the right widget
   at depth.
 
-`src/run.sh --module` is the whole of it: **289 checks**, the pixels through
-RV-9's own rasteriser, ten module builds with the double-link, and a person
+- **§5g — wrap** (2026-11-11). `overflow = WSK_WRAP`, D18's third answer:
+  items flow onto new lines, each line as deep as its deepest item, weight
+  and justify a line at a time. A wrapping stack asks only for its widest
+  item along its axis and for its lines' depth at the width it will get
+  across. **A text window is composition**: word labels in a wrapping row
+  inside a scrolling column. 752 bytes, default only (`WSK_NO_WRAP`). Open:
+  one `gap` both ways spaces lines too far apart.
+
+`src/run.sh --module` is the whole of it: **319 checks**, the pixels through
+RV-9's own rasteriser, eleven module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 19, including the
 typing loop end to end; `--input` is the same loop with a person in it.
 

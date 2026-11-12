@@ -819,6 +819,109 @@ int main(void)
 		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
 	}
 
+	/*
+	 * Wrap, at the pixels (design.md §5g): a text window by composition.
+	 * One label per word in a wrapping row, inside a scrolling column, under
+	 * a title -- no text widget, no special case, which is D18's "text does
+	 * not need to be special". What only pixels can say: that it reads as a
+	 * paragraph, which a person must look at, and that one word repainted
+	 * alone leaves exactly what a full redraw does.
+	 */
+	{
+		static const char *WORDS =
+			"whisker lays out a paragraph the way it lays out a toolbar: "
+			"each word is an item in a row that wraps, so a word can be "
+			"tapped like a button and repainted alone, and nothing about "
+			"text is special. A text window is that row inside a column "
+			"that scrolls.";
+		static wsk_widget_t word[64];
+		static uint16_t full[PW * PH];
+		static const wsk_widget_t WIN[] = {
+			{ .kind = WSK_LABEL, .id = "title", .text = "Wrap", .size = 24 },
+			{ .kind = WSK_STACK, .id = "page",  .sub = 0, .weight = 1 },
+		};
+		static const wsk_widget_t PAGE[] = {
+			{ .kind = WSK_STACK, .id = "para", .sub = 1 },
+		};
+		wsk_tree_t w, k[2];
+		wsk_sink_t s;
+		const char *ids[1];
+		int n = 0, y0, y1, tapped = -1;
+		uint32_t v;
+
+		for (const char *p = WORDS; *p != '\0' && n < 64; ) {
+			int len = 0;
+			while (*p == ' ') p++;
+			if (*p == '\0') break;
+			memset(&word[n], 0, sizeof word[n]);
+			word[n].kind = WSK_LABEL;
+			while (p[len] != '\0' && p[len] != ' ' && len < WSK_TEXT_MAX - 1) {
+				word[n].text[len] = p[len];
+				len++;
+			}
+			snprintf(word[n].id, WSK_ID_MAX, "w%d", n);
+			if (strcmp(word[n].text, "tapped") == 0) tapped = n;
+			p += len;
+			n++;
+		}
+
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 0; w.gap = 0; w.bg = 0x10203au; w.ids = 1;
+		w.item = WIN; w.n = 2; w.nest = k; w.nests = 2;
+		wsk_nest_init(&k[0], &w, WSK_COL);
+		k[0].pad = 6; k[0].gap = 0; k[0].item = PAGE; k[0].n = 1;
+		k[0].overflow = WSK_SCROLL;
+		wsk_nest_init(&k[1], &w, WSK_ROW);
+		k[1].pad = 0; k[1].gap = 8; k[1].item = word; k[1].n = n;
+		k[1].overflow = WSK_WRAP;
+
+		printf("\n  wrap (§5g)\n");
+		printf("    %d words\n", n);
+		ok(wsk_check(&w, 0) == WSK_OK, "a paragraph of word labels, wrapping, in a scrolling page");
+		{
+			wsk_tree_t at;
+			int i = wsk__lookup(&w, "para", &at, 0);
+			wsk_rect_t r = wsk_rect(&at, i);
+			printf("    the paragraph: %dx%d in a page of %d rows\n", r.w, r.h, PH - 24);
+			ok(r.h > PH - 24 - 12, "it is longer than its page, so the page scrolls");
+		}
+		k[0].scroll = 16;
+		ok(wsk_check(&w, 0) == WSK_OK, "scrolled 16, accepted");
+
+		s.put = to_window; s.ctx = &dev; s.len = 0;
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		word[tapped].ink = 0xffd040u;
+		{
+			int bytes = wsk_render(&w, &s, 4096);
+			printf("    the whole window: %d bytes\n", bytes);
+			ok(bytes > 0, "it renders under the budget");
+		}
+		memcpy(full, screen, sizeof screen);
+		shot("wrap_text.ppm");
+
+		/* One word, repainted alone, against the full redraw. */
+		word[tapped].ink = WSK_INHERIT;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		wsk_render(&w, &s, 4096);
+		ok(memcmp(screen, full, sizeof screen) != 0, "CONTROL: without the colour, the screen differs");
+		word[tapped].ink = 0xffd040u;
+		ids[0] = word[tapped].id;
+		ok(wsk_rows(&w, ids, 1, &y0, &y1) == WSK_OK, "the word's rows");
+		v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		{
+			int bytes = wsk_render_clipped(&w, ids, 1, &s, 4096);
+			printf("    one word repainted: rows %d..%d, %d bytes\n", y0, y1, bytes);
+		}
+		ok(memcmp(screen, full, sizeof screen) == 0,
+		   "one word repainted alone leaves exactly what a full redraw does");
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

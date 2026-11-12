@@ -1800,6 +1800,103 @@ repaint of its own rows only. Declared 8,192 bytes of stack; ran without
 overflow; not bisected. No tap landed in a gap, so a stack answering for
 its own padding was not seen on the glass (it is in the suite).
 
+
+---
+
+## 5g. Iteration 7 — wrap, the third answer to "it does not fit"
+
+**Written 2026-11-11, before any code.** D18: `overflow` is one setting with
+three answers — refuse (D10), scroll (§5e), wrap — and text is not special.
+This iteration is wrap for **any** widget. A paragraph as *one* item, split
+into words at layout, is the next one (§5h, to design): a widget's text is 32
+bytes inline, a paragraph is longer, and where its words live is the same
+static-panel question `nest` answered with an index.
+
+### The rules
+
+1. **`overflow = WSK_WRAP`.** Items are placed along the stack's axis; one
+   that would cross the end starts a **line** below (a row) or beside (a
+   column). Lines are separated by the stack's `gap`, as items are.
+2. **A line is as deep as its deepest item**, measured across the axis, and
+   every item in it is that deep — as every item of an unwrapped stack spans
+   its whole depth today.
+3. **Within a line, the rules of an unwrapped stack**: `weight` shares the
+   line's leftover among that line's weighted items; with none, `justify`
+   places it — START is a ragged-right paragraph, CENTER centred lines.
+4. **What a wrapping stack asks for.** Along its own axis, only its widest
+   item and its padding: it takes what it is given and wraps to fit, so
+   asking for its content in one line would mean never wrapping. Across, the
+   depth of its lines **when wrapped to the space it will get** — which its
+   parent knows when it lays out (the parent's own span across), so the
+   measurement carries that space down. Where nothing above knows it, a
+   wrapping stack is measured as one line.
+5. **D10 holds.** An item wider than the whole line is refused, `WSK_E_FIT`,
+   naming it — a word is never broken, since breaking it is substituting.
+   Lines deeper than the area are refused naming the first item that does
+   not fit; a text window is a wrapping row **inside a scrolling column**
+   (D17, D18), not a stack that both scrolls and wraps.
+6. **Nothing else changes.** `hit`, `rows`, render and the viewport all ask
+   `wsk_rect`, and wrap is only a different `wsk_rect`. An unwrapped tree lays
+   out byte for byte as before.
+
+### Profile
+
+In the default; out of `WSK_MINIMAL` (`WSK_NO_WRAP`), refused by name, with
+`which = -1` as a scroll is — the C5's panel is a fixed readout. Cost measured.
+
+### Done criteria
+
+1. Every existing check and golden unchanged.
+2. A wrapping row of buttons lays out to rectangles written by hand: where
+   each line breaks, each line's depth, each item's place.
+3. Weight and justify per line, each with a line that has none.
+4. A wrapping row in a column takes the depth of its lines at the width the
+   column gives it; the same row at a different width wraps differently.
+5. Refusals: an item wider than the line; lines deeper than a fixed area —
+   each beside the same tree accepted.
+6. A paragraph of one label per word, wrapping, inside a scrolling column:
+   the text window, by composition, at the pixels — a person looks.
+7. `hit` and `rows` on a wrapped item; a repaint of one word is byte-identical
+   to a full redraw at the pixels.
+8. Profile: `WSK_MINIMAL` refuses a wrapping stack, byte-identical otherwise;
+   the cost in bytes. Module links, double-linked.
+
+
+### What it came to, 2026-11-11
+
+Built the same day; criteria 1–8 met except a person looking at the
+picture. **319 checks** in `src/run.sh --module`, where §5f and the label fix
+left 289: 23 in the suite, 9 at the pixels, 1 XML, 1 profile control, 1
+module link. Every saved output before the first change — ten PPMs, nine SVG
+documents — compared byte for byte afterwards: identical.
+
+**At the pixels** (`wrap_text.ppm`): a text window by composition alone —
+51 one-word labels in a wrapping row, inside a scrolling page, under a
+title. It reads as a paragraph; scrolled 16 rows, its first line is above the
+page's edge and gone whole (D12). One word, recoloured and repainted alone
+(rows 104..136, 416 bytes), leaves exactly what a full redraw does.
+
+**Found.**
+
+1. **The check must name the item no line can hold before the line that
+   runs out of depth.** In a 60-wide area every item takes a line, so the
+   lines ran out at Gamma before the check reached Epsilon, which no height
+   would fix. Widths are now checked first.
+2. **One `gap` both ways makes text look double-spaced.** Words want a
+   space's width between them; lines want much less, and a wrapping stack
+   uses the same `gap` for both — so the paragraph above has 8 rows between
+   lines of 24. A line gap of its own is the obvious fix and is not made here:
+   it is a new field, so it is a decision.
+
+**§7's question: 752 bytes, in the default, out of `WSK_MINIMAL`**, which
+refuses a wrapping stack by name (`which = -1`, as a scroll). The C5's build
+is 4 bytes larger, that refusal.
+
+**Not measured:** a wrapping stack is laid out by walking its lines from the
+start for every item, so a document of one is quadratic in its words, as a
+stack already was in its widgets (§5e). Fifty-one words drew in 1,169 bytes;
+a page of five hundred would want §5h's paragraph, or a slice.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this
@@ -2116,15 +2213,16 @@ Each a working product, as the conventions ask, and each **proved by an
 existing program shrinking onto it** — the same behaviour from less code is
 the test that the toolkit did what the program used to.
 
-1. **Iteration 7 — `wsk_feed` with press, click and drag-scroll** (iteration 6
-   became nesting, §5f, when §9.9 put layout first). `wtap` and
+1. **The toolkit's first iteration — `wsk_feed` with press, click and
+   drag-scroll** (iterations 6 and 7 became nesting and wrap, §5f and §5g,
+   when §9.9 put layout first). `wtap` and
    `wscroll` are rewritten on it, and must behave identically: the same taps
    named, the same drags ending on the same rows (`tools/evidence/drag/`
    already scripts a finger, so the comparison is mechanical). The SDL host
    gets the wheel.
-2. **Iteration 8 — the field and focus.** `input.c`'s typing loop moves into
+2. **Then the field and focus.** `input.c`'s typing loop moves into
    the toolkit; Tab, a focus mark, `_KEY` and `_TEXT`.
-3. **Iteration 9 — `check`, and selection in a list.**
+3. **Then `check`, and selection in a list.**
 4. **Overlays** — a design section of their own first, because they touch
    layer 1's model rather than adding a branch to it.
 5. **`table`, `tree`, `memo` as a viewer**; then the gBASIC backend, measured
@@ -2262,7 +2360,7 @@ widgets come first; these are why SVG was worth choosing.
 ### 9.5 The on-screen keyboard — the P4's first real app
 
 Most of it is prototyped: `host/linux/input.c` types through a drawn
-keyboard, and `tools/evidence/keyboard/` priced it. It is §8.9's iteration 8
+keyboard, and `tools/evidence/keyboard/` priced it. It is §8.9's second step
 (the field and focus) made useful — a P4 that types with no USB keyboard —
 and it settles the compact-keyboard decision still open in `roadmap.md` §4.
 

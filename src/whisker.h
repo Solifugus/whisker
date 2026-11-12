@@ -2,7 +2,7 @@
  * whisker -- a widget layer for a window you write SVG to.
  *
  * Labels, buttons and a text field in single-axis stacks, column or row,
- * any of which may scroll, and any of which may hold another stack.
+ * any of which may scroll or wrap, and any of which may hold another stack.
  * All pure, none of them touching a device:
  *
  *     wsk_render(tree, sink, budget)                  one stack, whole screen
@@ -85,6 +85,7 @@
  *     -DWSK_NO_MARKS    drop the corner marks     (288 bytes)
  *     -DWSK_NO_SCROLL   drop scrolling            (496 bytes)
  *     -DWSK_NO_NEST     drop nesting -- a stack inside a stack (1,780 bytes)
+ *     -DWSK_NO_WRAP     drop wrapping onto new lines (752 bytes)
  *
  * A reduced build is not a different renderer. For the widgets it still has
  * it emits **byte-identical** documents, which `src/run.sh` checks by
@@ -106,6 +107,9 @@
 #  endif
 #  ifndef WSK_NO_NEST
 #    define WSK_NO_NEST 1
+#  endif
+#  ifndef WSK_NO_WRAP
+#    define WSK_NO_WRAP 1
 #  endif
 #endif
 
@@ -156,7 +160,8 @@ enum {
  */
 enum {
 	WSK_REFUSE = 0,
-	WSK_SCROLL
+	WSK_SCROLL,
+	WSK_WRAP                     /* onto a new line across the axis (§5g) */
 };
 
 /*
@@ -435,6 +440,14 @@ static inline int wsk_text_ok(const char *t)
  * `which` may be null when only the verdict is wanted.
  */
 static inline int wsk__natural(const wsk_tree_t *t, int i);
+#ifndef WSK_NO_WRAP
+static inline int wsk__meas(const wsk_tree_t *nest, int nests,
+                            const wsk_tree_t *t, int i, int axis, int depth,
+                            int avail);
+static inline int wsk__flow(const wsk_tree_t *nest, int nests,
+                            const wsk_tree_t *t, int span, int idx,
+                            int *ia, int *ic, int *ea, int *ec, int depth);
+#endif
 
 /* What the widgets and the gaps between them want along the axis, padding
    not included. */
@@ -501,6 +514,40 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 		}
 #endif
 	}
+
+#ifdef WSK_NO_WRAP
+	if (t->overflow == WSK_WRAP) {
+		if (which != 0) *which = -1;
+		return WSK_E_KIND;
+	}
+#else
+	/* Wrapping (§5g rule 5): an item wider than a whole line is refused,
+	   since breaking it would be drawing something else; and lines deeper
+	   than the area are refused at the first item that does not fit. A
+	   text window is a wrapping row inside a scrolling column, never one
+	   stack doing both. */
+	if (t->overflow == WSK_WRAP) {
+		int col = (t->axis == WSK_COL);
+		int span = (col ? t->ah : t->aw) - 2 * t->pad;
+		int deep = (col ? t->aw : t->ah) - 2 * t->pad;
+		/* Widths first: an item no line can hold is the fault to name,
+		   even where the lines it forces would run out of depth sooner. */
+		for (int i = 0; i < t->n; i++)
+			if (wsk__meas(t->nest, t->nests, t, i, t->axis, 0, -1) > span) {
+				if (which != 0) *which = i;
+				return WSK_E_FIT;
+			}
+		for (int i = 0; i < t->n; i++) {
+			int ia = 0, ic = 0, ea = 0, ec = 0;
+			(void)wsk__flow(t->nest, t->nests, t, span, i, &ia, &ic, &ea, &ec, 0);
+			if (ic + ec > deep) {
+				if (which != 0) *which = i;
+				return WSK_E_FIT;
+			}
+		}
+		return WSK_OK;
+	}
+#endif
 
 #ifdef WSK_NO_SCROLL
 	/* Refused by name, and there is no widget to name, so `which` is -1. */
@@ -682,31 +729,64 @@ static inline int wsk__natural(const wsk_tree_t *t, int i)
  * extent across is what it would be in a stack of that axis; `size` is
  * along its own stack only.
  *
+ * `avail` is the space the widget will get the OTHER way, or -1 when
+ * nothing above knows it. Only a wrapping stack needs it: how deep its
+ * lines go depends on how wide they may be (§5g rule 4).
+ *
  * A stack's is its content: the sum along its axis, the largest across, its
  * padding both ends. `nest` is passed beside `t` because a child tree
  * measured here is the caller's own, which carries no `nest` of its own --
  * only the copies layout makes do. `depth` stops a tree that holds itself.
  */
 static inline int wsk__nat_on(const wsk_tree_t *nest, int nests,
-                              const wsk_tree_t *t, int i, int axis, int depth)
+                              const wsk_tree_t *t, int i, int axis, int depth,
+                              int avail);
+#ifndef WSK_NO_WRAP
+static inline int wsk__flow(const wsk_tree_t *nest, int nests,
+                            const wsk_tree_t *t, int span, int idx,
+                            int *ia, int *ic, int *ea, int *ec, int depth);
+#endif
+
+static inline int wsk__nat_on(const wsk_tree_t *nest, int nests,
+                              const wsk_tree_t *t, int i, int axis, int depth,
+                              int avail)
 {
 	const wsk_widget_t *w = &t->item[i];
 
 	if (w->size > 0 && axis == t->axis) return w->size;
 	if (w->kind == WSK_STACK) {
 		const wsk_tree_t *c;
-		int ext = 0;
+		int ext = 0, inner;
 		if (nest == 0 || w->sub < 0 || w->sub >= nests || depth >= WSK_DEPTH_MAX)
 			return 0;                    /* wsk_check refuses it by name */
 		c = &nest[w->sub];
+		inner = (avail < 0) ? -1 : avail - 2 * c->pad;
 #ifndef WSK_NO_SCROLL
 		/* A stack that scrolls asks for nothing along the axis it scrolls
 		   on: being shorter than its content is what it is for. Its size
 		   comes from `size` or `weight`. */
 		if (c->overflow == WSK_SCROLL && c->axis == axis) return 2 * c->pad;
 #endif
+#ifndef WSK_NO_WRAP
+		/* A wrapping stack takes what it is given and wraps to fit it, so
+		   along its axis it asks only for its widest item (§5g rule 4);
+		   across, the depth of its lines at the width it will get -- or,
+		   where nothing above knows that, one line. */
+		if (c->overflow == WSK_WRAP && (c->axis == axis || inner >= 0)) {
+			if (c->axis != axis)
+				return wsk__flow(nest, nests, c, inner, -1, 0, 0, 0, 0, depth + 1)
+				     + 2 * c->pad;
+			for (int j = 0; j < c->n; j++) {
+				int e = wsk__nat_on(nest, nests, c, j, axis, depth + 1, -1);
+				if (e > ext) ext = e;
+			}
+			return ext + 2 * c->pad;
+		}
+#endif
 		for (int j = 0; j < c->n; j++) {
-			int e = wsk__nat_on(nest, nests, c, j, axis, depth + 1);
+			int e = (c->axis == axis)
+			      ? wsk__nat_on(nest, nests, c, j, axis, depth + 1, inner)
+			      : wsk__nat_on(nest, nests, c, j, axis, depth + 1, -1);
 			if (c->axis == axis) ext += e + ((j > 0) ? c->gap : 0);
 			else if (e > ext) ext = e;
 		}
@@ -720,9 +800,131 @@ static inline int wsk__nat_on(const wsk_tree_t *nest, int nests,
 	return wsk__round_band(t->font + t->gap);
 }
 
+/* What a stack gives each of its items across its axis: its area, less its
+   padding, capped -- the `avail` its items are measured with. */
+static inline int wsk__across(const wsk_tree_t *t)
+{
+	int c = ((t->axis == WSK_COL) ? t->aw : t->ah) - 2 * t->pad;
+	if (t->cross_max > 0 && c > t->cross_max) c = t->cross_max;
+	return c;
+}
+
 static inline int wsk__natural(const wsk_tree_t *t, int i)
 {
-	return wsk__nat_on(t->nest, t->nests, t, i, t->axis, 0);
+	return wsk__nat_on(t->nest, t->nests, t, i, t->axis, 0, wsk__across(t));
+}
+#endif
+
+#ifndef WSK_NO_WRAP
+/*
+ * A widget's extent along `axis`, whatever this build has: through stacks
+ * when it nests, from the widget alone when it does not.
+ */
+static inline int wsk__meas(const wsk_tree_t *nest, int nests,
+                            const wsk_tree_t *t, int i, int axis, int depth,
+                            int avail)
+{
+#ifndef WSK_NO_NEST
+	return wsk__nat_on(nest, nests, t, i, axis, depth, avail);
+#else
+	const wsk_widget_t *w = &t->item[i];
+	(void)nest; (void)nests; (void)depth; (void)avail;
+	if (w->size > 0 && axis == t->axis) return w->size;
+	if (axis == WSK_ROW) return wsk_text_w(t->font, wsk__len(w->text)) + 2 * t->pad;
+	if (w->kind == WSK_BUTTON) return WSK_BTN_ROWS;
+	return wsk__round_band(t->font + t->gap);
+#endif
+}
+
+/*
+ * Lines (design.md §5g). Items go along the axis until one would cross
+ * `span`; it starts the next line. Each line is as deep as its deepest item
+ * and all of them are that deep; within it, weight shares the line's leftover
+ * and, with none weighted, justify places it -- an unwrapped stack's rules,
+ * a line at a time. A line always takes at least one item, so an item wider
+ * than the span sits alone on its line and wsk_check refuses it by name.
+ *
+ * With idx >= 0, where item idx sits, relative to the content's start:
+ * along (ia, ea) and across (ic, ec). With idx < 0, how deep all the lines
+ * are, gaps between them included and padding not. One walk for both, so
+ * what is measured and what is laid out cannot disagree.
+ */
+static inline int wsk__flow(const wsk_tree_t *nest, int nests,
+                            const wsk_tree_t *t, int span, int idx,
+                            int *ia, int *ic, int *ea, int *ec, int depth)
+{
+	int other = (t->axis == WSK_COL) ? WSK_ROW : WSK_COL;
+	int cross = 0, i = 0;
+
+	while (i < t->n) {
+		int used = 0, weights = 0, deep = 0, end, extra, last = -1, k;
+
+		for (k = i; k < t->n; k++) {
+			int need = used + ((k > i) ? t->gap : 0)
+			         + wsk__meas(nest, nests, t, k, t->axis, depth, -1);
+			if (k > i && need > span) break;
+			used = need;
+			weights += t->item[k].weight;
+			if (t->item[k].weight > 0) last = k;
+		}
+		end = k;
+		for (k = i; k < end; k++) {
+			int d = wsk__meas(nest, nests, t, k, other, depth,
+			                  wsk__meas(nest, nests, t, k, t->axis, depth, -1));
+			if (d > deep) deep = d;
+		}
+		extra = span - used;
+		if (extra < 0) extra = 0;
+
+		if (idx >= i && idx < end) {
+			int n = end - i, j = idx - i, at = 0, given = 0, e, free;
+			free = (weights > 0) ? 0 : extra;
+			if (free > 0) {
+				if (t->justify == WSK_END) at = free;
+				else if (t->justify == WSK_CENTER) at = free / 2;
+				else if (t->justify == WSK_BETWEEN) at = (n > 1) ? free * j / (n - 1) : 0;
+				else if (t->justify == WSK_AROUND) at = free * (2 * j + 1) / (2 * n);
+			}
+			for (k = i; k < idx; k++) {
+				e = wsk__meas(nest, nests, t, k, t->axis, depth, -1);
+				if (weights > 0 && t->item[k].weight > 0) {
+					int share = extra * t->item[k].weight / weights;
+					e += share;
+					given += share;
+				}
+				at += e + t->gap;
+			}
+			e = wsk__meas(nest, nests, t, idx, t->axis, depth, -1);
+			if (weights > 0 && t->item[idx].weight > 0)
+				e += (idx == last) ? (extra - given)
+				                   : (extra * t->item[idx].weight / weights);
+			*ia = at; *ea = e; *ic = cross; *ec = deep;
+			return cross;
+		}
+		cross += deep;
+		i = end;
+		if (i < t->n) cross += t->gap;
+	}
+	return cross;
+}
+
+/* Item idx of a wrapping stack, in device pixels. */
+static inline wsk_rect_t wsk__wrap_rect(const wsk_tree_t *t, int idx)
+{
+	wsk_rect_t r;
+	int col = (t->axis == WSK_COL);
+	int span = (col ? t->ah : t->aw) - 2 * t->pad;
+	int ia = 0, ic = 0, ea = 0, ec = 0;
+
+	(void)wsk__flow(t->nest, t->nests, t, span, idx, &ia, &ic, &ea, &ec, 0);
+	if (col) {
+		r.y = (short)(t->ay + t->pad + ia); r.h = (short)ea;
+		r.x = (short)(t->ax + t->pad + ic); r.w = (short)ec;
+	} else {
+		r.x = (short)(t->ax + t->pad + ia); r.w = (short)ea;
+		r.y = (short)(t->ay + t->pad + ic); r.h = (short)ec;
+	}
+	return r;
 }
 #endif
 
@@ -760,6 +962,10 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 	wsk_rect_t r;
 	int span = (t->axis == WSK_COL ? t->ah : t->aw) - 2 * t->pad;
 	int used = 0, weights = 0, at, extra, given = 0;
+
+#ifndef WSK_NO_WRAP
+	if (t->overflow == WSK_WRAP) return wsk__wrap_rect(t, idx);
+#endif
 
 	for (int i = 0; i < t->n; i++) {
 		used += wsk__natural(t, i);

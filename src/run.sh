@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Every done-criterion in design.md §5 (the renderer), §5b (hit),
-# §5c (composition), §5d (input), §5e (scrolling) and §5f (nesting).
+# §5c (composition), §5d (input), §5e (scrolling), §5f (nesting) and §5g (wrap).
 #
 #   ./run.sh              the suite, the picture, and the XML check
 #   ./run.sh --module     and the module build, which is criterion 7
@@ -20,7 +20,7 @@ echo
 echo "-- 1  the document parses, by something that is not us"
 python3 - <<'PY'
 import xml.dom.minidom as m
-for f in ("/tmp/wsk_full.svg", "/tmp/wsk_clip.svg", "/tmp/wsk_compose.svg", "/tmp/wsk_nest.svg"):
+for f in ("/tmp/wsk_full.svg", "/tmp/wsk_clip.svg", "/tmp/wsk_compose.svg", "/tmp/wsk_nest.svg", "/tmp/wsk_wrap.svg"):
 	m.parse(f)
 	print("ok    %s is well-formed XML" % f)
 PY
@@ -40,7 +40,7 @@ else
 fi
 # The controls. Without these, "byte for byte" is satisfied by a minimal build
 # that draws a field as a label and says nothing.
-for W in field marked scrolled nested; do
+for W in field marked scrolled nested wrapped; do
 	F="$(/tmp/wsk_prof_full $W)"; M="$(/tmp/wsk_prof_min $W)"
 	case "$F$M" in
 	drew*refused\ -6*) echo "ok    CONTROL: $W -- full ${F%% bytes*} bytes, minimal ${M}" ;;
@@ -93,6 +93,8 @@ for SRC in module_shape.c module_compose.c module_input.c module_stat.c module_f
 done
 link_check module_shape.c "module_shape.c -DWSK_NO_NEST" -DWSK_NO_NEST
 NONEST="$SIZE"
+link_check module_shape.c "module_shape.c -DWSK_NO_WRAP" -DWSK_NO_WRAP
+NOWRAP="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
 echo "      so the C5 profile of module_shape.c is $(( FULL - SIZE )) bytes smaller,"
 echo "      which is criterion 10: a host that cannot afford a widget leaves it"
@@ -110,3 +112,4 @@ echo "      a slice at a time, holding none of them (§5e)."
 echo "      module_nest.c is wnest: a window that is one tree, nested three"
 echo "      deep, its panels static and nested by index (§5f). Nesting costs"
 echo "      module_shape.c $(( FULL - NONEST )) bytes, in the default profile only."
+echo "      Wrapping costs it $(( FULL - NOWRAP )) (§5g), likewise."

@@ -1719,6 +1719,106 @@ int main(void)
 		   "CONTROL: a pixel narrower, it is still truncated to what fits");
 	}
 
+	/* ---- §5g. wrap: onto a new line when it does not fit ---- */
+	printf("\n-- §5g  wrap\n");
+	{
+		static const wsk_widget_t TAGS[] = {
+			{ .kind = WSK_BUTTON, .id = "t0", .text = "Alpha" },
+			{ .kind = WSK_BUTTON, .id = "t1", .text = "Beta" },
+			{ .kind = WSK_BUTTON, .id = "t2", .text = "Gamma" },
+			{ .kind = WSK_BUTTON, .id = "t3", .text = "Delta" },
+			{ .kind = WSK_BUTTON, .id = "t4", .text = "Epsilon" },
+			{ .kind = WSK_BUTTON, .id = "t5", .text = "Zeta" },
+			{ .kind = WSK_BUTTON, .id = "t6", .text = "Eta" },
+		};
+		wsk_widget_t tags[7];
+		wsk_tree_t w;
+		int which = -2, y0 = 0, y1 = 0;
+
+		wsk_clone(tags, TAGS, 7);
+		wsk_init(&w, WSK_ROW, 320, 172);
+		w.pad = 4; w.gap = 4; w.ids = 1; w.item = tags; w.n = 7;
+		ok(wsk_check(&w, &which) == WSK_E_FIT, "CONTROL: unwrapped, seven buttons do not fit a 320 row");
+		w.overflow = WSK_WRAP;
+		ok(wsk_check(&w, 0) == WSK_OK, "wrapping, they are accepted");
+
+		/* By hand: each is its text (8 a cell) plus 4 each side. Along a
+		   312 span, 48+40+48+48+64+40 and five gaps of 4 is 308; Eta's 32
+		   would make 344, so it starts a line 64 + 4 below the first. */
+		ok(rect_is(wsk_rect(&w, 0), 4, 4, 48, 64), "Alpha starts the first line: 4,4 48x64");
+		ok(rect_is(wsk_rect(&w, 4), 204, 4, 64, 64), "Epsilon: 204,4 64x64");
+		ok(rect_is(wsk_rect(&w, 5), 272, 4, 40, 64), "Zeta ends the first line at 312, inside the padding");
+		ok(rect_is(wsk_rect(&w, 6), 4, 72, 32, 64), "Eta starts the second: 4,72 32x64");
+
+		/* Rule 3: justify and weight, a line at a time. */
+		w.justify = WSK_CENTER;
+		ok(wsk_rect(&w, 0).x == 6 && wsk_rect(&w, 6).x == 144,
+		   "centred, each line by its own leftover: 4 on the first, 280 on the second");
+		w.justify = WSK_START;
+		tags[6].weight = 1;
+		ok(rect_is(wsk_rect(&w, 6), 4, 72, 312, 64) && wsk_rect(&w, 0).x == 4 &&
+		   wsk_rect(&w, 5).w == 40,
+		   "a weighted item takes its own line's leftover, and the line with none is untouched");
+		tags[6].weight = 0;
+
+		/* hit and rows ask wsk_rect, so they follow the lines. */
+		ok(wsk_hit(&w, 10, 100) == 6, "hit on the second line is Eta");
+		ok(wsk_hit(&w, 10, 70) == WSK_E_NOTFOUND, "CONTROL: the gap between lines is nothing");
+		{
+			const char *k[1] = { "t6" };
+			ok(wsk_rows(&w, k, 1, &y0, &y1) == WSK_OK && y0 == 72 && y1 == 136,
+			   "rows of Eta are its line: 72..136");
+		}
+
+		/* Rule 5. */
+		wsk_area(&w, 0, 0, 60, 172);
+		ok(wsk_check(&w, &which) == WSK_E_FIT && which == 4,
+		   "an item wider than a whole line is refused, naming it: Epsilon's 64 in 52");
+		wsk_area(&w, 0, 0, 320, 100);
+		ok(wsk_check(&w, &which) == WSK_E_FIT && which == 6,
+		   "lines deeper than the area are refused at the first item past it: Eta");
+		wsk_area(&w, 0, 0, 320, 140);
+		ok(wsk_check(&w, 0) == WSK_OK, "CONTROL: 132 of lines in 132 rows, accepted");
+	}
+
+	/* Rule 4: a wrapping row in a column is as deep as its lines at the
+	   width the column gives it -- and at another width, another depth. */
+	{
+		static const wsk_widget_t COLM[] = {
+			{ .kind = WSK_STACK, .id = "tags",  .sub = 0 },
+			{ .kind = WSK_LABEL, .id = "after", .text = "after", .size = 24 },
+		};
+		static const wsk_widget_t TAGS[] = {
+			{ .kind = WSK_BUTTON, .id = "t0", .text = "Alpha" },
+			{ .kind = WSK_BUTTON, .id = "t1", .text = "Beta" },
+			{ .kind = WSK_BUTTON, .id = "t2", .text = "Gamma" },
+			{ .kind = WSK_BUTTON, .id = "t3", .text = "Delta" },
+			{ .kind = WSK_BUTTON, .id = "t4", .text = "Epsilon" },
+			{ .kind = WSK_BUTTON, .id = "t5", .text = "Zeta" },
+			{ .kind = WSK_BUTTON, .id = "t6", .text = "Eta" },
+		};
+		wsk_tree_t c, k[1];
+
+		wsk_init(&c, WSK_COL, 320, 300);
+		c.pad = 0; c.gap = 0; c.item = COLM; c.n = 2; c.nest = k; c.nests = 1;
+		wsk_nest_init(&k[0], &c, WSK_ROW);
+		k[0].pad = 4; k[0].gap = 4; k[0].item = TAGS; k[0].n = 7; k[0].overflow = WSK_WRAP;
+		ok(wsk_check(&c, 0) == WSK_OK, "a wrapping row in a column is accepted");
+		ok(rect_is(rect_of(&c, "tags"), 0, 0, 320, 140) && rect_of(&c, "after").y == 140,
+		   "at 320 wide its two lines are 132 deep, plus padding: 140");
+		ok(rect_is(rect_of(&c, "t6"), 4, 72, 32, 64), "and Eta, inside it, where the flat row put it");
+		wsk_area(&c, 0, 0, 200, 300);
+		ok(rect_of(&c, "tags").h == 208 && rect_of(&c, "after").y == 208,
+		   "at 200 wide it wraps into three lines: 3 x 64 + 2 x 4 + 8 = 208");
+		ok(rect_is(rect_of(&c, "t3"), 4, 72, 48, 64), "and Delta now starts the second line");
+		{
+			char wd[4096];
+			FILE *f;
+			ok(render_into(&c, wd, sizeof wd, 4096) > 0, "it renders");
+			f = fopen("/tmp/wsk_wrap.svg", "wb"); fputs(wd, f); fclose(f);
+		}
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

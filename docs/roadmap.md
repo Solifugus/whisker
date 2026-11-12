@@ -40,6 +40,7 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **`input`** (§5d) | built; the last widget with a caller |
 | **Scrolling** (§5e) | built 2026-10-24, for `window`; `wscroll` run on the P4 2026-11-11: 112-row pane 37.5 ms a frame, full screen 229 |
 | **Nesting** (§5f) | built 2026-11-11 (D17, D19): stacks in stacks, ids and paths; `wnest` run on the P4 2026-11-11, seven taps named right |
+| **Wrap** (§5g) | built 2026-11-11 (D18): lines, per-line weight and justify; a text window by composition |
 | **Profiles** (§7, D8) | built; the C5 pays for nothing it cannot use |
 | **On the board** | `wflick` and `wcompose` run on the C5, committed in RV-9 |
 | **On a desk** | `host/linux`, typing loop closed with a mouse (D7) |
