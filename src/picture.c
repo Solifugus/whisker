@@ -952,6 +952,97 @@ int main(void)
 		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
 	}
 
+	/*
+	 * The toolkit, at the pixels (design.md §5i): the rows wsk_feed asks
+	 * for, repainted alone, against a full redraw of the same state -- for a
+	 * press, and for a step of a drag. If the rows were short of what
+	 * changed, the screen would keep a stale strip, which only pixels show.
+	 */
+	{
+		static const wsk_widget_t TOP[] = {
+			{ .kind = WSK_STACK, .id = "bar",  .sub = 0, .size = 40 },
+			{ .kind = WSK_STACK, .id = "list", .sub = 1, .weight = 1 },
+			{ .kind = WSK_LABEL, .id = "foot", .text = "toolkit", .size = 24 },
+		};
+		static wsk_widget_t rows[8];
+		static uint16_t want[PW * PH];
+		wsk_tree_t w, k[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[2];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		uint32_t v;
+		int y0, y1, n;
+
+		for (int i = 0; i < 8; i++) {
+			memset(&rows[i], 0, sizeof rows[i]);
+			rows[i].kind = WSK_BUTTON;
+			rows[i].size = 32;
+			rows[i].fill = (i % 2) ? 0x2a6b8fu : 0x3a7b4fu;
+			snprintf(rows[i].id, WSK_ID_MAX, "r%d", i);
+			snprintf(rows[i].text, WSK_TEXT_MAX, "Row %d", i);
+		}
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 0; w.gap = 0; w.bg = 0x10203au;
+		w.item = TOP; w.n = 3; w.nest = k; w.nests = 2;
+		wsk_nest_init(&k[0], &w, WSK_ROW); k[0].pad = 4; k[0].gap = 4;
+		k[0].item = TOOLBAR; k[0].n = 3;
+		wsk_nest_init(&k[1], &w, WSK_COL); k[1].pad = 2; k[1].gap = 2;
+		k[1].item = rows; k[1].n = 8; k[1].overflow = WSK_SCROLL;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		s.put = to_window; s.ctx = &dev;
+
+		printf("\n  the toolkit (§5i)\n");
+#define DRAW_ALL() do { v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); \
+                        s.len = 0; wsk_render(&w, &s, 4096); } while (0)
+#define DRAW_ROWS() do { v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu); \
+                         svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); s.len = 0; \
+                         wsk_render_rows(&w, y0, y1, &s, 4096); } while (0)
+		DRAW_ALL();
+
+		/* A press on STOP. */
+		ev.kind = WSK_EV_DOWN; ev.x = 160; ev.y = 20;
+		n = wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+		ok(n == 0 && y1 > y0, "a press asks for rows");
+		DRAW_ROWS();
+		memcpy(want, screen, sizeof screen);
+		DRAW_ALL();
+		ok(memcmp(screen, want, sizeof screen) == 0,
+		   "a press repainted in its rows alone leaves exactly what a full redraw does");
+		shot("toolkit_press.ppm");
+
+		/* Its release, elsewhere: no click, the hold repainted away. */
+		ev.kind = WSK_EV_UP; ev.x = 10; ev.y = 160;
+		n = wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+		DRAW_ROWS();
+		memcpy(want, screen, sizeof screen);
+		DRAW_ALL();
+		ok(n == 0 && memcmp(screen, want, sizeof screen) == 0,
+		   "a release elsewhere: no click, and the hold repainted away exactly");
+
+		/* A drag step in the list. */
+		ev.kind = WSK_EV_DOWN; ev.x = 100; ev.y = 120;
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+		DRAW_ROWS();
+		ev.kind = WSK_EV_MOVE; ev.y = 80;
+		n = wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_SCROLL && nt[0].value == 40, "a drag of 40 scrolls the list 40");
+		DRAW_ROWS();
+		printf("    a drag step: rows %d..%d\n", y0, y1);
+		memcpy(want, screen, sizeof screen);
+		DRAW_ALL();
+		ok(memcmp(screen, want, sizeof screen) == 0,
+		   "a drag step repainted in its rows alone leaves exactly what a full redraw does");
+		shot("toolkit_drag.ppm");
+		ev.kind = WSK_EV_UP;
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+#undef DRAW_ALL
+#undef DRAW_ROWS
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

@@ -1990,6 +1990,104 @@ paragraph or not. Each has a switch (`WSK_NO_NEST`, `WSK_NO_WRAP`,
 that the small profile is the one with a name."* A middle profile — a
 panel's worth — is the obvious next profile, and is a decision.
 
+
+---
+
+## 5i. Iteration 9 — the toolkit's first: press, click, drag
+
+**Written 2026-11-11, before any code.** §8 is the design; this is the
+iteration, and the two places building it corrected §8.
+
+### What §8 got wrong, found by reading the code
+
+- **The toolkit may not write a widget.** §8.6 had it set a held button's
+  mark — but a widget may live in a `static const` panel, which on RV-9 is
+  flash, and a write there faults. **Trees are always built at runtime**
+  (they hold pointers), so every piece of toolkit state goes in a tree: the
+  held widget is **`held` on the root**, carried into nested copies as `nest`
+  is, and drawn with the corner marks; a scroll is the tree's `scroll`, as
+  ever. A widget is never written, so a panel stays `static const`.
+- **A notice names its widget by tree and index** — `in`, `item` — as
+  `wsk_hit_in` does, now that stacks nest (§5f), rather than by stack number.
+
+### The API
+
+    wsk_ui_t ui;               /* the caller's: whisker keeps nothing */
+    wsk_ui_init(&ui, &root);
+    n = wsk_feed(&ui, &ev, note, max, &y0, &y1);
+    if (y1 > y0) wsk_render_rows(&root, y0, y1, sink, budget);
+
+An event is §8.4's `wsk_event_t`; this iteration handles `DOWN`, `MOVE`,
+`UP` and `WHEEL`, and `KEY`/`TEXT` return nothing until the field's
+iteration. `wsk_render_rows` is new and small: the document for a band of
+rows, which `wsk_render_clipped` always was underneath.
+
+### The rules
+
+1. **Press.** `DOWN` on a button holds it: `root.held` is set and its rows
+   come back to repaint. `UP` over the same widget is a **`WSK_NOTE_CLICK`**;
+   `UP` anywhere else is nothing. Either way the hold ends and is repainted.
+   `DOWN` on anything that is not a button holds nothing, and `UP` on the same
+   widget is still a click — a label or a word may mean something to the
+   program; on a text item the notice's `value` is the word.
+2. **Drag.** `DOWN` inside a scrolling stack — the deepest one under the
+   point — arms a drag. A `MOVE` farther than `slop` along its axis (16 by
+   default, from §5b's measured scatter) starts it: the hold is released, and
+   from then the stack's `scroll` follows the finger, **clamped to its range
+   by the toolkit** — layer 1 still refuses out of range (D11), and the
+   toolkit is a caller that never asks it to. Each change is a
+   **`WSK_NOTE_SCROLL`** with the new offset, and the stack's area to repaint.
+   An `UP` after a drag is not a click.
+3. **Wheel.** `WHEEL` scrolls the deepest scrolling stack under the point by
+   `d`, clamped: a `WSK_NOTE_SCROLL`, or nothing where there is none.
+4. **Repaint.** `y0..y1` is the union of every row the event changed, band
+   snapped, or empty; one banded repaint per event.
+
+### Profile
+
+`WSK_NO_INPUT`, in `WSK_MINIMAL` — the C5 has nothing to press (D6, D16).
+`WSK_PANEL` keeps it: a touch panel is what it is for.
+
+### Done criteria
+
+1. Every earlier check and golden unchanged; `held` unset draws as before.
+2. Press, click, a release elsewhere (no click), a tap with jitter inside the
+   slop (a click), a drag (scrolls, clamps both ends, no click), the wheel —
+   each by a scripted sequence of events in the suite.
+3. The rows each event returns, repainted alone, leave exactly what a full
+   redraw does — at the pixels, for a press and for a drag step.
+4. Profile: `WSK_MINIMAL` builds without the toolkit; cost in bytes.
+5. `wnest` rewritten on `wsk_feed`, with a list long enough to drag, and
+   shorter than it was; run on the P4 with a person.
+
+
+### What it came to, 2026-11-11
+
+Built the same day; criteria 1–4 met, 5 written and waiting for the board.
+**378 checks** (355 before): 22 scripted event sequences in the suite, 6 at
+the pixels. Every earlier output byte-identical — `held` unset draws as before.
+
+**It passed first time, which is worth saying because of why**: the press,
+the click rules, the slop, both clamps and the wheel are what `wscroll` and
+`wnest` had been doing by hand, so the toolkit is code that had already run on
+the glass, written once. At the pixels, a press, its release elsewhere and a
+drag step each repainted only the rows `wsk_feed` returned and left exactly
+what a full redraw does (`toolkit_press.ppm`, `toolkit_drag.ppm`).
+
+**`wnest` on the toolkit**: its list doubled to twelve items so there is
+something to drag, and the program is still 14 lines shorter — it no longer
+finds, presses or repaints anything; it prints clicks and repaints rows. In
+bytes, against the hand-written version built with the same header: 12,112
+against 11,472, of which 384 are the six extra items, so **the toolkit costs
+about 256 bytes more than doing it by hand** and adds dragging, the wheel and
+the click rules. It costs nothing to a program that does not call it: every
+function is `static inline`, and `module_shape.c` did not move.
+
+**The stack**: whisker's own chain under `wnest` is 1,568 bytes, plus **304
+for each level of nesting** — up from 256, because the drawing loop's frames
+grew with wrap and text (§5g, §5h). Three levels deep it is about 2,180; the
+8,192 declared for the board stands.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

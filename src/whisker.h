@@ -16,6 +16,13 @@
  *     wsk_hit_in(tree, x, y, &in)                     the deepest widget there
  *     wsk_find_in(tree, "id" or "/a/b", &in)          a widget at any depth
  *     wsk_hit_word(tree, x, y, &in, &word)            which word of a paragraph
+ *     wsk_render_rows(tree, y0, y1, sink, budget)     a band of rows, whatever moved
+ *
+ * And the toolkit (design.md §5i, §8), which is not pure -- it updates the
+ * caller's trees -- but keeps nothing of its own:
+ *
+ *     wsk_ui_init(&ui, &root)
+ *     wsk_feed(&ui, &event, notes, max, &y0, &y1)     an event in, what changed out
  *
  * The host writes what the sink collected to /w0, having first told the
  * window which rows to repaint:
@@ -90,6 +97,7 @@
  *     -DWSK_NO_SCROLL   drop scrolling            (496 bytes)
  *     -DWSK_NO_NEST     drop nesting -- a stack inside a stack (1,780 bytes)
  *     -DWSK_NO_WRAP     drop wrapping onto new lines (2,044 bytes with text)
+ *     -DWSK_NO_INPUT    drop the toolkit: no events, nothing to press
  *     -DWSK_NO_TEXT     drop text items -- a paragraph as one widget (1,104 bytes)
  *
  * A reduced build is not a different renderer. For the widgets it still has
@@ -106,6 +114,11 @@
 #  endif
 #  ifndef WSK_NO_TEXT
 #    define WSK_NO_TEXT 1
+#  endif
+#endif
+#ifdef WSK_MINIMAL
+#  ifndef WSK_NO_INPUT
+#    define WSK_NO_INPUT 1
 #  endif
 #endif
 #ifdef WSK_MINIMAL
@@ -323,6 +336,14 @@ typedef struct wsk_tree {
 	 */
 	const char *const *str;
 	short         strs;
+
+	/*
+	 * The widget a finger is holding, drawn with the corner marks -- set by
+	 * the toolkit (§5i), on the ROOT, and carried into nested copies. In a
+	 * tree and not a widget because a widget may be `static const`, in flash,
+	 * and the toolkit writes nothing it cannot be sure is RAM.
+	 */
+	const void   *held;
 
 	/* Set by whisker in those copies, never by a caller: the intersection of
 	   every scrolling viewport above this stack, which cuts it (§5f rule 3). */
@@ -839,6 +860,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->nests = 0;
 	t->str = 0;
 	t->strs = 0;
+	t->held = 0;
 	t->clipped = 0;
 	t->cx0 = t->cy0 = t->cx1 = t->cy1 = 0;
 }
@@ -1272,6 +1294,7 @@ static inline int wsk__child(const wsk_tree_t *t, int i, wsk_tree_t *c)
 	c->nests = t->nests;
 	c->str = t->str;
 	c->strs = t->strs;
+	c->held = t->held;
 	r = wsk_rect(t, i);
 	c->ax = r.x; c->ay = r.y; c->aw = r.w; c->ah = r.h;
 
@@ -2243,8 +2266,11 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 		if (w->kind == WSK_BUTTON || w->kind == WSK_FIELD) wsk__rect(s, t, w, v);
 #endif
 #ifndef WSK_NO_MARKS
-		if (w->mark == WSK_MARK_CORNERS &&
-		    (t->axis == WSK_COL ? v.h == r.h : v.w == r.w)
+		if ((w->mark == WSK_MARK_CORNERS
+#ifndef WSK_NO_INPUT
+		     || (const void *)w == t->held
+#endif
+		    ) && (t->axis == WSK_COL ? v.h == r.h : v.w == r.w)
 #ifndef WSK_NO_NEST
 		    && wsk__seen(t, r.x, r.y, r.x + r.w, r.y + r.h)
 #endif
@@ -2359,6 +2385,19 @@ static inline int wsk_render_clipped(const wsk_tree_t *t, const char *const *ids
 }
 
 /*
+ * Rows y0..y1 of the device, whatever changed in them -- the repaint a
+ * toolkit event asks for (§5i), which is the document wsk_render_clipped
+ * always built underneath, asked for by rows rather than by ids. The range
+ * should be band-snapped, as wsk_feed's always is.
+ */
+static inline int wsk_render_rows(const wsk_tree_t *t, int y0, int y1,
+                                  wsk_sink_t *sink, int budget)
+{
+	if (y1 <= y0) return WSK_E_EMPTY;
+	return wsk__emit(t, y0, y1, sink, budget);
+}
+
+/*
  * Several stacks over one device, in one document.
  *
  * The caller's body does the emitting -- wsk_open, a wsk_part per stack,
@@ -2424,5 +2463,277 @@ static inline int wsk_compose(wsk_body_t body, void *ctx, wsk_sink_t *sink,
  * not overlap by construction -- the caller gave them areas -- so the order
  * is the caller's and whisker has no opinion about it (D5).
  */
+
+/* ------------------------------------------------------------------ */
+/* The toolkit: an event in, what changed out (design.md §5i, §8)       */
+/* ------------------------------------------------------------------ */
+
+#ifndef WSK_NO_INPUT
+/*
+ * One event, the same on every host -- a host's whole job is translating to
+ * it. Touch and the mouse are the same three (D7): a click and a tap are one
+ * point each. KEY and TEXT are declared and, until the field's iteration,
+ * change nothing.
+ */
+enum { WSK_EV_DOWN = 1, WSK_EV_MOVE, WSK_EV_UP, WSK_EV_WHEEL, WSK_EV_KEY, WSK_EV_TEXT };
+
+typedef struct {
+	unsigned char  kind;
+	short          x, y;         /* device pixels */
+	short          d;            /* WHEEL: pixels along the stack's axis */
+	unsigned short key;
+	char           text[8];
+	unsigned int   ms;
+} wsk_event_t;
+
+/* What changed. A notice names its widget as wsk_hit_in does -- the
+   caller's own tree and an index in it -- because stacks nest (§5f). */
+enum { WSK_NOTE_CLICK = 1, WSK_NOTE_SCROLL };
+
+typedef struct {
+	unsigned char     kind;
+	const wsk_tree_t *in;        /* CLICK: the widget's tree; SCROLL: the stack */
+	short             item;      /* CLICK: its index; SCROLL: -1 */
+	int               value;     /* CLICK: the word, on a text item, else -1;
+	                                SCROLL: the new offset */
+} wsk_note_t;
+
+/*
+ * The toolkit's state: the CALLER's, which is D5 in the form that mattered
+ * (D16b) -- whisker allocates and keeps nothing. Trees it changes are the
+ * caller's too, and must be writable; widgets it never writes (§5i).
+ */
+typedef struct {
+	wsk_tree_t       *root;
+	short             slop;      /* how far a finger moves before it drags */
+
+	unsigned char     down, dragging;
+	short             x0, y0;    /* where it went down */
+	const wsk_tree_t *hit_in;    /* and what was there */
+	short             hit, word;
+	wsk_rect_t        held;      /* the held widget's rows, to repaint */
+
+	wsk_tree_t       *drag;      /* the scrolling stack under the down */
+	wsk_tree_t        drag_at;   /* ... as laid out: its area and range */
+	short             scroll0;
+} wsk_ui_t;
+
+static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
+{
+	ui->root = root;
+	ui->slop = 16;               /* §5b: scatter 9-21 px worst on the P4 */
+	ui->down = 0;
+	ui->dragging = 0;
+	ui->drag = 0;
+	ui->hit = -1;
+	ui->word = -1;
+	root->held = 0;
+}
+
+/* The deepest widget at a point, its tree, its rectangle as cut, and its
+   word if it is a paragraph's. */
+static inline int wsk__ui_hit(wsk_tree_t *r, int x, int y, const wsk_tree_t **in,
+                              wsk_rect_t *rect, int *word)
+{
+	int k;
+	const wsk_tree_t *lay;
+#ifndef WSK_NO_NEST
+	wsk_tree_t at;
+	k = wsk__hit_at(r, r, x, y, in, &at, 0);
+	lay = &at;
+#else
+	k = wsk_hit(r, x, y);
+	*in = r;
+	lay = r;
+#endif
+	*word = -1;
+	if (k < 0) return k;
+	*rect = wsk_rect(lay, k);
+	(void)wsk__cut(lay, rect);
+#if !defined(WSK_NO_TEXT) && !defined(WSK_NO_WRAP)
+	if (lay->item[k].kind == WSK_TEXT && lay->overflow == WSK_WRAP)
+		*word = wsk__word_at(lay, k, x, y);
+#endif
+	return k;
+}
+
+#ifndef WSK_NO_SCROLL
+/*
+ * The deepest scrolling stack whose viewport holds the point: the caller's
+ * own tree, to write `scroll` into, and the copy it was laid out as, for its
+ * area and range. 0 when the point is in none.
+ */
+static inline wsk_tree_t *wsk__scroller(const wsk_tree_t *t, wsk_tree_t *orig,
+                                        int x, int y, wsk_tree_t *at, int depth)
+{
+#ifndef WSK_NO_NEST
+	for (int i = 0; i < t->n && depth + 1 < WSK_DEPTH_MAX; i++) {
+		wsk_rect_t r;
+		wsk_tree_t c;
+		if (t->item[i].kind != WSK_STACK) continue;
+		r = wsk_rect(t, i);
+		if (!wsk__cut(t, &r)) continue;
+		if (!(x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)) continue;
+		if (wsk__child(t, i, &c)) {
+			wsk_tree_t *f = wsk__scroller(&c, (wsk_tree_t *)&t->nest[t->item[i].sub],
+			                              x, y, at, depth + 1);
+			if (f != 0) return f;
+		}
+		break;                       /* stacks do not overlap */
+	}
+#endif
+	if (t->overflow == WSK_SCROLL && x >= t->ax && x < t->ax + t->aw &&
+	    y >= t->ay && y < t->ay + t->ah) {
+#ifndef WSK_NO_NEST
+		wsk__tcopy(at, t);
+#else
+		(void)at;
+#endif
+		return orig;
+	}
+	(void)depth;
+	return 0;
+}
+
+/* Scroll a stack to `to`, clamped to its range: 1 if it moved. */
+static inline int wsk__scroll_to(wsk_tree_t *orig, wsk_tree_t *at, int to)
+{
+	int max = wsk_scroll_max(at);
+	if (to < 0) to = 0;
+	if (to > max) to = max;
+	if (to == orig->scroll) return 0;
+	orig->scroll = (short)to;
+	at->scroll = (short)to;
+	return 1;
+}
+#endif
+
+static inline void wsk__span(int *lo, int *hi, int a, int b)
+{
+	if (b <= a) return;
+	if (a < *lo) *lo = a;
+	if (b > *hi) *hi = b;
+}
+
+static inline int wsk__note(wsk_note_t *note, int max, int n, int kind,
+                            const wsk_tree_t *in, int item, int value)
+{
+	if (n < max) {
+		note[n].kind = (unsigned char)kind;
+		note[n].in = in;
+		note[n].item = (short)item;
+		note[n].value = value;
+	}
+	return n + 1;
+}
+
+/*
+ * One event in; the notices of what changed out, and the rows to repaint
+ * (design.md §5i). Returns how many things changed -- more than `max` were
+ * written if it exceeds it -- and sets y0..y1 to a band-snapped range, or
+ * y0 == y1 when nothing needs drawing.
+ *
+ *   press   DOWN on a button holds it; UP on the widget DOWN was on is a
+ *           CLICK, on anything -- a label, a word -- and the program decides
+ *           what it means. UP elsewhere is nothing.
+ *   drag    DOWN in a scrolling stack arms it; a MOVE past `slop` along its
+ *           axis starts it, lets go of any hold, and from then the stack
+ *           follows the finger, clamped here so that layer 1, which refuses
+ *           out of range (D11), is never asked. Each step is a SCROLL. An UP
+ *           after a drag is not a click.
+ *   wheel   scrolls the deepest scrolling stack under the point by d.
+ */
+static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
+                           wsk_note_t *note, int max, int *y0, int *y1)
+{
+	wsk_tree_t *r = ui->root;
+	int n = 0, lo = 32767, hi = -1, x = ev->x, y = ev->y;
+
+	if (ev->kind == WSK_EV_DOWN) {
+		const wsk_tree_t *in = 0;
+		wsk_rect_t rect;
+		int word = -1, k = wsk__ui_hit(r, x, y, &in, &rect, &word);
+		ui->down = 1;
+		ui->dragging = 0;
+		ui->x0 = (short)x;
+		ui->y0 = (short)y;
+		ui->hit = (short)k;
+		ui->hit_in = in;
+		ui->word = (short)word;
+		if (k >= 0 && in->item[k].kind == WSK_BUTTON) {
+			r->held = &in->item[k];
+			ui->held = rect;
+			wsk__span(&lo, &hi, rect.y, rect.y + rect.h);
+		}
+#ifndef WSK_NO_SCROLL
+		ui->drag = wsk__scroller(r, r, x, y, &ui->drag_at, 0);
+#ifdef WSK_NO_NEST
+		if (ui->drag != 0) ui->drag_at = *r;
+#endif
+		if (ui->drag != 0) ui->scroll0 = ui->drag->scroll;
+#endif
+	} else if (ev->kind == WSK_EV_MOVE && ui->down) {
+#ifndef WSK_NO_SCROLL
+		if (ui->drag != 0) {
+			int col = (ui->drag_at.axis == WSK_COL);
+			int dd = col ? (y - ui->y0) : (x - ui->x0);
+			if (!ui->dragging && (dd > ui->slop || dd < -ui->slop)) {
+				ui->dragging = 1;
+				if (r->held != 0) {
+					r->held = 0;
+					wsk__span(&lo, &hi, ui->held.y, ui->held.y + ui->held.h);
+				}
+			}
+			if (ui->dragging && wsk__scroll_to(ui->drag, &ui->drag_at, ui->scroll0 - dd)) {
+				int a0, a1;
+				if (wsk_area_rows(&ui->drag_at, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
+				n = wsk__note(note, max, n, WSK_NOTE_SCROLL, ui->drag, -1, ui->drag->scroll);
+			}
+		}
+#endif
+	} else if (ev->kind == WSK_EV_UP && ui->down) {
+		ui->down = 0;
+		if (r->held != 0) {
+			r->held = 0;
+			wsk__span(&lo, &hi, ui->held.y, ui->held.y + ui->held.h);
+		}
+		if (!ui->dragging && ui->hit >= 0) {
+			const wsk_tree_t *in = 0;
+			wsk_rect_t rect;
+			int word = -1, k = wsk__ui_hit(r, x, y, &in, &rect, &word);
+			if (k == ui->hit && in == ui->hit_in)
+				n = wsk__note(note, max, n, WSK_NOTE_CLICK, in, k, ui->word);
+		}
+		ui->dragging = 0;
+		ui->drag = 0;
+	}
+#ifndef WSK_NO_SCROLL
+	else if (ev->kind == WSK_EV_WHEEL) {
+		wsk_tree_t at;
+		wsk_tree_t *s = wsk__scroller(r, r, x, y, &at, 0);
+#ifdef WSK_NO_NEST
+		if (s != 0) at = *r;
+#endif
+		if (s != 0 && wsk__scroll_to(s, &at, s->scroll + ev->d)) {
+			int a0, a1;
+			if (wsk_area_rows(&at, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
+			n = wsk__note(note, max, n, WSK_NOTE_SCROLL, s, -1, s->scroll);
+		}
+	}
+#endif
+
+	if (hi > lo) {
+		lo = (lo / WSK_BAND) * WSK_BAND;
+		hi = wsk__round_band(hi);
+		if (lo < 0) lo = 0;
+		if (hi > r->h) hi = r->h;
+	} else {
+		lo = hi = 0;
+	}
+	*y0 = lo;
+	*y1 = hi;
+	return n;
+}
+#endif /* WSK_NO_INPUT */
 
 #endif /* WHISKER_H */

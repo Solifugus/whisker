@@ -1969,6 +1969,97 @@ int main(void)
 		}
 	}
 
+	/* ---- §5i. the toolkit: an event in, what changed out ---- */
+	printf("\n-- §5i  the toolkit\n");
+	{
+		static const wsk_widget_t TOP[] = {
+			{ .kind = WSK_STACK, .id = "bar",  .sub = 0, .size = 64 },
+			{ .kind = WSK_STACK, .id = "list", .sub = 1, .weight = 1 },
+			{ .kind = WSK_LABEL, .id = "foot", .text = "foot", .size = 24 },
+		};
+		static const wsk_widget_t BAR[] = {
+			{ .kind = WSK_BUTTON, .id = "a", .text = "A", .weight = 1 },
+			{ .kind = WSK_BUTTON, .id = "b", .text = "B", .weight = 1 },
+		};
+		static wsk_widget_t rows[10];
+		wsk_tree_t w, k[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int n, y0 = -1, y1 = -1;
+
+		for (int i = 0; i < 10; i++) {
+			memset(&rows[i], 0, sizeof rows[i]);
+			rows[i].kind = WSK_BUTTON;
+			rows[i].size = 40;
+			snprintf(rows[i].id, WSK_ID_MAX, "r%d", i);
+			snprintf(rows[i].text, WSK_TEXT_MAX, "Row %d", i);
+		}
+		wsk_init(&w, WSK_COL, 320, 300);
+		w.pad = 0; w.gap = 0; w.item = TOP; w.n = 3; w.nest = k; w.nests = 2;
+		wsk_nest_init(&k[0], &w, WSK_ROW); k[0].pad = 0; k[0].gap = 0; k[0].item = BAR; k[0].n = 2;
+		wsk_nest_init(&k[1], &w, WSK_COL); k[1].pad = 0; k[1].gap = 0; k[1].item = rows; k[1].n = 10;
+		k[1].overflow = WSK_SCROLL;
+		ok(wsk_check(&w, 0) == WSK_OK, "a bar, a scrolling list of ten, a footer");
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+
+#define FEED(K, X, Y) (ev.kind = (K), ev.x = (X), ev.y = (Y), \
+                       n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+
+		/* Press and click. */
+		FEED(WSK_EV_DOWN, 50, 30);
+		ok(n == 0 && w.held == &BAR[0] && y0 == 0 && y1 == 64,
+		   "DOWN on a button holds it -- on the root, not the widget -- and asks for its rows");
+		FEED(WSK_EV_UP, 60, 20);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[0] && nt[0].item == 0 &&
+		   nt[0].value == -1, "UP on it is a click: the bar's item 0");
+		ok(w.held == 0 && y0 == 0 && y1 == 64, "and the hold ends, with its rows to repaint");
+		FEED(WSK_EV_DOWN, 250, 30);
+		FEED(WSK_EV_UP, 50, 30);
+		ok(n == 0 && w.held == 0, "CONTROL: DOWN on B, UP on A, is no click");
+		FEED(WSK_EV_DOWN, 160, 64 + 24);
+		FEED(WSK_EV_UP, 160, 300 - 10);
+		ok(n == 0, "nor is DOWN on a row and UP on the footer");
+
+		/* A tap with jitter: inside the slop it is still a tap. */
+		FEED(WSK_EV_DOWN, 100, 154);
+		ok(w.held == &rows[2], "DOWN on row 2 of the list holds it");
+		FEED(WSK_EV_MOVE, 100, 154 - 10);
+		ok(n == 0 && k[1].scroll == 0, "a MOVE of 10, inside the slop of 16, scrolls nothing");
+		FEED(WSK_EV_UP, 100, 145);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[1] && nt[0].item == 2,
+		   "and the UP is a click on row 2");
+
+		/* A drag: past the slop it scrolls, clamped, and is no click. */
+		FEED(WSK_EV_DOWN, 100, 200);
+		FEED(WSK_EV_MOVE, 100, 150);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_SCROLL && nt[0].in == &k[1] && nt[0].value == 50 &&
+		   k[1].scroll == 50, "a MOVE of 50 drags the list: SCROLL to 50");
+		ok(w.held == 0 && y0 == 64 && y1 == 280,
+		   "the hold lets go, and the rows are the list's area: 64..276, so 64..280");
+		FEED(WSK_EV_MOVE, 100, -300);
+		ok(n == 1 && nt[0].value == 188 && k[1].scroll == 188,
+		   "dragged far past the end it stops at the end: 400 of rows in 212 is 188");
+		ok(wsk_check(&w, 0) == WSK_OK, "and the tree it left is one layer 1 accepts (D11)");
+		FEED(WSK_EV_MOVE, 100, 600);
+		ok(n == 1 && nt[0].value == 0, "and past the start, at 0");
+		FEED(WSK_EV_MOVE, 100, 650);
+		ok(n == 0 && y0 == y1, "CONTROL: further past the start changes nothing and repaints nothing");
+		FEED(WSK_EV_UP, 100, 650);
+		ok(n == 0, "an UP after a drag is not a click");
+
+		/* The wheel. */
+		ev.d = 30;
+		FEED(WSK_EV_WHEEL, 100, 150);
+		ok(n == 1 && nt[0].value == 30 && k[1].scroll == 30, "the wheel over the list scrolls it 30");
+		FEED(WSK_EV_WHEEL, 100, 30);
+		ok(n == 0 && y0 == y1, "CONTROL: over the bar, which does not scroll, nothing");
+		ev.d = 0;
+		k[1].scroll = 0;
+#undef FEED
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

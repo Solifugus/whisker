@@ -48,7 +48,7 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
 
 ## Status
 
-**Eight iterations are built, and two of them have now run on the C5.**
+**Nine iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -102,7 +102,15 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   **The default profile is now ~8.8 KB for a small panel** (4.7 before
   nesting), so **`WSK_PANEL` (D20)** drops wrap and text: 6.7 KB.
 
-`src/run.sh --module` is the whole of it: **355 checks**, the pixels through
+- **§5i — the toolkit** (2026-11-11), §8's first iteration. `wsk_feed(&ui,
+  &event, notes, max, &y0, &y1)`: DOWN/MOVE/UP/WHEEL in; CLICK and SCROLL
+  notices out, naming the widget by tree and index, with the rows to repaint
+  (`wsk_render_rows`). Press holds a button via **`held` on the root tree —
+  the toolkit never writes a widget**, which may be in flash. Drag past a
+  16-px slop scrolls the deepest scrolling stack, clamped by the toolkit.
+  `WSK_NO_INPUT`, in `WSK_MINIMAL`. ~256 bytes over hand-written pressing.
+
+`src/run.sh --module` is the whole of it: **378 checks**, the pixels through
 RV-9's own rasteriser, thirteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 19, including the
 typing loop end to end; `--input` is the same loop with a person in it.
@@ -356,7 +364,7 @@ stack **on that host**, and three things follow:
   two different documents. There is no single number for "drawing to `/w0`".
 - **What a program can be told is its own chain**, which is what
   `tools/evidence/stack/run.sh` prints — **640 bytes for one stack, 960 for a
-  composite, and 256 more for each level of nesting** (§5f; it was 560 and
+  composite, and 304 more for each level of nesting** (256 before wrap and text) (§5f; it was 560 and
   800 before nesting, which made drawing recursive). That part is host-neutral, because it is measured from whisker's
   own frames and nothing else. The rest has to be bisected on the hardware, and
   bisected again on the P4 rather than carried over from the C5.
