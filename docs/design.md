@@ -1982,3 +1982,151 @@ the test that the toolkit did what the program used to.
   desktop host needs it.
 - **Callbacks.** Possible on top of notices (§8.5) in a host that wants them;
   not proposed.
+
+---
+
+## 9. Directions — what D16 opened, and which hardware each suits
+
+**Written 2026-11-11, from a conversation with Matthew. Proposals, nothing
+built**, except where a line says *ratified*. This is a map of what whisker
+could be, so that the next iterations are chosen against all of it rather
+than one at a time. §8 is the toolkit; this is everything around it.
+
+| direction | C5 (presentation) | P4 (touch) | desktop / browser | whose work |
+|---|---|---|---|---|
+| nesting (D17) | refused by profile | yes | yes | whisker, layer 1 |
+| overflow: wrap (D18) | yes, if affordable | yes | yes | whisker, layer 1 |
+| alignment across the axis | yes | yes | yes | whisker, layer 1 |
+| fonts as compact outlines | a stroke face | stroke or outline | outline | **RV-9** renderer; whisker measures |
+| transitions | no | small regions only | yes | whisker, layer 2 |
+| hit by shape, not rectangle | — | yes | yes | whisker, layer 1 |
+| unconventional widgets | readouts | yes | yes | whisker |
+| on-screen keyboard | no (D6) | **the first real app** | as needed | whisker + an RV-9 module |
+| remote client | the C5 served *to* | either end | client | protocol: whisker; transport: RV-9 |
+| browser client | — | — | yes | whisker (a page) |
+| print | — | — | yes | a print host |
+
+### 9.1 Layout: nesting, overflow, alignment
+
+**Nesting (D17).** A widget may be a stack. Layout recurses; `hit` descends;
+`rows` names a nested widget's rows. The ids stay document-unique (D4), so a
+nested widget is still addressed by its id, not its path. The C5 profile
+refuses a nested tree (`WSK_E_KIND`) and keeps today's flat code. Two
+questions to settle by building: whether a stack's children are a pointer to
+another array (simplest, and a pointer *passed* is position independent) or
+an index into one flat array (cheaper, and closer to how gBASIC's record is
+walked); and the stack cost of recursion on `/w0`, which adds to the
+rasteriser's (CLAUDE.md, the writer's stack) and must be measured on the P4.
+
+**Overflow (D18): refuse, scroll, wrap.** Wrap breaks a row into lines across
+the axis — a column wrapping into columns is the same rule turned. A wrapped
+stack's extent across the axis is however many lines it took, which its
+parent then refuses, scrolls or wraps. **Text is items**: a text item is one
+string, split into words at layout, each word placed by the same rule as a
+button and each hit-testable, so a tapped word is free. Breaking a line needs
+each word's width, which is §9.2's.
+
+**A fourth answer, proposed: page.** Content that does not fit continues in
+the next area — a print host's pages, or columns of a newspaper. Not ratified.
+
+**Alignment across the axis.** Today a narrower widget is always centred
+across the stack (`cross_max`). Start, end and stretch are missing, and a
+form's labels want start.
+
+### 9.2 Fonts — compact outlines, described once (a request to RV-9)
+
+Today `/w0` draws text by **scaling one 10×20 bitmap** of DejaVu Sans Mono
+(`font.c`, 95 × 20 × 5 = **9,500 bytes**): one face, fixed width, soft or
+blocky away from its own size. Matthew's proposal, from drawing letters with
+a Color Computer 2's `DRAW` strings: **describe each glyph as drawing
+instructions, once, and scale them when drawn.**
+
+- **Where the description lives decides the cost.** Outlines inside every
+  document are 50–200 bytes a letter and a label would fill `SRC_MAX`. Held
+  by the renderer, the document still says `<text>Hello</text>` — a byte a
+  letter — and picks a face with `font-family`.
+- **Compact in memory, not XML.** Path text is only the authoring form; a
+  tool compiles it (as `mkfont.py` compiles today's font). Per glyph: its
+  advance, then packed steps — move, line, curve — with each coordinate one
+  signed byte on a small grid, scaled at draw. A stroke glyph is ~20–60
+  bytes; printable ASCII ~3–5 KB, **less than today's bitmap**, at every size.
+- **Two kinds, by hardware.** **Stroke** faces — single lines, the CoCo's
+  letters, the public-domain Hershey fonts (1967) — cheap to draw, for the
+  C5. **Outline** faces, filled, compiled from TrueType, for the P4 and
+  desktop.
+- **The same file gives whisker the widths**, so it can lay out proportional
+  text and break lines (§9.1). That is whisker's half; the renderer is
+  RV-9's, and this goes to the RV-9 session as a request.
+- **The browser client** loads the same file once and expands each glyph to
+  an SVG `<symbol>`, so every screen draws the same letters.
+
+### 9.3 Transitions
+
+Done by the toolkit, not the renderer: a value moves a step a frame and the
+region it touches is repainted. The P4 says what that affords — a 112-row
+pane at 37.5 ms is ~27 fps (§5e, on the board), so a button easing or a
+panel sliding is fine and a full screen is not. A host too slow for one
+**skips to the end state** — the one substitution whisker allows, because a
+skipped animation never shows anything false about the program's state.
+
+### 9.4 Unconventional widgets, and the one ability they share
+
+**Hit by shape**: `hit` today tests rectangles. Testing a widget's own path —
+a circle, a sector, a room on a plan — is what opens: radial menus (better
+than drop-downs under a finger), dials and knobs turned by dragging round,
+arc sliders and gauges, a floor plan whose rooms are buttons, a chart you tap
+into (gBASIC's `chart.bas` already emits SVG), the P4's camera with each
+detected face a widget, a piano keyboard on the P4's speaker. Conventional
+widgets come first; these are why SVG was worth choosing.
+
+### 9.5 The on-screen keyboard — the P4's first real app
+
+Most of it is prototyped: `host/linux/input.c` types through a drawn
+keyboard, and `tools/evidence/keyboard/` priced it. It is §8.9's iteration 7
+(the field and focus) made useful — a P4 that types with no USB keyboard —
+and it settles the compact-keyboard decision still open in `roadmap.md` §4.
+
+### 9.6 Served applications — an X11 for appliances
+
+whisker's two halves already have X's shape: the application runs where its
+data is, the screen is wherever the client is, and between them go **SVG
+documents (or changed bands) one way and points and keys the other**. Unlike
+X there is no drawing protocol to standardise — SVG is it. With RV-9 headed
+for RISC-V 64, an RV-9 machine serving panels to screens elsewhere is a real
+product for *non-office* applications: instruments, control panels, kiosks,
+the house. The C5, which has no input, could be operated from anywhere. RV-9
+already has `httpd`, peers and `execd`; the protocol is whisker's to write.
+
+### 9.7 The browser client
+
+A browser is a full SVG renderer with mouse, keyboard and touch. A page that
+receives whisker's documents and posts events back makes every phone, tablet
+and laptop a whisker screen with nothing installed — and answers §8's
+desktop question of *what draws the SVG* for free. **Every widget already
+carries an `id` (D4)**, so the page can replace the changed elements rather
+than the document. **The caution:** a browser draws far more SVG than `/w0`,
+so a host must declare what it can draw and whisker must refuse the rest (D8's
+rule), or a panel that looks right in the browser breaks on the board.
+
+### 9.8 Print
+
+SVG is vector, so it prints sharp at any resolution, and browsers and
+`rsvg-convert` turn it into PDF. A print host sets three things: **units** —
+the `viewBox` in millimetres rather than device pixels, a host setting and
+not a different layout; **pages** — §9.1's proposed *page* overflow; and a
+**print palette**, since a dark background is for screens.
+
+### 9.9 The order this suggests
+
+**Layout before the toolkit**, because the toolkit addresses widgets in
+stacks and nesting changes how they are addressed — building §8 on flat
+stacks would mean building it twice.
+
+1. **Nesting** (D17), then **wrap** with text as items (D18), then
+   cross-axis alignment. Monospace widths are enough to start wrap; the font
+   request (§9.2) goes to RV-9 in parallel.
+2. **The toolkit, §8** — press, click, drag-scroll — on nested stacks.
+3. **The keyboard on the P4** (§9.5).
+4. **The browser client** (§9.7) — the first desktop-tier screen.
+5. **Hit by shape** and the first unconventional widget (§9.4).
+6. Overlays, `table`/`tree`, served applications, print.

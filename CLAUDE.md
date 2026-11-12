@@ -17,7 +17,10 @@ the caller's widget structs updated in place, *what changed* out, with the
 rows to repaint — and a **host** per platform below both. The C5 compiles the
 toolkit out (`WSK_NO_INPUT`, in `WSK_MINIMAL`). Older documents that say
 "nothing else" or "no event loop" describe the drawing layer, and are history
-about whisker as a whole.
+about whisker as a whole. **`docs/design.md` §9 is the map of directions**
+(nesting and wrap, compact fonts, transitions, shape hit, the P4 keyboard,
+served applications, the browser client, print) and §9.9 the order — layout
+first (D17 nesting, D18 overflow: refuse | scroll | wrap), then §8's toolkit.
 
 It serves two hosts and belongs to neither:
 
@@ -158,7 +161,7 @@ layout is compiled in cannot change without a reflash).
 
 ## Read before working
 
-1. `docs/decisions.md` — seventeen ratified outcomes (D0–D16), one screen. **First**, so that
+1. `docs/decisions.md` — nineteen ratified outcomes (D0–D18), one screen. **First**, so that
    the design's §4 arguments read as history rather than as open questions.
    Then `docs/roadmap.md`, which is what is left and what would let us stop.
 2. `docs/design.md` — all of it. It is the whole project, and it has been
