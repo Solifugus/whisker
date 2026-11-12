@@ -1694,6 +1694,31 @@ int main(void)
 		}
 	}
 
+	/* A label exactly as wide as its text draws all of it. Until 2026-11-11
+	   a label wanted two pixels of slack, so a row with no padding -- whose
+	   widgets are exactly their text -- cut the last character of every
+	   one: "OK" drew "O". Found building §5f. */
+	{
+		static const wsk_widget_t TIGHT[] = {
+			{ .kind = WSK_BUTTON, .id = "k", .text = "OK" },
+		};
+		wsk_widget_t one[1];
+		wsk_tree_t r;
+		char td[512];
+
+		wsk_init(&r, WSK_ROW, 320, 172);
+		r.pad = 0; r.item = TIGHT; r.n = 1;
+		ok(wsk_rect(&r, 0).w == 16, "a row with no padding: OK is 16 wide, its text exactly");
+		render_into(&r, td, sizeof td, 4096);
+		ok(has(td, ">OK<"), "and draws both characters");
+		wsk_clone(one, TIGHT, 1);
+		one[0].size = 15;
+		r.item = one;
+		render_into(&r, td, sizeof td, 4096);
+		ok(has(td, ">O<") && !has(td, ">OK<"),
+		   "CONTROL: a pixel narrower, it is still truncated to what fits");
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

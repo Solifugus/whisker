@@ -85,7 +85,7 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   rasteriser. `wnest` ran on the P4 2026-11-11: seven taps, each named the right widget
   at depth.
 
-`src/run.sh --module` is the whole of it: **286 checks**, the pixels through
+`src/run.sh --module` is the whole of it: **289 checks**, the pixels through
 RV-9's own rasteriser, ten module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 19, including the
 typing loop end to end; `--input` is the same loop with a person in it.

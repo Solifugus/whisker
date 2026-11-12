@@ -1762,8 +1762,10 @@ button two deep, each leave exactly what a full redraw does.
 3. **A row with no padding cuts the last character of every label.** Not
    nesting's: a widget in a row is its text's width plus padding, and a
    label wants two pixels of slack, so at `pad = 0` "OK" draws "O". True of a
-   flat row since §5 and never met, because every row had padding. Recorded,
-   not fixed here — fixing it moves every row's layout by two pixels.
+   flat row since §5 and never met, because every row had padding. **Fixed
+   the same day** by giving a label all of its width rather than widening
+   every row widget by two pixels: no golden and no picture moved, which says
+   the slack had only ever mattered in this one case.
 
 **§7's question.** Nesting is **1,780 bytes** of the default profile
 (`module_shape.c` 6,608 with it, 4,732 with `-DWSK_NO_NEST`); with it off the

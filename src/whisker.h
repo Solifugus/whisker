@@ -1461,7 +1461,10 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
                              const wsk_widget_t *w, wsk_rect_t r)
 {
 	int chars = wsk__len(w->text);
-	int room = (r.w - 2) / wsk_advance(t->font);
+	/* All of the width: a label exactly its text's width -- every widget in
+	   a row with no padding -- draws all of it. It wanted two pixels of
+	   slack until 2026-11-11, which cut "OK" to "O" (design.md §5f). */
+	int room = r.w / wsk_advance(t->font);
 	int top = r.y + (r.h - t->font) / 2;
 
 	if (room < 1) return;
