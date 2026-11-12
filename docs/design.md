@@ -2225,6 +2225,12 @@ and Right?"* — they move the caret. Arrows would say so better, but `<` and
 `>` cannot be drawn (§2.4) and the font has no arrows; drawing them as paths
 is left for when the keyboard is revisited.
 
+Shift on the board, the same afternoon:
+
+    entered: My name is Matthew and I am 56 years old.
+
+Three capitals, each one-shot, digits from the second layer and a full stop.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this
