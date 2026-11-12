@@ -2088,6 +2088,13 @@ for each level of nesting** — up from 256, because the drawing loop's frames
 grew with wrap and text (§5g, §5h). Three levels deep it is about 2,180; the
 8,192 declared for the board stands.
 
+**On the P4, the same day**, fetched over WiFi and run with Matthew at the
+glass: twelve clicks, each the widget under the finger — six list items,
+then `i3` again after the list had moved, `yes`, `no`, `go`, `back`, `stop` —
+and the list left scrolled 54 rows, so a drag scrolled rather than clicked.
+A release elsewhere prints nothing by design, so whether it was tried is not
+in the log.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this
