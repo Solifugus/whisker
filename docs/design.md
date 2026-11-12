@@ -1788,7 +1788,15 @@ own; with the rasteriser's ≥ 4,528 it wants more than 6,816, so declare
 **`wnest`** (`src/module_nest.c`) is the board program: the window above at
 1024×600, a tap naming the deepest widget and its tree, a button pressed by
 repainting only its rows, found by id at any depth. It links at 9,040 bytes,
-position independent. Not yet run on the P4.
+position independent.
+
+**On the P4, the same day**, fetched to the card over WiFi and run with
+Matthew tapping: seven taps, each named the widget the layout puts there —
+`back` and `go` in the toolbar row; `i2`, `i3`, `i5` in the list two levels
+down; `yes` and `no` in the column beside it — and each pressed by a
+repaint of its own rows only. Declared 8,192 bytes of stack; ran without
+overflow; not bisected. No tap landed in a gap, so a stack answering for
+its own padding was not seen on the glass (it is in the suite).
 
 ---
 

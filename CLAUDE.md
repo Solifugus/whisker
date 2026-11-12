@@ -82,7 +82,8 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   scrolling viewport above. A scrolling stack asks only its padding along its
   axis. **1,780 bytes, default profile only** (`WSK_NO_NEST`, in
   `WSK_MINIMAL`); **each level costs 256 bytes of stack** beneath the
-  rasteriser. `wnest` is written for the P4 and not yet run there.
+  rasteriser. `wnest` ran on the P4 2026-11-11: seven taps, each named the right widget
+  at depth.
 
 `src/run.sh --module` is the whole of it: **286 checks**, the pixels through
 RV-9's own rasteriser, ten module builds with the double-link, and a person
