@@ -2218,6 +2218,13 @@ Letters, space, the period, and the digit layer for the 4 and the 2 — the
 first text typed into an RV-9 board with no keyboard attached. The 8,192
 bytes of stack held; not bisected.
 
+Matthew's two questions after typing, and what they changed: *"I didn't see
+any caps"* — there were none; **Shift** was added, one-shot as a phone's, a
+third layer of static arrays (3,606 bytes on the glass); and *"what is Left
+and Right?"* — they move the caret. Arrows would say so better, but `<` and
+`>` cannot be drawn (§2.4) and the font has no arrows; drawing them as paths
+is left for when the keyboard is revisited.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

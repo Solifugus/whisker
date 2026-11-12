@@ -195,6 +195,17 @@ int main(void)
 		scripted &= press("Enter");
 		CHECK(scripted, "and the layer keys are where the script expects");
 	}
+	/* Shift: a capital, then lower case again by itself. The capitals are
+	   where their small letters were. */
+	{
+		int x, y;
+		scripted = press("Clear");
+		scripted &= press("Shift");
+		scripted &= key_at("h", &x, &y); tap(x, y);   /* H, after Shift */
+		scripted &= key_at("i", &x, &y); tap(x, y);   /* i, Shift spent */
+		scripted &= press("Enter");
+		CHECK(scripted, "Shift and the letters after it are where the script expects");
+	}
 	n_said = 0; next = 0;
 	r = run();
 	said[n_said] = '\0';
@@ -204,6 +215,8 @@ int main(void)
 	      "Left, Left, Del: the e before the caret went -- \"hi thre\"");
 	CHECK(strstr(said, "entered: hi th23re\n") != 0,
 	      "123 swaps in the digits, and 2 and 3 go in at the caret, which Del left after \"hi th\"");
+	CHECK(strstr(said, "entered: Hi\n") != 0,
+	      "Shift, h, i: \"Hi\" -- one capital, then lower case by itself");
 	CHECK(strstr(said, "refused") == 0, "no repaint was refused");
 	win_shot("keys_typed.ppm");
 	if (fails) { printf("\n%d check(s) failed\n", fails); return 1; }
