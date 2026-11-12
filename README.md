@@ -17,8 +17,8 @@ in `design.md` §8; nothing of it is built yet.
 **Status of the drawing layer.** `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g and §7 — **321 checks** plus the profile gate,
-the pixels through RV-9's own rasteriser, eleven module builds with the
+`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h and §7 — **349 checks** plus the profile gate,
+the pixels through RV-9's own rasteriser, twelve module builds with the
 double-link, and a person looking at the pictures. `host/linux/run.sh --test`
 adds **19** more.
 
@@ -39,6 +39,9 @@ widget is found by its id at any depth, or by a path checked link by link
 **And stacks wrap** (§5g): a row that runs out of width carries on below,
 a line at a time. A paragraph is word labels in a wrapping row, and a text
 window is that row inside a scrolling column — nothing about text is special.
+And a paragraph can be **one item** (§5h): its words flow as the row's units,
+a line of them is one `<text>`, and the same page costs less than half the
+bytes.
 
 **And there is now a program to leave running.** `src/module_stat.c` — staged
 in RV-9's tree as `wstat` — puts the board's die temperature, free heap and

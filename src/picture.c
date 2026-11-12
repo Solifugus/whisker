@@ -918,6 +918,36 @@ int main(void)
 		}
 		ok(memcmp(screen, full, sizeof screen) == 0,
 		   "one word repainted alone leaves exactly what a full redraw does");
+
+		/* §5h: the same paragraph as ONE text item, against the 51 labels.
+		   Same characters at the same places, so the same pixels -- from
+		   one widget and one string, in runs of a line rather than a
+		   <text> a word. */
+		{
+			static const wsk_widget_t ONE[] = {
+				{ .kind = WSK_TEXT, .id = "para", .sub = 0 },
+			};
+			const char *strs[1];
+			int b1, b2;
+			word[tapped].ink = WSK_INHERIT;
+			v = 0;
+			svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+			s.len = 0;
+			b1 = wsk_render(&w, &s, 4096);
+			memcpy(full, screen, sizeof screen);
+			strs[0] = WORDS;
+			w.str = strs; w.strs = 1;
+			k[1].item = ONE; k[1].n = 1;
+			ok(wsk_check(&w, 0) == WSK_OK, "the paragraph as one text item is accepted");
+			svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+			s.len = 0;
+			b2 = wsk_render(&w, &s, 4096);
+			printf("    %d words as labels: %d bytes; as one text item: %d bytes\n", n, b1, b2);
+			ok(memcmp(screen, full, sizeof screen) == 0,
+			   "one text item draws exactly the pixels 51 word labels did");
+			ok(b2 < b1, "in fewer bytes");
+			shot("text_item.ppm");
+		}
 		v = 0;
 		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
 	}

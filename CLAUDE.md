@@ -48,7 +48,7 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
 
 ## Status
 
-**Seven iterations are built, and two of them have now run on the C5.**
+**Eight iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -93,8 +93,17 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   inside a scrolling column. 752 bytes, default only (`WSK_NO_WRAP`). `lgap` spaces
   lines apart from words.
 
-`src/run.sh --module` is the whole of it: **321 checks**, the pixels through
-RV-9's own rasteriser, eleven module builds with the double-link, and a person
+- **§5h — text items** (2026-11-11). `WSK_TEXT` names a string by index in
+  the root's `str` (runtime array, so panels stay static). In a wrapping row
+  its **words are units of the flow** — buttons may sit inline among them;
+  elsewhere it is a long label. A line of words is **one `<text>` run**: the
+  §5g paragraph drew the same pixels in 610 bytes instead of 1,415.
+  `wsk_hit_word` names the word. 1,104 bytes, default only (`WSK_NO_TEXT`).
+  **The default profile is now ~8.8 KB for a small panel** (4.7 before
+  nesting); a middle profile is an open decision.
+
+`src/run.sh --module` is the whole of it: **349 checks**, the pixels through
+RV-9's own rasteriser, twelve module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 19, including the
 typing loop end to end; `--input` is the same loop with a person in it.
 

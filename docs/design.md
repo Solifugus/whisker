@@ -1898,6 +1898,98 @@ start for every item, so a document of one is quadratic in its words, as a
 stack already was in its widgets (§5e). Fifty-one words drew in 1,169 bytes;
 a page of five hundred would want §5h's paragraph, or a slice.
 
+
+---
+
+## 5h. Iteration 8 — a paragraph as one item
+
+**Written 2026-11-11, before any code.** §5g made a text window out of one
+label per word: right in rule, wrong in storage — 64 bytes a word, and 32
+characters at most in any one widget. D18 said text is items "in rule, not
+in storage"; this is the storage.
+
+### The rules
+
+1. **Strings live beside the tree, by index.** The root gets `str`, an array
+   of string pointers, and `strs`, set at runtime and carried into every
+   nested copy as `nest` is. A new kind, **`WSK_TEXT`**, names its string by
+   index in `.sub`. A panel stays `static const`: the array of pointers is
+   built at runtime, in RAM, which a module may do — what it may not have is
+   a table of addresses in rodata (§4.1).
+2. **In a wrapping row, a text item's words are units of the flow** (§5g):
+   each is placed by the same rule as an item, a line breaks between two of
+   them, and other items — a button, a field — may sit among the words. A
+   word is its text's width, no padding; `gap` is the space between words.
+   Words carry no weight; `justify` places a line's leftover as ever.
+3. **Anywhere else a text item is a long label**: one line, centred,
+   truncated as a label is.
+4. **A word wider than a whole line is refused**, `WSK_E_FIT` naming the
+   item — never broken (§5g rule 5). A string the window cannot draw is
+   `WSK_E_TEXT`, as a label's is. A text item in a wrapping *column*, whose
+   words would stand one per line, is refused, `WSK_E_KIND`.
+5. **Fewer bytes on the glass.** Words of one item on one line, separated in
+   the string by exactly one space while `gap` is exactly one character's
+   advance, are one `<text>` — a run — rather than one per word. That is
+   the common case, and it is what keeps a page of prose under `SRC_MAX`.
+6. **`hit` names the text item** when the point is on any of its words, and
+   `wsk_hit_word` says which word. **`rows` of a text item** are every line it
+   is on; `wsk_rect` of one is the box around all its words.
+
+### Profile
+
+`WSK_NO_TEXT`, in `WSK_MINIMAL`; refused by name. Cost measured.
+
+### Done criteria
+
+1. Every earlier check and golden unchanged.
+2. A text item wraps where §5g's word labels wrapped, rectangle for
+   rectangle, at two widths — the same layout from a fraction of the storage.
+3. A button inline among words lays out where the rules put it.
+4. Runs: the paragraph's document is smaller than the same words as labels,
+   says the same characters at the same places (checked at the pixels:
+   byte-identical screens), and falls back to a word at a time when the gap
+   is not one advance — a control.
+5. Refusals: a word wider than the line, a bad character, a text item in a
+   wrapping column, a string index out of range; each beside its control.
+6. `hit` and `wsk_hit_word`; `rows` of a paragraph spanning lines.
+7. Outside a wrapping row: a long label, truncated.
+8. Profile: `WSK_MINIMAL` refuses it, byte-identical otherwise; cost; module
+   links, double-linked.
+
+
+### What it came to, 2026-11-11
+
+Built the same day; criteria 1–8 met. **349 checks** in `src/run.sh
+--module` (321 before): 23 in the suite, 3 at the pixels, 1 profile control,
+1 module link. Every output of the commit before — 21 files — compared byte
+for byte against the same run after: identical.
+
+**The measurement that matters**: the 51-word paragraph of §5g, as **one
+text item**, draws **exactly the pixels** the 51 word labels did — and in
+**610 bytes of document, against 1,415**. Runs are most of that: a line of
+words is one `<text>`. In the suite, eight words: two runs against eight
+labels, 271 bytes against 394; with a gap that is not one advance, a word at
+a time (the control).
+
+**One structural change on the way**: the measuring functions took `nest`
+beside the tree because a caller's child tree carries none; text needs `str`
+the same way, so they now take the tree that carries both — the root or a
+laid-out copy — instead of a list of its fields.
+
+**§7's question.** Text items are **1,104 bytes** of the default
+(`module_shape.c` 8,844, and 7,740 with `-DWSK_NO_TEXT`); wrap, which now
+walks words as well as items, is 2,044. `WSK_MINIMAL` is 3,548, 12 bytes
+more than before, which is the refusal.
+
+**And so the default is now heavy for a small panel.** `module_shape.c` was
+4,692 bytes before nesting and is 8,844 with nesting, wrap and text. The
+C5 is untouched — it is `WSK_MINIMAL` — and a desktop will not notice; but
+every whisker module on the P4 pays it, whether it nests, wraps or writes a
+paragraph or not. Each has a switch (`WSK_NO_NEST`, `WSK_NO_WRAP`,
+`WSK_NO_TEXT`), and §7.5 foresaw this: *"the right answer may eventually be
+that the small profile is the one with a name."* A middle profile — a
+panel's worth — is the obvious next profile, and is a decision.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

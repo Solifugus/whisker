@@ -15,6 +15,7 @@
  *     wsk_slice(pane, total, size, scroll, &first)    a long list, the rows in view
  *     wsk_hit_in(tree, x, y, &in)                     the deepest widget there
  *     wsk_find_in(tree, "id" or "/a/b", &in)          a widget at any depth
+ *     wsk_hit_word(tree, x, y, &in, &word)            which word of a paragraph
  *
  * The host writes what the sink collected to /w0, having first told the
  * window which rows to repaint:
@@ -85,7 +86,8 @@
  *     -DWSK_NO_MARKS    drop the corner marks     (288 bytes)
  *     -DWSK_NO_SCROLL   drop scrolling            (496 bytes)
  *     -DWSK_NO_NEST     drop nesting -- a stack inside a stack (1,780 bytes)
- *     -DWSK_NO_WRAP     drop wrapping onto new lines (752 bytes)
+ *     -DWSK_NO_WRAP     drop wrapping onto new lines (2,044 bytes with text)
+ *     -DWSK_NO_TEXT     drop text items -- a paragraph as one widget (1,104 bytes)
  *
  * A reduced build is not a different renderer. For the widgets it still has
  * it emits **byte-identical** documents, which `src/run.sh` checks by
@@ -111,6 +113,9 @@
 #  ifndef WSK_NO_WRAP
 #    define WSK_NO_WRAP 1
 #  endif
+#  ifndef WSK_NO_TEXT
+#    define WSK_NO_TEXT 1
+#  endif
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -129,7 +134,7 @@
 /* Every profile declares every kind, and the values never move: a reduced
    build refuses WSK_FIELD, it does not renumber around it. A caller's panel,
    a golden and an id mean the same thing whatever this was compiled with. */
-enum { WSK_LABEL = 1, WSK_BUTTON, WSK_FIELD, WSK_STACK };
+enum { WSK_LABEL = 1, WSK_BUTTON, WSK_FIELD, WSK_STACK, WSK_TEXT };
 enum { WSK_COL = 1, WSK_ROW };
 
 /*
@@ -299,6 +304,15 @@ typedef struct wsk_tree {
 	const struct wsk_tree *nest;
 	short         nests;
 
+	/*
+	 * Text items (design.md §5h): the strings a WSK_TEXT widget's `sub`
+	 * indexes, set on the ROOT at runtime and carried into nested copies as
+	 * `nest` is. An array of pointers built at runtime is RAM, which a
+	 * module may have; a table of them in rodata it may not (§4.1).
+	 */
+	const char *const *str;
+	short         strs;
+
 	/* Set by whisker in those copies, never by a caller: the intersection of
 	   every scrolling viewport above this stack, which cuts it (§5f rule 3). */
 	unsigned char clipped;
@@ -450,13 +464,106 @@ static inline int wsk_text_ok(const char *t)
  * `which` may be null when only the verdict is wanted.
  */
 static inline int wsk__natural(const wsk_tree_t *t, int i);
+static inline int wsk__round_band(int v);
+
+#ifndef WSK_NO_TEXT
+/* The string a WSK_TEXT item names, from `r`'s `str` (§5h), or 0. `r` is
+   the root or a laid-out copy; `t` may be a caller's own child tree, which
+   carries no `str` of its own. */
+static inline const char *wsk__str_of(const wsk_tree_t *r, const wsk_tree_t *t,
+                                      int k)
+{
+	const wsk_widget_t *w = &t->item[k];
+	if (w->kind != WSK_TEXT || r->str == 0 || w->sub < 0 || w->sub >= r->strs)
+		return 0;
+	return r->str[w->sub];
+}
+#endif
+
+/* What a widget says: a text item's string, or its own inline text. */
+static inline const char *wsk__say(const wsk_tree_t *r, const wsk_tree_t *t, int k)
+{
+#ifndef WSK_NO_TEXT
+	const char *x = wsk__str_of(r, t, k);
+	if (x != 0) return x;
+#else
+	(void)r;
+#endif
+	return t->item[k].text;
+}
+
 #ifndef WSK_NO_WRAP
-static inline int wsk__meas(const wsk_tree_t *nest, int nests,
-                            const wsk_tree_t *t, int i, int axis, int depth,
-                            int avail);
-static inline int wsk__flow(const wsk_tree_t *nest, int nests,
-                            const wsk_tree_t *t, int span, int idx,
-                            int *ia, int *ic, int *ea, int *ec, int depth);
+/*
+ * A unit of a wrapping stack's flow: an item, or one word of a text item
+ * (§5h rule 2) -- `wi` the word's number, -1 for a whole item, and where the
+ * word lies in its string. A paragraph's words are placed by exactly the
+ * rule an item is, which is D18's "text is not special" in code.
+ */
+typedef struct { short k, wi, off, len; } wsk__u_t;
+
+static inline int wsk__u_at(const wsk_tree_t *r, const wsk_tree_t *t, int k,
+                            wsk__u_t *u)
+{
+	for (; k < t->n; k++) {
+#ifndef WSK_NO_TEXT
+		if (t->item[k].kind == WSK_TEXT) {
+			const char *x = wsk__str_of(r, t, k);
+			int o = 0, l = 0;
+			if (x == 0) continue;
+			while (x[o] == ' ') o++;
+			if (x[o] == '\0') continue;        /* no words: no units */
+			while (x[o + l] != '\0' && x[o + l] != ' ') l++;
+			u->k = (short)k; u->wi = 0; u->off = (short)o; u->len = (short)l;
+			return 1;
+		}
+#else
+		(void)r;
+#endif
+		u->k = (short)k; u->wi = -1; u->off = 0; u->len = 0;
+		return 1;
+	}
+	return 0;
+}
+
+static inline int wsk__u_next(const wsk_tree_t *r, const wsk_tree_t *t, wsk__u_t *u)
+{
+#ifndef WSK_NO_TEXT
+	if (u->wi >= 0) {
+		const char *x = wsk__str_of(r, t, u->k);
+		int o = u->off + u->len, l = 0;
+		while (x[o] == ' ') o++;
+		if (x[o] != '\0') {
+			while (x[o + l] != '\0' && x[o + l] != ' ') l++;
+			u->wi++; u->off = (short)o; u->len = (short)l;
+			return 1;
+		}
+	}
+#endif
+	return wsk__u_at(r, t, u->k + 1, u);
+}
+
+static inline int wsk__meas(const wsk_tree_t *r, const wsk_tree_t *t, int i,
+                            int axis, int depth, int avail);
+static inline int wsk__flow(const wsk_tree_t *r, const wsk_tree_t *t, int span,
+                            int idx, int wi, int *ia, int *ic, int *ea, int *ec,
+                            int depth);
+
+/* A unit's extent along its stack: a word is its text, no padding. */
+static inline int wsk__u_along(const wsk_tree_t *r, const wsk_tree_t *t,
+                               const wsk__u_t *u, int depth)
+{
+	if (u->wi >= 0) return wsk_text_w(t->font, u->len);
+	return wsk__meas(r, t, u->k, t->axis, depth, -1);
+}
+
+/* And across: a word is as deep as a label's line. */
+static inline int wsk__u_deep(const wsk_tree_t *r, const wsk_tree_t *t,
+                              const wsk__u_t *u, int along, int depth)
+{
+	if (u->wi >= 0) return wsk__round_band(t->font + t->gap);
+	return wsk__meas(r, t, u->k, (t->axis == WSK_COL) ? WSK_ROW : WSK_COL,
+	                 depth, along);
+}
 #endif
 
 /* What the widgets and the gaps between them want along the axis, padding
@@ -489,6 +596,27 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 			if (which != 0) *which = i;
 			return WSK_E_TEXT;
 		}
+#ifdef WSK_NO_TEXT
+		if (t->item[i].kind == WSK_TEXT) {
+			if (which != 0) *which = i;
+			return WSK_E_KIND;
+		}
+#else
+		/* A text item names a string that exists, and the window can draw
+		   (§5h rule 4); and its words stand along a row, not one per line
+		   down a wrapping column. */
+		if (t->item[i].kind == WSK_TEXT) {
+			const char *x = wsk__str_of(t, t, i);
+			if (x == 0 || (t->overflow == WSK_WRAP && t->axis == WSK_COL)) {
+				if (which != 0) *which = i;
+				return WSK_E_KIND;
+			}
+			if (!wsk_text_ok(x)) {
+				if (which != 0) *which = i;
+				return WSK_E_TEXT;
+			}
+		}
+#endif
 #ifdef WSK_NO_NEST
 		if (t->item[i].kind == WSK_STACK) {
 			if (which != 0) *which = i;
@@ -540,18 +668,21 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 		int col = (t->axis == WSK_COL);
 		int span = (col ? t->ah : t->aw) - 2 * t->pad;
 		int deep = (col ? t->aw : t->ah) - 2 * t->pad;
-		/* Widths first: an item no line can hold is the fault to name,
-		   even where the lines it forces would run out of depth sooner. */
-		for (int i = 0; i < t->n; i++)
-			if (wsk__meas(t->nest, t->nests, t, i, t->axis, 0, -1) > span) {
-				if (which != 0) *which = i;
+		/* Widths first: a unit no line can hold is the fault to name, even
+		   where the lines it forces would run out of depth sooner. A unit
+		   is an item or a word, and either way `which` is the item. */
+		wsk__u_t u;
+		int more;
+		for (more = wsk__u_at(t, t, 0, &u); more; more = wsk__u_next(t, t, &u))
+			if (wsk__u_along(t, t, &u, 0) > span) {
+				if (which != 0) *which = u.k;
 				return WSK_E_FIT;
 			}
-		for (int i = 0; i < t->n; i++) {
+		for (more = wsk__u_at(t, t, 0, &u); more; more = wsk__u_next(t, t, &u)) {
 			int ia = 0, ic = 0, ea = 0, ec = 0;
-			(void)wsk__flow(t->nest, t->nests, t, span, i, &ia, &ic, &ea, &ec, 0);
+			(void)wsk__flow(t, t, span, u.k, u.wi, &ia, &ic, &ea, &ec, 0);
 			if (ic + ec > deep) {
-				if (which != 0) *which = i;
+				if (which != 0) *which = u.k;
 				return WSK_E_FIT;
 			}
 		}
@@ -695,6 +826,8 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->lgap = WSK_SAME;
 	t->nest = 0;
 	t->nests = 0;
+	t->str = 0;
+	t->strs = 0;
 	t->clipped = 0;
 	t->cx0 = t->cy0 = t->cx1 = t->cy1 = 0;
 }
@@ -726,7 +859,7 @@ static inline int wsk__natural(const wsk_tree_t *t, int i)
 	const wsk_widget_t *w = &t->item[i];
 	if (w->size > 0) return w->size;
 	if (t->axis == WSK_ROW) {
-		int text = wsk_text_w(t->font, wsk__len(w->text));
+		int text = wsk_text_w(t->font, wsk__len(wsk__say(t, t, i)));
 		return text + 2 * t->pad;
 	}
 	if (w->kind == WSK_BUTTON) return WSK_BTN_ROWS;
@@ -749,18 +882,8 @@ static inline int wsk__natural(const wsk_tree_t *t, int i)
  * measured here is the caller's own, which carries no `nest` of its own --
  * only the copies layout makes do. `depth` stops a tree that holds itself.
  */
-static inline int wsk__nat_on(const wsk_tree_t *nest, int nests,
-                              const wsk_tree_t *t, int i, int axis, int depth,
-                              int avail);
-#ifndef WSK_NO_WRAP
-static inline int wsk__flow(const wsk_tree_t *nest, int nests,
-                            const wsk_tree_t *t, int span, int idx,
-                            int *ia, int *ic, int *ea, int *ec, int depth);
-#endif
-
-static inline int wsk__nat_on(const wsk_tree_t *nest, int nests,
-                              const wsk_tree_t *t, int i, int axis, int depth,
-                              int avail)
+static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
+                              int axis, int depth, int avail)
 {
 	const wsk_widget_t *w = &t->item[i];
 
@@ -768,9 +891,9 @@ static inline int wsk__nat_on(const wsk_tree_t *nest, int nests,
 	if (w->kind == WSK_STACK) {
 		const wsk_tree_t *c;
 		int ext = 0, inner;
-		if (nest == 0 || w->sub < 0 || w->sub >= nests || depth >= WSK_DEPTH_MAX)
+		if (r->nest == 0 || w->sub < 0 || w->sub >= r->nests || depth >= WSK_DEPTH_MAX)
 			return 0;                    /* wsk_check refuses it by name */
-		c = &nest[w->sub];
+		c = &r->nest[w->sub];
 		inner = (avail < 0) ? -1 : avail - 2 * c->pad;
 #ifndef WSK_NO_SCROLL
 		/* A stack that scrolls asks for nothing along the axis it scrolls
@@ -780,15 +903,17 @@ static inline int wsk__nat_on(const wsk_tree_t *nest, int nests,
 #endif
 #ifndef WSK_NO_WRAP
 		/* A wrapping stack takes what it is given and wraps to fit it, so
-		   along its axis it asks only for its widest item (§5g rule 4);
-		   across, the depth of its lines at the width it will get -- or,
-		   where nothing above knows that, one line. */
+		   along its axis it asks only for its widest unit -- item or word
+		   (§5g rule 4); across, the depth of its lines at the width it will
+		   get -- or, where nothing above knows that, one line. */
 		if (c->overflow == WSK_WRAP && (c->axis == axis || inner >= 0)) {
+			wsk__u_t u;
+			int more;
 			if (c->axis != axis)
-				return wsk__flow(nest, nests, c, inner, -1, 0, 0, 0, 0, depth + 1)
+				return wsk__flow(r, c, inner, -1, -1, 0, 0, 0, 0, depth + 1)
 				     + 2 * c->pad;
-			for (int j = 0; j < c->n; j++) {
-				int e = wsk__nat_on(nest, nests, c, j, axis, depth + 1, -1);
+			for (more = wsk__u_at(r, c, 0, &u); more; more = wsk__u_next(r, c, &u)) {
+				int e = wsk__u_along(r, c, &u, depth + 1);
 				if (e > ext) ext = e;
 			}
 			return ext + 2 * c->pad;
@@ -796,15 +921,15 @@ static inline int wsk__nat_on(const wsk_tree_t *nest, int nests,
 #endif
 		for (int j = 0; j < c->n; j++) {
 			int e = (c->axis == axis)
-			      ? wsk__nat_on(nest, nests, c, j, axis, depth + 1, inner)
-			      : wsk__nat_on(nest, nests, c, j, axis, depth + 1, -1);
+			      ? wsk__nat_on(r, c, j, axis, depth + 1, inner)
+			      : wsk__nat_on(r, c, j, axis, depth + 1, -1);
 			if (c->axis == axis) ext += e + ((j > 0) ? c->gap : 0);
 			else if (e > ext) ext = e;
 		}
 		return ext + 2 * c->pad;
 	}
 	if (axis == WSK_ROW) {
-		int text = wsk_text_w(t->font, wsk__len(w->text));
+		int text = wsk_text_w(t->font, wsk__len(wsk__say(r, t, i)));
 		return text + 2 * t->pad;
 	}
 	if (w->kind == WSK_BUTTON) return WSK_BTN_ROWS;
@@ -822,112 +947,122 @@ static inline int wsk__across(const wsk_tree_t *t)
 
 static inline int wsk__natural(const wsk_tree_t *t, int i)
 {
-	return wsk__nat_on(t->nest, t->nests, t, i, t->axis, 0, wsk__across(t));
+	return wsk__nat_on(t, t, i, t->axis, 0, wsk__across(t));
 }
 #endif
 
 #ifndef WSK_NO_WRAP
 /*
  * A widget's extent along `axis`, whatever this build has: through stacks
- * when it nests, from the widget alone when it does not.
+ * when it nests, from the widget alone when it does not. `r` is the tree
+ * that carries `nest` and `str` -- the root, or a laid-out copy.
  */
-static inline int wsk__meas(const wsk_tree_t *nest, int nests,
-                            const wsk_tree_t *t, int i, int axis, int depth,
-                            int avail)
+static inline int wsk__meas(const wsk_tree_t *r, const wsk_tree_t *t, int i,
+                            int axis, int depth, int avail)
 {
 #ifndef WSK_NO_NEST
-	return wsk__nat_on(nest, nests, t, i, axis, depth, avail);
+	return wsk__nat_on(r, t, i, axis, depth, avail);
 #else
 	const wsk_widget_t *w = &t->item[i];
-	(void)nest; (void)nests; (void)depth; (void)avail;
+	(void)depth; (void)avail;
 	if (w->size > 0 && axis == t->axis) return w->size;
-	if (axis == WSK_ROW) return wsk_text_w(t->font, wsk__len(w->text)) + 2 * t->pad;
+	if (axis == WSK_ROW) return wsk_text_w(t->font, wsk__len(wsk__say(r, t, i))) + 2 * t->pad;
 	if (w->kind == WSK_BUTTON) return WSK_BTN_ROWS;
 	return wsk__round_band(t->font + t->gap);
 #endif
 }
 
 /*
- * Lines (design.md §5g). Items go along the axis until one would cross
- * `span`; it starts the next line. Each line is as deep as its deepest item
- * and all of them are that deep; within it, weight shares the line's leftover
- * and, with none weighted, justify places it -- an unwrapped stack's rules,
- * a line at a time. A line always takes at least one item, so an item wider
- * than the span sits alone on its line and wsk_check refuses it by name.
+ * Lines (design.md §5g), of units (§5h): items, and the words of text
+ * items. Units go along the axis until one would cross `span`; it starts the
+ * next line. Each line is as deep as its deepest unit and all of them are
+ * that deep; within it, weight shares the line's leftover and, with none
+ * weighted, justify places it -- an unwrapped stack's rules, a line at a
+ * time. A line always takes at least one unit, so one wider than the span
+ * sits alone and wsk_check refuses it by name.
  *
- * With idx >= 0, where item idx sits, relative to the content's start:
- * along (ia, ea) and across (ic, ec). With idx < 0, how deep all the lines
- * are, gaps between them included and padding not. One walk for both, so
- * what is measured and what is laid out cannot disagree.
+ * With idx >= 0, where unit (idx, wi) sits -- wi -1 for an item, or a text
+ * item's first word -- relative to the content's start: along (ia, ea) and
+ * across (ic, ec). With idx < 0, how deep all the lines are, gaps between
+ * them included and padding not. One walk for both, so what is measured and
+ * what is laid out cannot disagree.
  */
-static inline int wsk__flow(const wsk_tree_t *nest, int nests,
-                            const wsk_tree_t *t, int span, int idx,
-                            int *ia, int *ic, int *ea, int *ec, int depth)
+static inline int wsk__flow(const wsk_tree_t *r, const wsk_tree_t *t, int span,
+                            int idx, int wi, int *ia, int *ic, int *ea, int *ec,
+                            int depth)
 {
-	int other = (t->axis == WSK_COL) ? WSK_ROW : WSK_COL;
-	int cross = 0, i = 0;
+	int lg = (t->lgap == WSK_SAME) ? t->gap : t->lgap;
+	int cross = 0, more;
+	wsk__u_t u;
 
-	while (i < t->n) {
-		int used = 0, weights = 0, deep = 0, end, extra, last = -1, k;
+	more = wsk__u_at(r, t, 0, &u);
+	while (more) {
+		wsk__u_t s0 = u, v;
+		int used = 0, weights = 0, deep = 0, n = 0, lastw = -1, extra, j;
 
-		for (k = i; k < t->n; k++) {
-			int need = used + ((k > i) ? t->gap : 0)
-			         + wsk__meas(nest, nests, t, k, t->axis, depth, -1);
-			if (k > i && need > span) break;
+		do {
+			int a = wsk__u_along(r, t, &u, depth);
+			int need = used + ((n > 0) ? t->gap : 0) + a;
+			int wt = (u.wi >= 0) ? 0 : t->item[u.k].weight;
+			int d;
+			if (n > 0 && need > span) break;
 			used = need;
-			weights += t->item[k].weight;
-			if (t->item[k].weight > 0) last = k;
-		}
-		end = k;
-		for (k = i; k < end; k++) {
-			int d = wsk__meas(nest, nests, t, k, other, depth,
-			                  wsk__meas(nest, nests, t, k, t->axis, depth, -1));
+			weights += wt;
+			if (wt > 0) lastw = n;
+			d = wsk__u_deep(r, t, &u, a, depth);
 			if (d > deep) deep = d;
-		}
+			n++;
+			more = wsk__u_next(r, t, &u);
+		} while (more);
 		extra = span - used;
 		if (extra < 0) extra = 0;
 
-		if (idx >= i && idx < end) {
-			int n = end - i, j = idx - i, at = 0, given = 0, e, free;
-			free = (weights > 0) ? 0 : extra;
+		for (v = s0, j = 0; j < n; j++) {
+			if (v.k == idx && (wi < 0 || v.wi == wi)) break;
+			(void)wsk__u_next(r, t, &v);
+		}
+		if (j < n) {
+			int at = 0, given = 0, e, wt, free = (weights > 0) ? 0 : extra;
 			if (free > 0) {
 				if (t->justify == WSK_END) at = free;
 				else if (t->justify == WSK_CENTER) at = free / 2;
 				else if (t->justify == WSK_BETWEEN) at = (n > 1) ? free * j / (n - 1) : 0;
 				else if (t->justify == WSK_AROUND) at = free * (2 * j + 1) / (2 * n);
 			}
-			for (k = i; k < idx; k++) {
-				e = wsk__meas(nest, nests, t, k, t->axis, depth, -1);
-				if (weights > 0 && t->item[k].weight > 0) {
-					int share = extra * t->item[k].weight / weights;
+			v = s0;
+			for (int q = 0; q < j; q++) {
+				wt = (v.wi >= 0) ? 0 : t->item[v.k].weight;
+				e = wsk__u_along(r, t, &v, depth);
+				if (weights > 0 && wt > 0) {
+					int share = extra * wt / weights;
 					e += share;
 					given += share;
 				}
 				at += e + t->gap;
+				(void)wsk__u_next(r, t, &v);
 			}
-			e = wsk__meas(nest, nests, t, idx, t->axis, depth, -1);
-			if (weights > 0 && t->item[idx].weight > 0)
-				e += (idx == last) ? (extra - given)
-				                   : (extra * t->item[idx].weight / weights);
+			wt = (v.wi >= 0) ? 0 : t->item[v.k].weight;
+			e = wsk__u_along(r, t, &v, depth);
+			if (weights > 0 && wt > 0)
+				e += (j == lastw) ? (extra - given) : (extra * wt / weights);
 			*ia = at; *ea = e; *ic = cross; *ec = deep;
 			return cross;
 		}
 		cross += deep;
-		i = end;
-		if (i < t->n) cross += (t->lgap == WSK_SAME) ? t->gap : t->lgap;
+		if (more) cross += lg;
 	}
 	return cross;
 }
 
-/* Item idx of a wrapping stack, in device pixels. */
-static inline wsk_rect_t wsk__wrap_rect(const wsk_tree_t *t, int idx)
+/* Unit (idx, wi) of a wrapping stack, in device pixels. */
+static inline wsk_rect_t wsk__wrap_unit(const wsk_tree_t *t, int idx, int wi)
 {
 	wsk_rect_t r;
 	int col = (t->axis == WSK_COL);
 	int span = (col ? t->ah : t->aw) - 2 * t->pad;
 	int ia = 0, ic = 0, ea = 0, ec = 0;
 
-	(void)wsk__flow(t->nest, t->nests, t, span, idx, &ia, &ic, &ea, &ec, 0);
+	(void)wsk__flow(t, t, span, idx, wi, &ia, &ic, &ea, &ec, 0);
 	if (col) {
 		r.y = (short)(t->ay + t->pad + ia); r.h = (short)ea;
 		r.x = (short)(t->ax + t->pad + ic); r.w = (short)ec;
@@ -937,6 +1072,45 @@ static inline wsk_rect_t wsk__wrap_rect(const wsk_tree_t *t, int idx)
 	}
 	return r;
 }
+
+/* Item idx of a wrapping stack: for a text item, the box round all its
+   words, which is the rows a repaint of it needs (§5h rule 6). */
+static inline wsk_rect_t wsk__wrap_rect(const wsk_tree_t *t, int idx)
+{
+	wsk_rect_t r = wsk__wrap_unit(t, idx, -1);
+#ifndef WSK_NO_TEXT
+	if (t->item[idx].kind == WSK_TEXT) {
+		int x0 = r.x, y0 = r.y, x1 = r.x + r.w, y1 = r.y + r.h, more;
+		wsk__u_t u;
+		for (more = wsk__u_at(t, t, idx, &u); more && u.k == idx;
+		     more = wsk__u_next(t, t, &u)) {
+			wsk_rect_t q = wsk__wrap_unit(t, idx, u.wi);
+			if (q.x < x0) x0 = q.x;
+			if (q.y < y0) y0 = q.y;
+			if (q.x + q.w > x1) x1 = q.x + q.w;
+			if (q.y + q.h > y1) y1 = q.y + q.h;
+		}
+		r.x = (short)x0; r.y = (short)y0;
+		r.w = (short)(x1 - x0); r.h = (short)(y1 - y0);
+	}
+#endif
+	return r;
+}
+
+#ifndef WSK_NO_TEXT
+/* Which word of text item i is at the point, or -1: a point between two
+   words, or past the end of a line, is on none of them. */
+static inline int wsk__word_at(const wsk_tree_t *t, int i, int x, int y)
+{
+	wsk__u_t u;
+	int more;
+	for (more = wsk__u_at(t, t, i, &u); more && u.k == i; more = wsk__u_next(t, t, &u)) {
+		wsk_rect_t q = wsk__wrap_unit(t, i, u.wi);
+		if (x >= q.x && x < q.x + q.w && y >= q.y && y < q.y + q.h) return u.wi;
+	}
+	return -1;
+}
+#endif
 #endif
 
 /*
@@ -1085,6 +1259,8 @@ static inline int wsk__child(const wsk_tree_t *t, int i, wsk_tree_t *c)
 	c->h = t->h;
 	c->nest = t->nest;
 	c->nests = t->nests;
+	c->str = t->str;
+	c->strs = t->strs;
 	r = wsk_rect(t, i);
 	c->ax = r.x; c->ay = r.y; c->aw = r.w; c->ah = r.h;
 
@@ -1338,8 +1514,15 @@ static inline int wsk_hit(const wsk_tree_t *t, int x, int y)
 		/* cut first: a widget scrolled off still has a rectangle, and it
 		   may lie over a neighbouring stack the person can see (§5e) */
 		if (!wsk__cut(t, &r)) continue;
-		if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+		if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) {
+#if !defined(WSK_NO_TEXT) && !defined(WSK_NO_WRAP)
+			/* a paragraph's box holds its line ends and the gaps between
+			   words; only a word is the paragraph (§5h rule 6) */
+			if (t->item[i].kind == WSK_TEXT && t->overflow == WSK_WRAP &&
+			    wsk__word_at(t, i, x, y) < 0) continue;
+#endif
 			return i;
+		}
 	}
 	return WSK_E_NOTFOUND;
 }
@@ -1362,21 +1545,27 @@ static inline int wsk_hit(const wsk_tree_t *t, int x, int y)
  * still ask which top-level region was touched.
  */
 static inline int wsk__hit_at(const wsk_tree_t *t, const wsk_tree_t *orig,
-                              int x, int y, const wsk_tree_t **in, int depth)
+                              int x, int y, const wsk_tree_t **in,
+                              wsk_tree_t *at, int depth)
 {
 	for (int i = 0; i < t->n; i++) {
 		wsk_rect_t r = wsk_rect(t, i);
 		if (!wsk__cut(t, &r)) continue;
 		if (!(x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)) continue;
+#if !defined(WSK_NO_TEXT) && !defined(WSK_NO_WRAP)
+		if (t->item[i].kind == WSK_TEXT && t->overflow == WSK_WRAP &&
+		    wsk__word_at(t, i, x, y) < 0) continue;
+#endif
 		if (t->item[i].kind == WSK_STACK && depth + 1 < WSK_DEPTH_MAX) {
 			wsk_tree_t c;
 			if (wsk__child(t, i, &c)) {
 				int k = wsk__hit_at(&c, &t->nest[t->item[i].sub], x, y, in,
-				                    depth + 1);
+				                    at, depth + 1);
 				if (k >= 0) return k;
 			}
 		}
 		if (in != 0) *in = orig;
+		if (at != 0) wsk__tcopy(at, t);
 		return i;
 	}
 	return WSK_E_NOTFOUND;
@@ -1385,8 +1574,26 @@ static inline int wsk__hit_at(const wsk_tree_t *t, const wsk_tree_t *orig,
 static inline int wsk_hit_in(const wsk_tree_t *t, int x, int y,
                              const wsk_tree_t **in)
 {
-	return wsk__hit_at(t, t, x, y, in, 0);
+	return wsk__hit_at(t, t, x, y, in, 0, 0);
 }
+
+#if !defined(WSK_NO_TEXT) && !defined(WSK_NO_WRAP)
+/*
+ * Which word of a paragraph is under the point (§5h rule 6): returns the
+ * item, as wsk_hit_in does, and sets *word to the word's number in its
+ * string -- or -1 when the widget there is not a wrapped text item.
+ */
+static inline int wsk_hit_word(const wsk_tree_t *t, int x, int y,
+                               const wsk_tree_t **in, int *word)
+{
+	wsk_tree_t at;
+	int k = wsk__hit_at(t, t, x, y, in, &at, 0);
+	*word = -1;
+	if (k >= 0 && at.item[k].kind == WSK_TEXT && at.overflow == WSK_WRAP)
+		*word = wsk__word_at(&at, k, x, y);
+	return k;
+}
+#endif
 
 static inline const char *wsk_hit_id(const wsk_tree_t *t, int x, int y)
 {
@@ -1675,9 +1882,9 @@ static inline void wsk__marks(wsk_sink_t *s, const wsk_tree_t *t,
  * one attribute instead of a computed x, and fewer bytes.
  */
 static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
-                             const wsk_widget_t *w, wsk_rect_t r)
+                             const wsk_widget_t *w, const char *txt, wsk_rect_t r)
 {
-	int chars = wsk__len(w->text);
+	int chars = wsk__len(txt);
 	/* All of the width: a label exactly its text's width -- every widget in
 	   a row with no padding -- draws all of it. It wanted two pixels of
 	   slack until 2026-11-11, which cut "OK" to "O" (design.md §5f). */
@@ -1710,9 +1917,11 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
 		wsk__col(s, w->ink);
 	}
 	wsk__s(s, "\">");
-	wsk__w(s, w->text, chars);
+	wsk__w(s, txt, chars);
 	wsk__s(s, "</text>");
 }
+
+
 
 #ifndef WSK_NO_FIELD
 /*
@@ -1888,6 +2097,72 @@ static inline void wsk_open(const wsk_doc_t *d, wsk_sink_t *s)
 	wsk__s(s, "\">");
 }
 
+#if !defined(WSK_NO_TEXT) && !defined(WSK_NO_WRAP)
+/*
+ * A text item's words in a wrapping row (§5h rule 5), as RUNS: words of
+ * this item on one line, one space apart in the string, while `gap` is one
+ * character's advance, are exactly where the window would put the same
+ * characters written together -- so they are one <text>, at the first word,
+ * anchored at its start. Anything else is a word at a time. Same characters,
+ * same places, far fewer bytes: about forty a word saved, which is the
+ * difference between a page of prose fitting SRC_MAX and not.
+ *
+ * Whole or not at all (D12): a run is drawn only where it lies wholly in
+ * view. A run is one line, so a scroll cuts it as it would a label.
+ */
+static inline void wsk__run(const wsk_doc_t *d, const wsk_tree_t *t,
+                            const wsk_widget_t *w, const char *x, int from,
+                            int to, wsk_rect_t a, int x1, wsk_sink_t *s)
+{
+	int top = a.y + (a.h - t->font) / 2;
+
+	if (a.y >= d->y1 || a.y + a.h <= d->y0) return;   /* not in these rows */
+	if (!wsk__whole(t, a.x, x1)) return;
+#ifndef WSK_NO_NEST
+	if (!wsk__seen(t, a.x, top, x1, top + t->font)) return;
+#endif
+	wsk__s(s, "<text text-anchor=\"start\" x=\"");
+	wsk__n(s, a.x);
+	wsk__s(s, "\" y=\"");
+	wsk__n(s, wsk_baseline_of(top, t->font));
+	if (w->ink != WSK_INHERIT) {
+		wsk__s(s, "\" fill=\"");
+		wsk__col(s, w->ink);
+	}
+	wsk__s(s, "\">");
+	wsk__w(s, x + from, to - from);
+	wsk__s(s, "</text>");
+}
+
+static inline void wsk__runs(const wsk_doc_t *d, const wsk_tree_t *t, int i,
+                             wsk_sink_t *s)
+{
+	const wsk_widget_t *w = &t->item[i];
+	const char *x = wsk__str_of(t, t, i);
+	int adv = wsk_advance(t->font), more;
+	wsk__u_t u;
+
+	more = wsk__u_at(t, t, i, &u);
+	while (more && u.k == i) {
+		wsk_rect_t a = wsk__wrap_unit(t, i, u.wi);
+		int from = u.off, to = u.off + u.len, x1 = a.x + a.w;
+		for (;;) {
+			wsk__u_t nx = u;
+			wsk_rect_t b;
+			more = wsk__u_next(t, t, &nx);
+			u = nx;
+			if (!more || nx.k != i) break;
+			b = wsk__wrap_unit(t, i, nx.wi);
+			if (t->gap != adv || b.y != a.y || nx.off != to + 1 || b.x != x1 + t->gap)
+				break;                       /* a new run starts here */
+			to = nx.off + nx.len;
+			x1 = b.x + b.w;
+		}
+		wsk__run(d, t, w, x, from, to, a, x1, s);
+	}
+}
+#endif
+
 #ifndef WSK_NO_NEST
 static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
                               wsk_sink_t *s);
@@ -1948,6 +2223,9 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 #ifndef WSK_NO_NEST
 		if (w->kind == WSK_STACK) { wsk__stack(d, t, i, v, s); continue; }
 #endif
+#if !defined(WSK_NO_TEXT) && !defined(WSK_NO_WRAP)
+		if (w->kind == WSK_TEXT && t->overflow == WSK_WRAP) { wsk__runs(d, t, i, s); continue; }
+#endif
 #ifdef WSK_NO_FIELD
 		if (w->kind == WSK_BUTTON) wsk__rect(s, t, w, v);
 #else
@@ -1966,7 +2244,7 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 		if (w->kind == WSK_FIELD) wsk__field(s, t, w, r);
 		else
 #endif
-		wsk__text(s, t, w, r);
+		wsk__text(s, t, w, wsk__say(t, t, i), r);
 	}
 }
 

@@ -1826,6 +1826,149 @@ int main(void)
 		}
 	}
 
+	/* ---- §5h. a paragraph as one item ---- */
+	printf("\n-- §5h  text items\n");
+	{
+		static const char P1[] = "Alpha Beta Gamma Delta Epsilon Zeta Eta Theta";
+		static const wsk_widget_t AS_LABELS[] = {
+			{ .kind = WSK_LABEL, .id = "a", .text = "Alpha" },
+			{ .kind = WSK_LABEL, .id = "b", .text = "Beta" },
+			{ .kind = WSK_LABEL, .id = "c", .text = "Gamma" },
+			{ .kind = WSK_LABEL, .id = "d", .text = "Delta" },
+			{ .kind = WSK_LABEL, .id = "e", .text = "Epsilon" },
+			{ .kind = WSK_LABEL, .id = "f", .text = "Zeta" },
+			{ .kind = WSK_LABEL, .id = "g", .text = "Eta" },
+			{ .kind = WSK_LABEL, .id = "h", .text = "Theta" },
+		};
+		static const wsk_widget_t AS_TEXT[] = {
+			{ .kind = WSK_TEXT, .id = "p", .sub = 0 },
+		};
+		const char *strs[4];
+		wsk_tree_t L, T;
+		int same = 1, which = -2, word = -9;
+		const wsk_tree_t *in = 0;
+		char d1[2048], d2[2048];
+		int n1, n2;
+
+		strs[0] = P1;
+		wsk_init(&L, WSK_ROW, 320, 172);
+		L.pad = 0; L.gap = 8; L.lgap = 0; L.overflow = WSK_WRAP; L.ids = 0;
+		L.item = AS_LABELS; L.n = 8;
+		T = L;
+		T.item = AS_TEXT; T.n = 1; T.str = strs; T.strs = 1;
+
+		ok(wsk_check(&T, 0) == WSK_OK, "a paragraph as one text item is accepted");
+		/* Rule 2: each word where the same word as a label was, at two
+		   widths -- the same layout from one item and one string. */
+		for (int width = 320; width >= 120; width -= 200) {
+			wsk_area(&L, 0, 0, width, 172);
+			wsk_area(&T, 0, 0, width, 172);
+			for (int k = 0; k < 8; k++) {
+				wsk_rect_t a = wsk_rect(&L, k), b = wsk__wrap_unit(&T, 0, k);
+				if (!rect_is(b, a.x, a.y, a.w, a.h)) same = 0;
+			}
+		}
+		ok(same, "every word lands where the same word as a label did, at 320 and at 120 wide");
+		wsk_area(&L, 0, 0, 320, 172);
+		wsk_area(&T, 0, 0, 320, 172);
+		ok(rect_is(wsk__wrap_unit(&T, 0, 7), 0, 24, 40, 24),
+		   "by hand: Theta starts the second line, 0,24 40x24");
+		ok(rect_is(wsk_rect(&T, 0), 0, 0, 312, 48),
+		   "the item's rectangle is the box round all its words: two lines");
+
+		/* Rule 5: runs. One <text> a line rather than one a word. */
+		n1 = render_into(&L, d1, sizeof d1, 4096);
+		n2 = render_into(&T, d2, sizeof d2, 4096);
+		ok(count(d2, "<text") == 2 && count(d1, "<text") == 8,
+		   "the paragraph is two runs, one a line; as labels it was eight");
+		ok(has(d2, ">Alpha Beta Gamma Delta Epsilon Zeta Eta</text>") && has(d2, ">Theta</text>"),
+		   "a run says the line's words as the string says them");
+		printf("    %d bytes as eight labels, %d as one text item\n", n1, n2);
+		ok(n2 < n1, "and the document is smaller");
+		T.gap = 9;
+		render_into(&T, d2, sizeof d2, 4096);
+		ok(count(d2, "<text") == 8,
+		   "CONTROL: a gap that is not one advance draws a word at a time");
+		T.gap = 8;
+
+		/* Rule 6: hit names the item only on a word, and says which. */
+		ok(wsk_hit(&T, 50, 10) == 0, "hit on Beta is the paragraph");
+		ok(wsk_hit(&T, 44, 10) == WSK_E_NOTFOUND,
+		   "CONTROL: the gap between two words is nothing");
+		ok(wsk_hit(&T, 300, 30) == WSK_E_NOTFOUND,
+		   "CONTROL: past the end of the second line is nothing, inside the box");
+		ok(wsk_hit_word(&T, 50, 10, &in, &word) == 0 && word == 1 && in == &T,
+		   "wsk_hit_word: Beta is word 1");
+		ok(wsk_hit_word(&T, 10, 30, &in, &word) == 0 && word == 7, "and Theta is word 7");
+		{
+			const char *k[1] = { "p" };
+			int y0 = 0, y1 = 0;
+			ok(wsk_rows(&T, k, 1, &y0, &y1) == WSK_OK && y0 == 0 && y1 == 48,
+			   "rows of a paragraph are every line it is on: 0..48");
+		}
+
+		/* An item among the words: a button inline. */
+		{
+			static const char A[] = "one two", B[] = "three";
+			static const wsk_widget_t MIX[] = {
+				{ .kind = WSK_TEXT,   .id = "t1", .sub = 1 },
+				{ .kind = WSK_BUTTON, .id = "ok", .text = "OK" },
+				{ .kind = WSK_TEXT,   .id = "t2", .sub = 2 },
+			};
+			wsk_tree_t M = T;
+			strs[1] = A; strs[2] = B;
+			M.item = MIX; M.n = 3; M.strs = 3;
+			ok(wsk_check(&M, 0) == WSK_OK, "words, a button, words: accepted");
+			/* one 24, two 24, OK 16, three 40, gaps of 8; the line is as
+			   deep as the button, 64, and the words sit in it. */
+			ok(rect_is(wsk__wrap_unit(&M, 0, 1), 32, 0, 24, 64) &&
+			   rect_is(wsk_rect(&M, 1), 64, 0, 16, 64) &&
+			   rect_is(wsk__wrap_unit(&M, 2, 0), 88, 0, 40, 64),
+			   "a button inline among words, by hand: two 32, OK 64, three 88, all 64 deep");
+		}
+
+		/* Rule 4: refusals beside their controls. */
+		wsk_area(&T, 0, 0, 50, 172);
+		ok(wsk_check(&T, &which) == WSK_E_FIT && which == 0,
+		   "a word wider than the line is refused, naming the item: Epsilon's 56 in 50");
+		wsk_area(&T, 0, 0, 320, 172);
+		{
+			static const char BAD[] = "a <b> c";
+			strs[3] = BAD;
+			wsk_widget_t one[1];
+			wsk_clone(one, AS_TEXT, 1);
+			T.item = one; T.strs = 4;
+			one[0].sub = 3;
+			ok(wsk_check(&T, &which) == WSK_E_TEXT && which == 0,
+			   "a string the window cannot draw is refused, WSK_E_TEXT");
+			one[0].sub = 4;
+			ok(wsk_check(&T, &which) == WSK_E_KIND && which == 0,
+			   "a string index out of range is refused");
+			one[0].sub = 0;
+			ok(wsk_check(&T, 0) == WSK_OK, "CONTROL: the good string, accepted");
+			T.axis = WSK_COL;
+			ok(wsk_check(&T, &which) == WSK_E_KIND,
+			   "a text item in a wrapping column is refused: its words would stand one a line");
+			T.axis = WSK_ROW;
+			T.item = AS_TEXT;
+		}
+
+		/* Rule 3: outside a wrapping row, a long label. */
+		{
+			static const char LONG[] = "A label longer than thirty-two characters";
+			wsk_tree_t C;
+			char d3[1024];
+			wsk_init(&C, WSK_COL, 320, 172);
+			strs[0] = LONG;
+			C.item = AS_TEXT; C.n = 1; C.str = strs; C.strs = 1;
+			ok(wsk_check(&C, 0) == WSK_OK, "a text item in a plain column is accepted");
+			render_into(&C, d3, sizeof d3, 4096);
+			ok(has(d3, ">A label longer than thirty-two charact</text>"),
+			   "and drawn as a label: one line, centred, truncated to the 38 cells that fit");
+			strs[0] = P1;
+		}
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

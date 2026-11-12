@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Every done-criterion in design.md §5 (the renderer), §5b (hit),
-# §5c (composition), §5d (input), §5e (scrolling), §5f (nesting) and §5g (wrap).
+# §5c (composition), §5d (input), §5e (scrolling), §5f (nesting), §5g (wrap) and §5h (text items).
 #
 #   ./run.sh              the suite, the picture, and the XML check
 #   ./run.sh --module     and the module build, which is criterion 7
@@ -40,7 +40,7 @@ else
 fi
 # The controls. Without these, "byte for byte" is satisfied by a minimal build
 # that draws a field as a label and says nothing.
-for W in field marked scrolled nested wrapped; do
+for W in field marked scrolled nested wrapped text; do
 	F="$(/tmp/wsk_prof_full $W)"; M="$(/tmp/wsk_prof_min $W)"
 	case "$F$M" in
 	drew*refused\ -6*) echo "ok    CONTROL: $W -- full ${F%% bytes*} bytes, minimal ${M}" ;;
@@ -95,6 +95,8 @@ link_check module_shape.c "module_shape.c -DWSK_NO_NEST" -DWSK_NO_NEST
 NONEST="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_WRAP" -DWSK_NO_WRAP
 NOWRAP="$SIZE"
+link_check module_shape.c "module_shape.c -DWSK_NO_TEXT" -DWSK_NO_TEXT
+NOTEXT="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
 echo "      so the C5 profile of module_shape.c is $(( FULL - SIZE )) bytes smaller,"
 echo "      which is criterion 10: a host that cannot afford a widget leaves it"
@@ -113,3 +115,4 @@ echo "      module_nest.c is wnest: a window that is one tree, nested three"
 echo "      deep, its panels static and nested by index (§5f). Nesting costs"
 echo "      module_shape.c $(( FULL - NONEST )) bytes, in the default profile only."
 echo "      Wrapping costs it $(( FULL - NOWRAP )) (§5g), likewise."
+echo "      Text items cost it $(( FULL - NOTEXT )) (§5h), likewise."
