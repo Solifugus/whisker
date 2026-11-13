@@ -207,6 +207,8 @@ Qt-only** (gBASIC `19a830f`). Two consequences, neither yet worked through:
   (`memo`, `source`) — plus `check`. The order is unchanged: scrolling first.
   **Scrolling is built, 2026-10-24 (design §5e)**, which answers `scroll` —
   sixteen of twenty-five — and is what `table`, `tree` and `memo` stand on.
+  **Recounted 2026-11-12: twenty-one of twenty-five** (`window-gap.md` §7); left,
+  in order: `table`'s columns, many-line editing, `tree`, `source`.
   Next in the same family is a choice, not a default: `table` or `tree` as a
   scrolling stack of rows, or the overlay question.
 

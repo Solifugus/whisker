@@ -1,15 +1,8 @@
 # The distance to gBASIC's `window`, and to Studio on it — measured
 
-> **Later the same day: `scroll` is answered** (design §5e) — a stack with
-> `overflow = WSK_SCROLL`. **Sixteen of twenty-five.** The counts below are
-> kept as measured; this note and the `scroll` row are the only changes.
->
-> **And since (2026-11-11/12):** nesting (§5f), wrap (§5g), text items
-> (§5h), the toolkit (§5i), editing and focus (§5j) and overlays (§5l). By
-> this table's own words, `memo` as a viewer (wrap + text + scroll) and the
-> overlay words `menu`, `popup`, `item` now have answers, and `choice` is a
-> button that opens one; **about twenty of twenty-five**, counted loosely,
-> before a recount against Studio's record is done properly.
+> **Recounted 2026-11-12, against gBASIC Studio at `94b36e3`: twenty-one of
+> twenty-five words answered, three in part, one not** (§7, at the end).
+> Everything above §7 is October's count, kept as measured.
 
 **Written 2026-10-24**, against gBASIC at `8e804d5` and gBASIC Studio at
 `fb14cba` (2026-10-23). It replaces `gbasic-gap.md` and `studio-gap.md` as the
@@ -181,3 +174,74 @@ it to the caller rather than settling it here.
 whisker answers fifteen of them today, five of those without their
 interaction, and the record that would be handed to it already exists, is
 pure, and touches no toolkit.
+
+
+---
+
+## 7. The recount, 2026-11-12
+
+Against gBASIC Studio at `94b36e3` (2026-11-11), `lib/studio_shell_qt.bas`,
+1,317 lines, comments excluded, by the same method: construction sites of
+each word, counted from the record's own builders (`part`, `bare`, `box`,
+`named`, `captioned` and the containers they make). **The vocabulary has
+not moved: the same twenty-five words**, a few site counts shifted (`row`
+9→7, `separator` 5→6, `item` 8→9). And the record still touches no toolkit:
+0 `qt.` calls, as in October.
+
+What moved is whisker. Twelve iterations since October's count (§5e–§5m):
+
+| word | sites | whisker, 2026-11-12 | |
+|---|---|---|---|
+| `text` | 26 | `WSK_LABEL`; `WSK_TEXT` wrapping for `wordWrap` (§5h) | **yes** |
+| `button` | 21 | `WSK_BUTTON`, pressed and clicked by the toolkit (§5i) | **yes** |
+| `column` / `row` | 11 / 7 | stacks, **nested** (§5f) | **yes** |
+| `stretch` | 9 | weights and justify | **yes** |
+| `item` | 9 | a button in an overlay (§5l) | **yes** |
+| `field` | 8 | `WSK_FIELD` that **edits**, with focus and Tab (§5j) | **yes** |
+| `separator` | 6 | a sized, filled widget | **yes** |
+| `check` | 5 | `WSK_CHECK` (§5m) | **yes** |
+| `menu` | 1 | an overlay opened from its button (§5l) | **yes** |
+| `scroll` | 1 | `overflow = WSK_SCROLL` (§5e) | **yes** |
+| `toolbar` / `status` / `form` | 1 / 1 / 1 | nested rows and columns | **yes** |
+| `tabs` / `tab` | 1 / 2 | tab buttons and a body the program swaps — the swap is a row's `item` pointed elsewhere (`wkeys` does exactly this) | by composition |
+| `split` | 1 | areas, without a draggable divider | by composition |
+| `docks` / `dock` | 1 / 1 | areas, without docking or floating | by composition |
+| `popup` | 2 | an overlay — opened by **right-click**, which no host sends yet | by composition |
+| `choice` | 4 | a button whose click opens an overlay, its label set by the program | by composition |
+| `memo` | 7 | a **viewer** is answered — wrap, text items, a scrolling page (§5g–h); **editing** many lines is not | in part |
+| `table` | 2 | rows, a selecting stack (§5m), a slice for length (§5e) — **no columns, header or sort** | in part |
+| `tree` | 1 | nested stacks could show one; **no expand and collapse** | in part |
+| `source` | 2 | a code editor: highlighting, gutter, marks | **no** |
+
+**Twenty-one of twenty-five answered** — fourteen directly, seven by
+composition (October: fifteen, ten and five) — **three in part, one not.**
+"By composition" means the window can be drawn and used; what is missing is
+an interaction a person would expect for free (dragging a divider, a
+right-click), not a widget.
+
+### What is left, in the order Studio would feel it
+
+1. **`table`'s columns** — a header row and cells aligned under it; the
+   rows, selection and length are already answered. Small, and Studio's
+   main views are tables.
+2. **Many-line editing** — `memo`'s other half: a buffer with lines, a
+   caret that moves up and down, a page that scrolls to it. The field's
+   editing (§5j) is most of the machinery.
+3. **`tree`** — expand and collapse, which is nesting plus a toggle.
+4. **`source`** — still the largest single gap, and still last.
+
+### And what is the host's, not whisker's (§4 of this document)
+
+From `app/studio.bas`, comments excluded: `qt.right_click` **8** — so a
+host must send a secondary press (the browser can; SDL can); keyboard
+**shortcuts**; the **clipboard**; file and modal **dialogs** (an overlay can
+draw one, a host must supply the file system); **more than one window**; a
+**draggable divider**. And **proportional text**: `/w0` has one monospace
+face, a browser has every font — which is D21's runtime half, a host that
+has more declaring it, still to design.
+
+### The one number
+
+**Twenty-one of twenty-five**, from fifteen in October. The record whisker
+would be handed is unchanged and still pure; the distance that remains is
+three partial widgets, one editor, and a host's worth of input.

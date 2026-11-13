@@ -151,7 +151,8 @@ component kinds and whisker has all five.
   read by a backend.
 - `docs/window-gap.md` — the current answer, measured against `window` and
   Studio on it: Studio's window is now a pure record that touches no toolkit,
-  and whisker answered 15 of the 25 words it uses — 16 since §5e's scrolling.
+  and whisker answered 15 of the 25 words it uses. **Recounted 2026-11-12: 21
+  of 25**, three in part (`memo`, `table`, `tree`), one not (`source`).
 - `docs/rv9-ask-2026-10-02.md` and `docs/rv9-answers-2026-10-02.md` — a defect
   reported to RV-9, what they did about it, and the stack finding that came
   back the other way. Question and answer kept separable, as before.

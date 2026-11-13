@@ -43,8 +43,9 @@ place. `docs/design.md` §6 records what would have to be true first. **Every
 whisker document written before 2026-10-22 that measures gBASIC measured its
 GTK tree** (last GTK commit `d997c94`): `gbasic-gap.md` and `studio-gap.md`
 are history. **`docs/window-gap.md` (2026-10-24) is the current distance**:
-Studio's window is a pure record, and whisker answers 15 of its 25 words —
-16 since §5e answered `scroll`.
+Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
+21 of its 25 words** (14 directly, 7 by composition), 3 in part (`memo`,
+`table`, `tree`), 1 not (`source`) — `window-gap.md` §7.
 
 ## Status
 
