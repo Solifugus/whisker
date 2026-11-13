@@ -81,26 +81,30 @@
  *
  * Hence: **the default is everything, and a host opts down.** A big host
  * configures nothing, which is §2.8's rule applied to the build -- do not
- * make every caller pay for the C5's limits.
+ * make every caller pay for the C5's limits. Three TIERS, by what the
+ * platform has (D21) -- where there is more, whisker does more; where there
+ * is less, it does less and refuses the rest by name:
  *
- *     -DWSK_MINIMAL     label, button, stacks, bands -- and whichever of
- *                       hit/rows/compose the caller names, since those
- *                       drop by linkage rather than by macro. Note that
- *                       `hit` assumes a pointing device and the C5 has
- *                       none (§2.6) -- its panel is write-only, so there
- *                       is no focus traversal and there will not be (D9).
- *     -DWSK_PANEL       a touch panel's worth: field, marks, scrolling and
- *                       nesting, without wrap and text items (D20) -- for a
- *                       P4 program that draws controls rather than prose
- *     -DWSK_NO_FIELD    drop the text field       (364 bytes)
- *     -DWSK_NO_MARKS    drop the corner marks     (288 bytes)
- *     -DWSK_NO_SCROLL   drop scrolling            (496 bytes)
- *     -DWSK_NO_NEST     drop nesting -- a stack inside a stack (1,780 bytes)
- *     -DWSK_NO_WRAP     drop wrapping onto new lines (2,044 bytes with text)
- *     -DWSK_NO_OVER     drop overlays -- a menu over the window (§5l)
- *     -DWSK_NO_CHECK    drop the checkbox (§5m)
- *     -DWSK_NO_INPUT    drop the toolkit: no events, nothing to press
- *     -DWSK_NO_TEXT     drop text items -- a paragraph as one widget (1,104 bytes)
+ *     (default)         DESKTOP, BROWSER: everything -- wrap, text items,
+ *                       the toolkit, editing, overlays, checks
+ *     -DWSK_PANEL       TOUCH PANEL, the P4: controls -- fields, marks,
+ *                       scrolling, nesting, the toolkit, overlays, checks --
+ *                       without wrap and text items (D20)
+ *     -DWSK_MINIMAL     READOUT, the C5: labels, buttons, stacks, bands, and
+ *                       whichever of hit/rows/compose the caller names, which
+ *                       drop by linkage. No input, ever (D6, D9).
+ *
+ * And each part by itself, for a program between the tiers:
+ *
+ *     -DWSK_NO_FIELD    the text field            -DWSK_NO_MARKS   the corner marks
+ *     -DWSK_NO_SCROLL   scrolling                 -DWSK_NO_NEST    stacks in stacks
+ *     -DWSK_NO_WRAP     wrapping onto new lines   -DWSK_NO_TEXT    text items
+ *     -DWSK_NO_OVER     overlays (menus)          -DWSK_NO_CHECK   the checkbox
+ *     -DWSK_NO_INPUT    the toolkit: events, focus, editing
+ *
+ * What each costs is MEASURED, not written here -- `src/run.sh --module`
+ * builds the tiers and the switches and prints the bytes, so the numbers
+ * cannot go stale in a comment, which the ones that used to be here had.
  *
  * A reduced build is not a different renderer. For the widgets it still has
  * it emits **byte-identical** documents, which `src/run.sh` checks by
@@ -2166,6 +2170,46 @@ static inline void wsk__marks(wsk_sink_t *s, const wsk_tree_t *t,
 #endif /* WSK_NO_MARKS */
 
 /*
+ * Every <text> whisker writes -- a label's, a field's, a check's, a run of
+ * words -- is this element: at x on a baseline, anchored at its start or at
+ * the <g>'s middle, in its own ink only when it differs from the <g>'s (a
+ * pressed button needs that: white on a pale fill is legible in a test and
+ * not on the glass, which is what the picture showed). One place, so the
+ * four cannot drift apart, and one copy in a binary rather than four.
+ */
+static inline void wsk__textel(wsk_sink_t *s, int start, int x, int base,
+                               unsigned int ink, const char *b, int n)
+{
+	wsk__s(s, start ? "<text text-anchor=\"start\" x=\"" : "<text x=\"");
+	wsk__n(s, x);
+	wsk__s(s, "\" y=\"");
+	wsk__n(s, base);
+	if (ink != WSK_INHERIT) {
+		wsk__s(s, "\" fill=\"");
+		wsk__col(s, ink);
+	}
+	wsk__s(s, "\">");
+	wsk__w(s, b, n);
+	wsk__s(s, "</text>");
+}
+
+/*
+ * Whether a line of text from x0 to x1 with its cell at `top` may be drawn:
+ * whole along the stack's axis (a scroll cuts a box, not a glyph -- §5e) and
+ * inside every viewport above it (§5f). Labels, fields, checks and runs all
+ * ask exactly this.
+ */
+static inline int wsk__shows(const wsk_tree_t *t, int x0, int x1, int top)
+{
+	if (t->axis == WSK_COL ? !wsk__whole(t, top, top + t->font)
+	                       : !wsk__whole(t, x0, x1)) return 0;
+#ifndef WSK_NO_NEST
+	if (!wsk__seen(t, x0, top, x1, top + t->font)) return 0;
+#endif
+	return 1;
+}
+
+/*
  * A label, centred in its widget, truncated to what fits.
  *
  * Truncated because there is no clipPath in the subset, so an overlong label
@@ -2186,31 +2230,12 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
 	if (room < 1) return;
 	if (chars > room) chars = room;
 	if (chars == 0) return;
-	/* the text's own cell along the axis, which is all a scroll can cut */
+	/* the text's own cell, which is all a scroll can cut */
 	{
-		int tw = wsk_text_w(t->font, chars);
-		int lo = (t->axis == WSK_COL) ? top : r.x + r.w / 2 - tw / 2;
-		if (!wsk__whole(t, lo, lo + ((t->axis == WSK_COL) ? t->font : tw))) return;
-#ifndef WSK_NO_NEST
-		if (!wsk__seen(t, r.x + r.w / 2 - tw / 2, top,
-		                  r.x + r.w / 2 - tw / 2 + tw, top + t->font)) return;
-#endif
+		int tw = wsk_text_w(t->font, chars), x0 = r.x + r.w / 2 - tw / 2;
+		if (!wsk__shows(t, x0, x0 + tw, top)) return;
 	}
-
-	wsk__s(s, "<text x=\"");
-	wsk__n(s, r.x + r.w / 2);
-	wsk__s(s, "\" y=\"");
-	wsk__n(s, wsk_baseline_of(top, t->font));
-	/* Only when it differs from the <g>, so the common case still costs
-	   nothing. A pressed button needs it: white on a pale fill is legible
-	   in a test and not on the glass, which is what the picture showed. */
-	if (w->ink != WSK_INHERIT) {
-		wsk__s(s, "\" fill=\"");
-		wsk__col(s, w->ink);
-	}
-	wsk__s(s, "\">");
-	wsk__w(s, txt, chars);
-	wsk__s(s, "</text>");
+	wsk__textel(s, 0, r.x + r.w / 2, wsk_baseline_of(top, t->font), w->ink, txt, chars);
 }
 
 
@@ -2286,25 +2311,9 @@ static inline void wsk__field(wsk_sink_t *s, const wsk_tree_t *t,
 	unsigned int ink = (w->ink != WSK_INHERIT) ? w->ink : t->ink;
 
 	/* the text and its caret, whole or not at all (§5e) */
-	if (t->axis == WSK_COL ? !wsk__whole(t, top, top + t->font)
-	                       : !wsk__whole(t, r.x, r.x + r.w)) return;
-#ifndef WSK_NO_NEST
-	if (!wsk__seen(t, r.x, top, r.x + r.w, top + t->font)) return;
-#endif
-
-	if (n > 0) {
-		wsk__s(s, "<text text-anchor=\"start\" x=\"");
-		wsk__n(s, x);
-		wsk__s(s, "\" y=\"");
-		wsk__n(s, wsk_baseline_of(top, t->font));
-		if (w->ink != WSK_INHERIT) {
-			wsk__s(s, "\" fill=\"");
-			wsk__col(s, w->ink);
-		}
-		wsk__s(s, "\">");
-		wsk__w(s, txt + from, n);
-		wsk__s(s, "</text>");
-	}
+	if (!wsk__shows(t, r.x, r.x + r.w, top)) return;
+	if (n > 0)
+		wsk__textel(s, 1, x, wsk_baseline_of(top, t->font), w->ink, txt + from, n);
 
 #ifndef WSK_NO_INPUT
 	if ((const void *)w == t->focus) show = 1;
@@ -2444,21 +2453,8 @@ static inline void wsk__run(const wsk_doc_t *d, const wsk_tree_t *t,
 	int top = a.y + (a.h - t->font) / 2;
 
 	if (a.y >= d->y1 || a.y + a.h <= d->y0) return;   /* not in these rows */
-	if (!wsk__whole(t, a.x, x1)) return;
-#ifndef WSK_NO_NEST
-	if (!wsk__seen(t, a.x, top, x1, top + t->font)) return;
-#endif
-	wsk__s(s, "<text text-anchor=\"start\" x=\"");
-	wsk__n(s, a.x);
-	wsk__s(s, "\" y=\"");
-	wsk__n(s, wsk_baseline_of(top, t->font));
-	if (w->ink != WSK_INHERIT) {
-		wsk__s(s, "\" fill=\"");
-		wsk__col(s, w->ink);
-	}
-	wsk__s(s, "\">");
-	wsk__w(s, x + from, to - from);
-	wsk__s(s, "</text>");
+	if (!wsk__shows(t, a.x, x1, top)) return;
+	wsk__textel(s, 1, a.x, wsk_baseline_of(top, t->font), w->ink, x + from, to - from);
 }
 
 static inline void wsk__runs(const wsk_doc_t *d, const wsk_tree_t *t, int i,
@@ -2569,11 +2565,7 @@ static inline void wsk__check(wsk_sink_t *s, const wsk_tree_t *t,
 	int b = t->font * 3 / 4, top = r.y + (r.h - t->font) / 2, len;
 	wsk_rect_t box;
 
-	if (t->axis == WSK_COL ? !wsk__whole(t, top, top + t->font)
-	                       : !wsk__whole(t, r.x, r.x + r.w)) return;
-#ifndef WSK_NO_NEST
-	if (!wsk__seen(t, r.x, top, r.x + r.w, top + t->font)) return;
-#endif
+	if (!wsk__shows(t, r.x, r.x + r.w, top)) return;
 	box.x = (short)(r.x + t->pad);
 	box.y = (short)(r.y + (r.h - b) / 2);
 	box.w = (short)b; box.h = (short)b;
@@ -2593,24 +2585,30 @@ static inline void wsk__check(wsk_sink_t *s, const wsk_tree_t *t,
 		wsk__box(s, 0, box, (w->fill != WSK_INHERIT) ? w->fill : t->accent);
 	}
 	len = wsk__len(w->text);
-	if (len > 0) {
-		wsk__s(s, "<text text-anchor=\"start\" x=\"");
-		wsk__n(s, r.x + t->pad + b + b / 2);
-		wsk__s(s, "\" y=\"");
-		wsk__n(s, wsk_baseline_of(top, t->font));
-		if (w->ink != WSK_INHERIT) {
-			wsk__s(s, "\" fill=\"");
-			wsk__col(s, w->ink);
-		}
-		wsk__s(s, "\">");
-		wsk__w(s, w->text, len);
-		wsk__s(s, "</text>");
-	}
+	if (len > 0)
+		wsk__textel(s, 1, r.x + t->pad + b + b / 2, wsk_baseline_of(top, t->font),
+		            w->ink, w->text, len);
 #ifndef WSK_NO_INPUT
 	if ((const void *)w == t->focus) wsk__ring(s, t, w, r);
 #endif
 }
 #endif
+
+/*
+ * A stack drawn in a font or ink of its own gets a <g> saying so, and one
+ * that matches the document pays nothing -- for a composite's stack and for
+ * an overlay alike. Returns whether it opened one, which the caller closes.
+ */
+static inline int wsk__look(wsk_sink_t *s, const wsk_doc_t *d, const wsk_tree_t *t)
+{
+	if (t->font == d->font && t->ink == d->ink) return 0;
+	wsk__s(s, "<g font-size=\"");
+	wsk__n(s, t->font);
+	wsk__s(s, "\" fill=\"");
+	wsk__col(s, t->ink);
+	wsk__s(s, "\">");
+	return 1;
+}
 
 /*
  * One stack's widgets into a document, clipped to its rows -- and, for a
@@ -2698,14 +2696,7 @@ static inline void wsk__overlay(const wsk_doc_t *d, const wsk_tree_t *t,
 	v.y = (short)((t->oy > d->y0) ? t->oy : d->y0);
 	v.h = (short)(((t->oy + t->oh < d->y1) ? t->oy + t->oh : d->y1) - v.y);
 	if (v.h <= 0) return;
-	g = (c.font != d->font || c.ink != d->ink);
-	if (g) {
-		wsk__s(s, "<g font-size=\"");
-		wsk__n(s, c.font);
-		wsk__s(s, "\" fill=\"");
-		wsk__col(s, c.ink);
-		wsk__s(s, "\">");
-	}
+	g = wsk__look(s, d, &c);
 	wsk__box(s, 0, v, c.bg);
 	wsk__items(d, &c, s);
 	if (g) wsk__s(s, "</g>");
@@ -2731,14 +2722,7 @@ static inline int wsk_part(const wsk_doc_t *d, const wsk_tree_t *t,
 	if (t->w != d->w || t->h != d->h) return WSK_E_DEVICE;
 	{ int e = wsk_check(t, 0); if (e != WSK_OK) return e; }
 
-	nested = (t->font != d->font || t->ink != d->ink);
-	if (nested) {
-		wsk__s(s, "<g font-size=\"");
-		wsk__n(s, t->font);
-		wsk__s(s, "\" fill=\"");
-		wsk__col(s, t->ink);
-		wsk__s(s, "\">");
-	}
+	nested = wsk__look(s, d, t);
 
 	wsk__items(d, t, s);
 

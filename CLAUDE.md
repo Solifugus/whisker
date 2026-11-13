@@ -229,7 +229,7 @@ layout is compiled in cannot change without a reflash).
 
 ## Read before working
 
-1. `docs/decisions.md` — twenty-one ratified outcomes (D0–D20), one screen. **First**, so that
+1. `docs/decisions.md` — twenty-two ratified outcomes (D0–D21), one screen. **First**, so that
    the design's §4 arguments read as history rather than as open questions.
    Then `docs/roadmap.md`, which is what is left and what would let us stop.
 2. `docs/design.md` — all of it. It is the whole project, and it has been
