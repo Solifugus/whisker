@@ -2328,6 +2328,110 @@ the page replaces pixels and so does not yet use the ids to patch elements
 (§9.7's optimisation); and nothing here has been tried from a second machine,
 though the host listens on every interface for exactly that.
 
+
+---
+
+## 5l. Iteration 12 — overlays: a menu over the window
+
+**Written 2026-11-12, before any code.** `window-gap.md` §3 named this the
+one item that touches the renderer's model rather than adding a branch to
+it: `menu`, `popup`, `item` and `choice` all draw **on top of** other
+widgets. Matthew: *"let's move ahead"*, and *"ensure whisker is as
+maintenance free as reasonably possible"* — so the smallest model that
+answers it, and no more.
+
+### The model
+
+**An overlay is a tree** — any tree in `nest`, laid out like any other —
+**opened over the root at a place**: `root.over` is its index (or
+`WSK_NONE`), and `root.ox, oy, ow, oh` is where it sits. One at a time; a
+submenu is a later question.
+
+1. **Placement** is layer 1 and pure: `wsk_over_open(root, sub, anchor)`
+   sizes the overlay by its content — its widest item and its items' sum,
+   with padding, never narrower than the anchor — and puts it **below the
+   anchor**; if there is no room below, **above**; and moved left as far as
+   it must to stay on the screen. Taller than the screen is refused,
+   `WSK_E_FIT` (D10) — unless the overlay's own tree scrolls, in which case
+   it is given the screen's height and scrolls.
+2. **Drawing**: in the same document, **after** the root, so it is on top;
+   with a **backing of its own** — the overlay's `bg`, under its items —
+   because, unlike a stack, it lies over widgets rather than over the scene.
+   A band repaint draws whatever of both lies in its rows, in that order, so
+   repainting under an open menu stays right (§3's question, answered by
+   the order of the document, which the board's band rule already keeps).
+3. **Hit**: an open overlay is asked **first**. A point inside its
+   rectangle is answered by it — a widget, or nothing in its padding — and
+   **never falls through** to the widget beneath. Ids and paths find widgets
+   in it as anywhere else (D19).
+4. **The toolkit** (§5i): `wsk_ui_open(ui, sub, "anchor")` opens one under a
+   widget. While it is open, a press **outside** it closes it, is a
+   **`WSK_NOTE_CLOSE`**, and goes no further — the tap that dismisses a menu
+   must not also press what is under it. A click on a button **in** it is
+   the CLICK, and closes it (a menu's choice is made once). Escape
+   (`WSK_KEY_ESCAPE`) closes it.
+5. **What it is not**: a `choice` widget (a drop-down holding a selection)
+   is not built here — it is a button whose click opens an overlay and whose
+   label the program sets from the CLICK, which is program glue until a
+   caller needs it to be whisker's.
+
+### Profile
+
+`WSK_NO_OVER`, in `WSK_MINIMAL`; `WSK_PANEL` keeps it — menus are a touch
+panel's business too.
+
+### Done criteria
+
+1. Every earlier check and golden unchanged; no overlay draws as before.
+2. Placement by hand: below, flipped above near the bottom, moved in from
+   the right edge, too tall refused and the scrolling control accepted.
+3. Document order: the overlay's backing and items come after the root's.
+4. Hit: an item in it; its padding is nothing and **not** the widget beneath
+   (the control); outside it, the widget beneath.
+5. Toolkit: open, choose (CLICK then CLOSE, closed, rows); dismiss outside
+   (CLOSE, and no click on the widget beneath — the control); press an item
+   and slide off (no click, still open); Escape.
+6. At the pixels: opening and closing, each repainted in its rows alone,
+   equal a full redraw; closing leaves exactly the screen before opening.
+7. A program a person can try: `edit.c`'s Save opens a menu, in SDL and in
+   the browser, unchanged hosts.
+
+
+### What it came to, 2026-11-12
+
+Built the same evening; criteria 1–7 met. **433 checks** in `src/run.sh
+--module` (407 before): 21 in the suite, 5 at the pixels; the browser check
+grew by 2. Every output of the commit before — 26 files — byte-identical.
+
+- **Placement**, by hand: under File, 0,40 106x108 — as wide as its anchor,
+  as deep as its items; from a small anchor low on the right, flipped above
+  and moved in from the edge; a menu taller than the screen refused, and the
+  same menu, scrolling, given the screen's height.
+- **The open question answered**: `window-gap.md` §3 asked whether a band
+  repaint under an open menu stays right. It does, by the order of the
+  document alone — the overlay after the root, on its own backing — and the
+  board's band rule needs nothing new: at the pixels, a menu opened and then
+  closed, each repainted in its own rows, equals a full redraw each time, and
+  **closing leaves exactly the screen there was before it opened**.
+- **Nothing falls through**: a point in the menu's padding is nothing, where
+  with it closed the button beneath answers (the control); a press off the
+  menu closes it and is no click on what is under it.
+- **A person can try it**: `edit.c`'s Save opens "Save now / Save as... /
+  Discard" — in SDL and in the browser, the hosts unchanged but for Escape,
+  which the page now sends (`WH_KEY_ESCAPE`) and which closes a menu. Headless
+  Chrome clicked Save, chose "Save now", and the canvas still equalled a full
+  redraw afterwards (`web_menu.png`).
+
+**§7's question**: 892 bytes to a toolkit program (`module_nest.c` against
+`-DWSK_NO_OVER`); a small panel's default build grew about 800, to 9,640, and
+`WSK_PANEL`'s to 7,540, since every document and every hit now asks whether an
+overlay is open. `WSK_MINIMAL` is 28 bytes larger, the root's new fields being
+set; it draws byte for byte as before. Out of `WSK_MINIMAL`, in `WSK_PANEL`.
+
+**Not built, and named**: `choice` as a widget (a program's glue for now); a
+submenu (one overlay at a time); and a focus model for menus from the
+keyboard (arrows through items) — that waits for focus on buttons.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

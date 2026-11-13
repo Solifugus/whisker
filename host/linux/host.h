@@ -42,7 +42,8 @@ enum {
    whisker to know them, and nothing here is a widget. */
 enum {
 	WH_KEY_LEFT = 1, WH_KEY_RIGHT, WH_KEY_HOME, WH_KEY_END,
-	WH_KEY_BACKSPACE, WH_KEY_DELETE, WH_KEY_ENTER, WH_KEY_TAB, WH_KEY_BACKTAB
+	WH_KEY_BACKSPACE, WH_KEY_DELETE, WH_KEY_ENTER, WH_KEY_TAB, WH_KEY_BACKTAB,
+	WH_KEY_ESCAPE            /* the web host sends it; SDL's Escape quits */
 };
 
 typedef struct {

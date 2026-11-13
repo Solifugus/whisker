@@ -2192,6 +2192,119 @@ int main(void)
 #undef TAP
 	}
 
+	/* ---- §5l. overlays: a menu over the window ---- */
+	printf("\n-- §5l  overlays\n");
+	{
+		static const wsk_widget_t TOPO[] = {
+			{ .kind = WSK_STACK,  .id = "bar",   .sub = 0, .size = 40 },
+			{ .kind = WSK_BUTTON, .id = "under", .text = "Under", .weight = 1 },
+		};
+		static const wsk_widget_t BARO[] = {
+			{ .kind = WSK_BUTTON, .id = "file", .text = "File", .weight = 1 },
+			{ .kind = WSK_BUTTON, .id = "edit", .text = "Edit", .weight = 1 },
+			{ .kind = WSK_BUTTON, .id = "view", .text = "View", .weight = 1 },
+		};
+		static const wsk_widget_t MENU1[] = {
+			{ .kind = WSK_BUTTON, .id = "open", .text = "Open", .size = 32 },
+			{ .kind = WSK_BUTTON, .id = "save", .text = "Save", .size = 32 },
+			{ .kind = WSK_BUTTON, .id = "quit", .text = "Quit", .size = 32 },
+		};
+		static wsk_widget_t tall[12];
+		wsk_tree_t w, k[4];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char od[4096];
+		int n, y0 = 0, y1 = 0, which = -2;
+		wsk_rect_t a = { 300, 250, 20, 40 };
+
+		for (int i = 0; i < 12; i++) {
+			memset(&tall[i], 0, sizeof tall[i]);
+			tall[i].kind = WSK_BUTTON; tall[i].size = 32;
+			snprintf(tall[i].id, WSK_ID_MAX, "m%d", i);
+			snprintf(tall[i].text, WSK_TEXT_MAX, "Item %d", i);
+		}
+		wsk_init(&w, WSK_COL, 320, 300);
+		w.pad = 0; w.gap = 0; w.ids = 1; w.item = TOPO; w.n = 2; w.nest = k; w.nests = 4;
+		wsk_nest_init(&k[0], &w, WSK_ROW); k[0].pad = 0; k[0].gap = 0; k[0].item = BARO; k[0].n = 3;
+		wsk_nest_init(&k[1], &w, WSK_COL); k[1].pad = 4; k[1].gap = 2; k[1].item = MENU1; k[1].n = 3;
+		k[1].bg = 0x303840u;
+		wsk_nest_init(&k[2], &w, WSK_COL); k[2].pad = 4; k[2].gap = 2; k[2].item = tall; k[2].n = 12;
+		k[3] = k[2]; k[3].overflow = WSK_SCROLL;
+		ok(wsk_check(&w, 0) == WSK_OK && w.over == WSK_NONE, "a window with nothing open");
+
+		/* Rule 1, by hand. File is 0..106 of the bar (three weighted
+		   buttons in 320). The menu's content is its widest button, 4 + 32
+		   + 4 = 40, and its padding: 48 -- narrower than File, so File's
+		   106 wide; and three of 32, two gaps and padding: 108 deep. */
+		ok(wsk_over_open(&w, 1, rect_of(&w, "file")) == WSK_OK &&
+		   w.ox == 0 && w.oy == 40 && w.ow == 106 && w.oh == 108,
+		   "under File: 0,40 106x108 -- as wide as its anchor, as deep as its items");
+		ok(wsk_check(&w, 0) == WSK_OK, "and the tree with it open is accepted");
+		ok(wsk_over_open(&w, 1, a) == WSK_OK && w.ox == 272 && w.oy == 142,
+		   "from a small anchor low on the right: above it (142), and in from the edge (272)");
+		ok(wsk_over_open(&w, 2, rect_of(&w, "file")) == WSK_E_FIT,
+		   "a menu taller than the screen is refused, WSK_E_FIT");
+		ok(wsk_over_open(&w, 3, rect_of(&w, "file")) == WSK_OK && w.oh == 300 && w.oy == 0,
+		   "CONTROL: the same menu, scrolling, is given the screen's height");
+		k[3].scroll = 0;
+		wsk_over_open(&w, 1, rect_of(&w, "file"));
+
+		/* Rule 2: drawn after the root, on its own backing. */
+		render_into(&w, od, sizeof od, 4096);
+		ok(has(od, "<rect y=\"40\" width=\"106\" height=\"108\" fill=\"#303840\"/>"),
+		   "the open menu has a backing of its own, the size of the menu");
+		ok(strstr(od, "fill=\"#303840\"") > strstr(od, "id=\"under\"") &&
+		   strstr(od, "id=\"open\"") > strstr(od, "fill=\"#303840\""),
+		   "and it and its items come after the root's widgets: on top");
+
+		/* Rule 3: hit asks it first, and nothing falls through. */
+		ok(wsk_hit_id(&w, 10, 60) != 0 && strcmp(wsk_hit_id(&w, 10, 60), "open") == 0,
+		   "a point on Open, over Under, is Open");
+		ok(wsk_hit_id(&w, 2, 42) == 0, "a point in the menu's padding is nothing...");
+		wsk_over_close(&w);
+		ok(wsk_hit_id(&w, 2, 42) != 0 && strcmp(wsk_hit_id(&w, 2, 42), "under") == 0,
+		   "CONTROL: ...where, with it closed, Under is");
+		wsk_over_open(&w, 1, rect_of(&w, "file"));
+		ok(strcmp(wsk_hit_id(&w, 200, 200), "under") == 0, "and off the menu, Under is Under");
+		ok(rect_of(&w, "save").y == 78, "an overlay's ids are found as any are: save at 78");
+		wsk_over_close(&w);
+
+		/* Rule 4, the toolkit. */
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+#define FEED(K, X, Y) (ev.kind = (K), ev.x = (X), ev.y = (Y), \
+                       n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+		ok(wsk_ui_open(&ui, 1, "file", &y0, &y1) == WSK_OK && w.over == 1 && y0 == 40 && y1 == 152,
+		   "wsk_ui_open: the menu under File, and its rows to repaint: 40..152");
+		FEED(WSK_EV_DOWN, 50, 82);
+		FEED(WSK_EV_UP, 50, 82);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[1] && nt[0].item == 1 &&
+		   nt[1].kind == WSK_NOTE_CLOSE && w.over == WSK_NONE && y0 == 40 && y1 == 152,
+		   "choosing Save: a CLICK on it, then CLOSE -- the menu is gone and its rows repaint");
+		wsk_ui_open(&ui, 1, "file", &y0, &y1);
+		FEED(WSK_EV_DOWN, 200, 200);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLOSE && w.over == WSK_NONE && w.held == 0,
+		   "a press off the menu closes it, and holds nothing beneath");
+		FEED(WSK_EV_UP, 200, 200);
+		ok(n == 0, "CONTROL: and its release is no click on Under");
+		wsk_ui_open(&ui, 1, "file", &y0, &y1);
+		FEED(WSK_EV_DOWN, 50, 60);
+		FEED(WSK_EV_MOVE, 50, 200);
+		FEED(WSK_EV_UP, 50, 200);
+		ok(n == 0 && w.over == 1, "pressing Open and sliding off: no click, and the menu stays");
+		ev.key = WSK_KEY_ESCAPE;
+		FEED(WSK_EV_KEY, 0, 0);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLOSE && w.over == WSK_NONE, "Escape closes it");
+#undef FEED
+
+		/* A place set by hand is checked like everything else. */
+		w.over = 1; w.ox = 300; w.oy = 40; w.ow = 106; w.oh = 108;
+		ok(wsk_check(&w, &which) == WSK_E_KIND && which == -1,
+		   "an overlay placed off the screen by hand is refused");
+		w.over = WSK_NONE;
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

@@ -79,7 +79,7 @@ static const char PAGE[] =
 "c.addEventListener('pointermove',e=>{if(e.buttons)send('M '+pt(e));});\n"
 "c.addEventListener('pointerup',e=>send('U '+pt(e)));\n"
 "c.addEventListener('wheel',e=>{e.preventDefault();send('W '+pt(e)+' '+Math.round(e.deltaY));},{passive:false});\n"
-"const KEYS={ArrowLeft:1,ArrowRight:2,Home:3,End:4,Backspace:5,Delete:6,Enter:7};\n"
+"const KEYS={ArrowLeft:1,ArrowRight:2,Home:3,End:4,Backspace:5,Delete:6,Enter:7,Escape:10};\n"
 "c.addEventListener('keydown',e=>{\n"
 "  let k=KEYS[e.key]; if(e.key==='Tab')k=e.shiftKey?9:8;\n"
 "  if(k){e.preventDefault();send('K '+k);return;}\n"

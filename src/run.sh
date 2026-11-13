@@ -2,7 +2,7 @@
 #
 # Every done-criterion in design.md §5 (the renderer), §5b (hit),
 # §5c (composition), §5d (input), §5e (scrolling), §5f (nesting), §5g (wrap), §5h (text items), §5i (the toolkit)
-# and §5j (editing).
+# §5j (editing) and §5l (overlays).
 #
 #   ./run.sh              the suite, the picture, and the XML check
 #   ./run.sh --module     and the module build, which is criterion 7
@@ -111,6 +111,7 @@ for SRC in module_shape.c module_compose.c module_input.c module_stat.c module_f
 	# Named, not "whichever came last": this has been the wrong number twice,
 	# both times because a module was added to the loop after it.
 	[[ "$SRC" == module_shape.c ]] && FULL="$SIZE"
+	[[ "$SRC" == module_nest.c ]] && NEST="$SIZE"
 done
 link_check module_shape.c "module_shape.c -DWSK_NO_NEST" -DWSK_NO_NEST
 NONEST="$SIZE"
@@ -118,6 +119,8 @@ link_check module_shape.c "module_shape.c -DWSK_NO_WRAP" -DWSK_NO_WRAP
 NOWRAP="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_TEXT" -DWSK_NO_TEXT
 NOTEXT="$SIZE"
+link_check module_nest.c "module_nest.c -DWSK_NO_OVER" -DWSK_NO_OVER
+NOOVER="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_PANEL" -DWSK_PANEL
 PANEL="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
@@ -139,6 +142,7 @@ echo "      deep, its panels static and nested by index (§5f). Nesting costs"
 echo "      module_shape.c $(( FULL - NONEST )) bytes, in the default profile only."
 echo "      Wrapping costs it $(( FULL - NOWRAP )) (§5g), likewise."
 echo "      Text items cost it $(( FULL - NOTEXT )) (§5h), likewise."
+echo "      Overlays cost module_nest.c, a toolkit program, $(( NEST - NOOVER )) (§5l)."
 echo "      WSK_PANEL, a touch panel's worth without wrap or text (D20): $PANEL."
 echo "      module_keys.c is wkeys: a field and an on-screen keyboard on the"
 echo "      toolkit, two layers so a screen of keys fits SRC_MAX (§5j)."

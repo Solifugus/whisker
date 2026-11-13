@@ -8,7 +8,9 @@
  * design.md §5j. Three fields in a form and a list beside them that scrolls.
  * Click a field and type; Tab and Shift-Tab move between the fields; the
  * arrows, Home, End, Backspace and Delete edit; Enter prints the field. Drag
- * the list, or use the wheel over it. Escape quits.
+ * the list, or use the wheel over it. Save opens a menu (§5l): choose from
+ * it, or tap anywhere else to close it. Escape quits -- or, in a browser,
+ * closes the menu.
  *
  * Compare input.c, which is §5d's loop: there the APPLICATION found the
  * key, appended the character and worked out the rows. Here every event goes
@@ -42,11 +44,17 @@ static const wsk_widget_t FORM[] = {
 	{ .kind = WSK_BUTTON, .id = "save", .text = "Save" },
 };
 
+static const wsk_widget_t SAVEMENU[] = {
+	{ .kind = WSK_BUTTON, .id = "save-now", .text = "Save now", .size = 44 },
+	{ .kind = WSK_BUTTON, .id = "save-as",  .text = "Save as...", .size = 44 },
+	{ .kind = WSK_BUTTON, .id = "discard",  .text = "Discard", .size = 44 },
+};
+
 static wsk_widget_t items[30];
 static char name[40], city[40], note[80];
 static const char *strs[1] = { "Tab between fields, Enter prints a field, Esc quits" };
 static wsk_buf_t buf[3];
-static wsk_tree_t win, nest[3];
+static wsk_tree_t win, nest[4];
 
 static void to_window(wsk_sink_t *s, const char *b, int n) { (void)s; wh_write(b, n); }
 
@@ -73,7 +81,7 @@ int main(int argc, char **argv)
 	wsk_init(&win, WSK_COL, w, h);
 	win.pad = 0; win.gap = 0; win.font = 20; win.ids = 1;
 	win.item = WIN; win.n = 3;
-	win.nest = nest; win.nests = 3;
+	win.nest = nest; win.nests = 4;
 	win.buf = buf; win.bufs = 3;
 	win.str = strs; win.strs = 1;
 	wsk_nest_init(&nest[0], &win, WSK_ROW);
@@ -83,6 +91,9 @@ int main(int argc, char **argv)
 	wsk_nest_init(&nest[2], &win, WSK_COL);
 	nest[2].pad = 0; nest[2].gap = 4; nest[2].item = items; nest[2].n = 30;
 	nest[2].overflow = WSK_SCROLL;
+	wsk_nest_init(&nest[3], &win, WSK_COL);    /* the menu Save opens */
+	nest[3].pad = 6; nest[3].gap = 4; nest[3].bg = 0x2a3a4au;
+	nest[3].item = SAVEMENU; nest[3].n = 3;
 
 	if ((e = wsk_check_in(&win, &which, &in)) != WSK_OK) {
 		fprintf(stderr, "edit: the window was refused, %d at %s\n", e,
@@ -122,8 +133,18 @@ int main(int argc, char **argv)
 		n = wsk_feed(&ui, &ev, note_, 4, &y0, &y1);
 		for (int i = 0; i < n && i < 4; i++) {
 			const wsk_note_t *t = &note_[i];
-			if (t->kind == WSK_NOTE_CLICK)
+			if (t->kind == WSK_NOTE_CLICK) {
+				int m0, m1;
 				printf("click  %s\n", t->in->item[t->item].id);
+				/* Save opens its menu; the menu's own buttons close it */
+				if (strcmp(t->in->item[t->item].id, "save") == 0 &&
+				    wsk_ui_open(&ui, 3, "save", &m0, &m1) == WSK_OK) {
+					if (y1 <= y0) { y0 = m0; y1 = m1; }
+					if (m0 < y0) y0 = m0;
+					if (m1 > y1) y1 = m1;
+				}
+			} else if (t->kind == WSK_NOTE_CLOSE)
+				printf("close  the menu\n");
 			else if (t->kind == WSK_NOTE_ENTER)
 				printf("enter  %s = \"%s\"\n", t->in->item[t->item].id,
 				       buf[t->in->item[t->item].sub].b);

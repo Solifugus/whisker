@@ -48,7 +48,7 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
 
 ## Status
 
-**Eleven iterations are built, and two of them have now run on the C5.**
+**Twelve iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -128,11 +128,18 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   sets `letter-spacing` so its monospace advance is whisker's half-size.
   `WH_EXPOSE` joined the contract. `host/web/run.sh` serves on :8090.
 
-`src/run.sh --module` is the whole of it: **407 checks**, the pixels through
-RV-9's own rasteriser, fourteen module builds with the double-link, and a person
+- **§5l — overlays** (2026-11-12). A menu is any tree in `nest` opened over
+  the root (`root.over`, placed by `wsk_over_open` from an anchor: below,
+  else above, kept on screen). Drawn after the root on its own backing; hit
+  first; nothing falls through it. Toolkit: `wsk_ui_open`; a press off it
+  closes it (CLOSE, no click beneath); a button in it is CLICK then CLOSE;
+  Escape closes. Band repaints under an open menu are exact. `WSK_NO_OVER`.
+
+`src/run.sh --module` is the whole of it: **433 checks**, the pixels through
+RV-9's own rasteriser, sixteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 26, including the
 typing loop end to end and the real keyboard path; `--input` is the same loop with a person in it.
-`host/web/run.sh --test` adds 12 over HTTP and 6 in headless Chrome.
+`host/web/run.sh --test` adds 12 over HTTP and 8 in headless Chrome.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

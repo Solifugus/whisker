@@ -1108,6 +1108,74 @@ int main(void)
 		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
 	}
 
+	/*
+	 * Overlays, at the pixels (design.md §5l): a menu opened and closed, each
+	 * repainted in its own rows alone, against a full redraw -- and closing
+	 * must leave exactly the screen there was before it opened. This is the
+	 * question window-gap.md left open: whether a band repaint under an open
+	 * menu stays right.
+	 */
+	{
+		static const wsk_widget_t TOPO[] = {
+			{ .kind = WSK_STACK,  .id = "bar",   .sub = 0, .size = 40 },
+			{ .kind = WSK_LABEL,  .id = "body",  .text = "under the menu", .weight = 1 },
+		};
+		static const wsk_widget_t MENU1[] = {
+			{ .kind = WSK_BUTTON, .id = "open", .text = "Open", .size = 28 },
+			{ .kind = WSK_BUTTON, .id = "save", .text = "Save", .size = 28 },
+			{ .kind = WSK_BUTTON, .id = "quit", .text = "Quit", .size = 28 },
+		};
+		static uint16_t closed[PW * PH], want[PW * PH];
+		wsk_tree_t w, k[2];
+		wsk_ui_t ui;
+		wsk_sink_t s;
+		uint32_t v;
+		int y0, y1;
+
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 0; w.gap = 0; w.bg = 0x10203au; w.item = TOPO; w.n = 2; w.nest = k; w.nests = 2;
+		wsk_nest_init(&k[0], &w, WSK_ROW); k[0].pad = 4; k[0].gap = 4;
+		k[0].item = TOOLBAR; k[0].n = 3;
+		wsk_nest_init(&k[1], &w, WSK_COL); k[1].pad = 4; k[1].gap = 2; k[1].item = MENU1; k[1].n = 3;
+		k[1].bg = 0x405060u;
+		wsk_ui_init(&ui, &w);
+		s.put = to_window; s.ctx = &dev;
+
+		printf("\n  overlays (§5l)\n");
+#define DRAW_ALL() do { v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); \
+                        s.len = 0; wsk_render(&w, &s, 4096); } while (0)
+#define DRAW_ROWS() do { v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu); \
+                         svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); s.len = 0; \
+                         wsk_render_rows(&w, y0, y1, &s, 4096); } while (0)
+		DRAW_ALL();
+		memcpy(closed, screen, sizeof screen);
+
+		ok(wsk_ui_open(&ui, 1, "stop", &y0, &y1) == WSK_OK, "a menu opens under STOP");
+		DRAW_ROWS();
+		memcpy(want, screen, sizeof screen);
+		shot("overlay_open.ppm");
+		DRAW_ALL();
+		ok(memcmp(screen, want, sizeof screen) == 0,
+		   "opened in its rows alone, the screen is exactly a full redraw with it open");
+		ok(memcmp(screen, closed, sizeof screen) != 0, "CONTROL: and differs from the screen without it");
+
+		{
+			wsk_note_t nt[2];
+			wsk_event_t ev;
+			memset(&ev, 0, sizeof ev);
+			ev.kind = WSK_EV_DOWN; ev.x = 5; ev.y = PH - 5;   /* off the menu */
+			wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+		}
+		ok(w.over == WSK_NONE, "a press off it closes it");
+		DRAW_ROWS();
+		ok(memcmp(screen, closed, sizeof screen) == 0,
+		   "closed in its rows alone, the screen is exactly what it was before it opened");
+#undef DRAW_ALL
+#undef DRAW_ROWS
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

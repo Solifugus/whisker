@@ -3,6 +3,13 @@
 > **Later the same day: `scroll` is answered** (design §5e) — a stack with
 > `overflow = WSK_SCROLL`. **Sixteen of twenty-five.** The counts below are
 > kept as measured; this note and the `scroll` row are the only changes.
+>
+> **And since (2026-11-11/12):** nesting (§5f), wrap (§5g), text items
+> (§5h), the toolkit (§5i), editing and focus (§5j) and overlays (§5l). By
+> this table's own words, `memo` as a viewer (wrap + text + scroll) and the
+> overlay words `menu`, `popup`, `item` now have answers, and `choice` is a
+> button that opens one; **about twenty of twenty-five**, counted loosely,
+> before a recount against Studio's record is done properly.
 
 **Written 2026-10-24**, against gBASIC at `8e804d5` and gBASIC Studio at
 `fb14cba` (2026-10-23). It replaces `gbasic-gap.md` and `studio-gap.md` as the

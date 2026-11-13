@@ -111,6 +111,19 @@ try {
   ok(said.includes('focus  city'), 'the click arrived as a pointer event and focused the field');
   await snap('web_typed.png');
 
+  // An overlay (§5l): Save opens a menu over the window; choose from it.
+  // Save is the form's last button, 332..396; the menu hangs below it.
+  await click(100, 360);
+  await settle();
+  await sleep(200);
+  ok(said.includes('click  save'), 'Save, clicked in the browser');
+  await snap('web_menu.png');
+  await click(100, 420);              // "Save now", the menu's first item
+  await settle();
+  await sleep(300);
+  ok(said.includes('click  save-now') && said.includes('close  the menu'),
+     'and its menu: "Save now" chosen, the menu closed');
+
   // The banded rule: everything above was clipped repaints. Keep that canvas,
   // ask the program to draw it all again, and compare.
   await js('window.__a = whisker.canvas.getContext("2d").getImageData(0,0,1024,600).data.slice(); true');
