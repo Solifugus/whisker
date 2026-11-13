@@ -2519,6 +2519,92 @@ before — 27 files — byte-identical.
 default build is now **10,540**, `WSK_PANEL`'s **8,404**, and `WSK_MINIMAL`'s
 3,608 — 32 more than the iteration before, the root's new fields being set.
 
+
+---
+
+## 5n. Iteration 14 — table columns: the header decides
+
+**Written 2026-11-12, before any code**, Matthew having said go and gone to
+bed. `window-gap.md` §7 put `table`'s columns first of what Studio still
+lacks: rows, selection and length were answered (§5e, §5m), and what was
+missing is that a table's cells line up.
+
+### The decision: columns belong to the header
+
+Rows are separate trees (§5f), so each lays its cells out by itself, and
+cells sized by their content would not line up. Two ways to make them:
+measure every row and take each column's widest — which a sliced table
+(§5e), holding only the rows in view, would answer differently as it
+scrolled, so columns would jump — or **let the header decide**, which is
+what a table is: the header's cells are sized by `size` and `weight` as any
+row's are, and **every row that names the header takes each cell's
+position and width from the header's cell of the same number.**
+
+1. **`head` on a stack** names a tree in `nest` — the header. Every row
+   (a `WSK_ROW` stack) inside that stack, at its first level, lays out its
+   cells at the header's columns, measured across the row's own area. The
+   header may be anywhere — above a scrolling body, typically, so that it
+   does not scroll away.
+2. **A row with more cells than the header has columns is refused**,
+   `WSK_E_FIT`, naming the first cell without a column (D10).
+3. **Cells read as a table**: a stack with `talign = WSK_START` draws its
+   labels' and buttons' text from the start of the cell, not centred.
+4. **A row is chosen as an item is**: a selecting body (§5m) draws its chosen
+   row's backing in `selfill`.
+
+Not here: sorting (a header cell's CLICK is the program's to act on), a
+draggable column edge (a host's divider, `window-gap.md` §4), and cells
+spanning columns.
+
+### Done criteria
+
+1. Every earlier check and golden unchanged.
+2. Three rows under a header of a weighted, a fixed and a weighted column:
+   every cell's rectangle, by hand, under its header cell — and the same
+   rows without `head`, misaligned (the control).
+3. The header above a scrolling body: scrolled, the cells still line up.
+4. The refusal, beside its control.
+5. Start-aligned text, by the bytes.
+6. At the pixels: a table, a selected row, and a person looks.
+7. `edit.c`'s list becomes a table — Name and Size, under a header — in SDL
+   and the browser.
+
+
+### What it came to, 2026-11-12 (overnight)
+
+Built the same night; criteria 1–7 met. **472 checks** in `src/run.sh
+--module` (457 before): 12 in the suite, 4 at the pixels. Every output of the
+commit before — 28 files — byte-identical. Host checks and browser checks
+pass.
+
+- **Columns by hand**: a header of a weighted, a fixed and a weighted column
+  over six rows — every cell under its header cell, at 0/202, 202/80,
+  282/118 — and the **control**: the same rows without `head` lay their
+  cells out by their own text, and the second cell lands at 72 in one row and
+  8 in the next.
+- **Scrolled**, row 1 at the top of the body, its cells still in their
+  columns: the header is laid out across each row's own area, so a scroll
+  moves rows and never columns.
+- **Selection through a cell**: the toolkit now finds the deepest selecting
+  stack under the finger, so a tap on any cell of a row chooses the row — a
+  CLICK on the cell and a SELECT on the body. §5m's tests still pass on the
+  same code.
+- **At the pixels** (`table_chosen.ppm`): a file list, Name / Size / Date,
+  alternate rows shaded, the fifth chosen by a tap on its size cell; the old
+  choice and the new repainted in their rows equal a full redraw. A person
+  should look.
+- **`edit.c`'s list is a table** — a header that stays, a body that scrolls
+  and chooses — in SDL and the browser; headless Chrome chose a row.
+
+**§7's question**: a small panel's default build is 10,516, `WSK_PANEL`'s
+8,520. **`WSK_MINIMAL` grew 88 bytes, to 3,720**: start-aligned text is in
+every tier — a C5 readout of values in columns can use it — and the root sets
+three more fields. Measured and recorded, not hidden; if the C5 ever needs
+those bytes, `talign` is the one to put behind a switch.
+
+**Not built**: sorting (a header click is the program's to act on), a
+draggable column edge (a host divider), cells spanning columns.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

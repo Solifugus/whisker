@@ -2417,6 +2417,108 @@ int main(void)
 #undef KEY
 	}
 
+	/* ---- §5n. table columns: the header decides ---- */
+	printf("\n-- §5n  tables\n");
+	{
+		static const wsk_widget_t TOPT[] = {
+			{ .kind = WSK_STACK, .id = "hdr",  .sub = 0, .size = 32 },
+			{ .kind = WSK_STACK, .id = "body", .sub = 1, .weight = 1 },
+		};
+		static const wsk_widget_t HDR[] = {
+			{ .kind = WSK_BUTTON, .id = "h_name", .text = "Name", .weight = 2 },
+			{ .kind = WSK_BUTTON, .id = "h_size", .text = "Size", .size = 80 },
+			{ .kind = WSK_BUTTON, .id = "h_date", .text = "Date", .weight = 1 },
+		};
+		static const wsk_widget_t BODYT[] = {
+			{ .kind = WSK_STACK, .id = "r0", .sub = 2, .size = 28 },
+			{ .kind = WSK_STACK, .id = "r1", .sub = 3, .size = 28 },
+			{ .kind = WSK_STACK, .id = "r2", .sub = 4, .size = 28 },
+			{ .kind = WSK_STACK, .id = "r3", .sub = 5, .size = 28 },
+			{ .kind = WSK_STACK, .id = "r4", .sub = 6, .size = 28 },
+			{ .kind = WSK_STACK, .id = "r5", .sub = 7, .size = 28 },
+		};
+		static const wsk_widget_t C0[] = { { .kind = WSK_LABEL, .id = "c00", .text = "alpha.txt" },
+		                                   { .kind = WSK_LABEL, .id = "c01", .text = "12K" },
+		                                   { .kind = WSK_LABEL, .id = "c02", .text = "Nov 1" } };
+		static const wsk_widget_t C1[] = { { .kind = WSK_LABEL, .id = "c10", .text = "b" },
+		                                   { .kind = WSK_LABEL, .id = "c11", .text = "1M" },
+		                                   { .kind = WSK_LABEL, .id = "c12", .text = "Oct 30" } };
+		static const wsk_widget_t CX[] = { { .kind = WSK_LABEL, .text = "x" },
+		                                   { .kind = WSK_LABEL, .text = "y" } };
+		static const wsk_widget_t C4[] = { { .kind = WSK_LABEL, .text = "1" }, { .kind = WSK_LABEL, .text = "2" },
+		                                   { .kind = WSK_LABEL, .text = "3" }, { .kind = WSK_LABEL, .text = "4" } };
+		wsk_tree_t w, k[8];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char td[8192];
+		int which = -2, y0 = 0, y1 = 0, n;
+		const wsk_tree_t *in = 0;
+
+		wsk_init(&w, WSK_COL, 400, 120);
+		w.pad = 0; w.gap = 0; w.ids = 1; w.item = TOPT; w.n = 2; w.nest = k; w.nests = 8;
+		wsk_nest_init(&k[0], &w, WSK_ROW);
+		k[0].pad = 0; k[0].gap = 0; k[0].item = HDR; k[0].n = 3; k[0].talign = WSK_ALIGN_START;
+		wsk_nest_init(&k[1], &w, WSK_COL);
+		k[1].pad = 0; k[1].gap = 2; k[1].item = BODYT; k[1].n = 6;
+		k[1].overflow = WSK_SCROLL; k[1].select = 1; k[1].head = 0;
+		for (int j = 2; j < 8; j++) {
+			wsk_nest_init(&k[j], &w, WSK_ROW);
+			k[j].pad = 0; k[j].gap = 0; k[j].talign = WSK_ALIGN_START;
+			k[j].item = CX; k[j].n = 2;
+		}
+		k[2].item = C0; k[2].n = 3;
+		k[3].item = C1; k[3].n = 3;
+		ok(wsk_check(&w, 0) == WSK_OK, "a header over a scrolling, selecting body of six rows");
+
+		/* By hand: the header's buttons are their text (8 a cell, no
+		   padding) -- 32, the fixed 80, 32 -- leaving 256 shared 2:1: Name
+		   gets 170 (202), Date the rest, 86 (118). So the columns are
+		   0..202, 202..282, 282..400. */
+		ok(rect_is(rect_of(&w, "h_size"), 202, 0, 80, 32), "the header's fixed column: 202, 80 wide");
+		ok(rect_is(rect_of(&w, "c00"), 0, 32, 202, 28) && rect_is(rect_of(&w, "c01"), 202, 32, 80, 28) &&
+		   rect_is(rect_of(&w, "c02"), 282, 32, 118, 28),
+		   "row 0's cells sit under the header's: 0/202, 202/80, 282/118");
+		ok(rect_of(&w, "c11").x == 202 && rect_of(&w, "c12").w == 118,
+		   "and row 1's, whose texts are different lengths, sit in the same columns");
+		k[1].head = WSK_NONE;
+		ok(rect_of(&w, "c01").x == 72 && rect_of(&w, "c11").x == 8,
+		   "CONTROL: without the header, each row sizes its own cells, and they do not line up");
+		k[1].head = 0;
+
+		/* Scrolled, the cells keep their columns. */
+		k[1].scroll = 30;
+		ok(wsk_check(&w, 0) == WSK_OK && rect_of(&w, "c11").x == 202 && rect_of(&w, "c11").y == 32,
+		   "scrolled 30, row 1 is at the top of the body, its cells still under the header");
+		k[1].scroll = 0;
+
+		/* Text at the start of a cell. */
+		render_into(&w, td, sizeof td, 8192);
+		ok(has(td, "<text text-anchor=\"start\" x=\"202\"") && has(td, ">12K</text>"),
+		   "cells read as a table: text from the start of the cell, not centred");
+
+		/* A row with more cells than columns. */
+		k[4].item = C4; k[4].n = 4;
+		ok(wsk_check_in(&w, &which, &in) == WSK_E_FIT && which == 3 && in == &k[4],
+		   "a row with four cells under three columns is refused, at its fourth");
+		k[4].item = CX; k[4].n = 2;
+		ok(wsk_check(&w, 0) == WSK_OK, "CONTROL: with two, accepted -- fewer cells than columns is fine");
+
+		/* A tap on a cell chooses its row. */
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 300; ev.y = 70;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[3] &&
+		   nt[1].kind == WSK_NOTE_SELECT && nt[1].in == &k[1] && nt[1].value == 1 && k[1].sel == 1,
+		   "a tap on row 1's date cell: a CLICK on the cell, and SELECT row 1 of the body");
+		render_into(&w, td, sizeof td, 8192);
+		ok(has(td, "<g id=\"r1\"><rect y=\"62\" width=\"400\" height=\"28\" fill=\"#b06a2a\"/>"),
+		   "and the chosen row is drawn on the selection fill, behind its cells");
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

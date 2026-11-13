@@ -52,12 +52,22 @@ static const wsk_widget_t SAVEMENU[] = {
 	{ .kind = WSK_BUTTON, .id = "discard",  .text = "Discard", .size = 44 },
 };
 
-static wsk_widget_t items[30];
+/* The list is a table (§5n): a header that stays, over a body that
+   scrolls, whose rows put their cells in the header's columns. */
+static const wsk_widget_t LIST[] = {
+	{ .kind = WSK_STACK, .id = "head",  .sub = 4, .size = 40 },
+	{ .kind = WSK_STACK, .id = "table", .sub = 5, .weight = 1 },
+};
+static const wsk_widget_t HEAD[] = {
+	{ .kind = WSK_BUTTON, .id = "h-name", .text = "Name", .weight = 1, .fill = 0x1c3550u },
+	{ .kind = WSK_BUTTON, .id = "h-size", .text = "Size", .size = 90,  .fill = 0x1c3550u },
+};
+static wsk_widget_t items[30], cells[30][2];
 static char name[40], city[40], note[80];
 static unsigned char state[1];          /* Remember me, ticked or not (§5m) */
 static const char *strs[1] = { "Tab between fields, Enter prints a field, Esc quits" };
 static wsk_buf_t buf[3];
-static wsk_tree_t win, nest[4];
+static wsk_tree_t win, nest[6 + 30];
 
 static void to_window(wsk_sink_t *s, const char *b, int n) { (void)s; wh_write(b, n); }
 
@@ -72,10 +82,17 @@ int main(int argc, char **argv)
 	const wsk_tree_t *in = 0;
 
 	for (int i = 0; i < 30; i++) {
-		items[i].kind = WSK_BUTTON;
-		items[i].size = 44;
+		items[i].kind = WSK_STACK;              /* a row of the table */
+		items[i].sub = (short)(6 + i);
+		items[i].size = 40;
+		items[i].fill = (i % 2) ? 0x1a3048u : 0x15283du;
 		snprintf(items[i].id, WSK_ID_MAX, "it%d", i);
-		snprintf(items[i].text, WSK_TEXT_MAX, "Item %d", i);
+		cells[i][0].kind = WSK_LABEL;
+		snprintf(cells[i][0].id, WSK_ID_MAX, "n%d", i);
+		snprintf(cells[i][0].text, WSK_TEXT_MAX, "Item %d", i);
+		cells[i][1].kind = WSK_LABEL;
+		snprintf(cells[i][1].id, WSK_ID_MAX, "s%d", i);
+		snprintf(cells[i][1].text, WSK_TEXT_MAX, "%d KB", (i * 37) % 900 + 1);
 	}
 	buf[0].b = name; buf[0].cap = sizeof name;
 	buf[1].b = city; buf[1].cap = sizeof city;
@@ -84,7 +101,7 @@ int main(int argc, char **argv)
 	wsk_init(&win, WSK_COL, w, h);
 	win.pad = 0; win.gap = 0; win.font = 20; win.ids = 1;
 	win.item = WIN; win.n = 3;
-	win.nest = nest; win.nests = 4;
+	win.nest = nest; win.nests = 6 + 30;
 	win.buf = buf; win.bufs = 3;
 	win.str = strs; win.strs = 1;
 	win.state = state; win.states = 1;
@@ -93,9 +110,21 @@ int main(int argc, char **argv)
 	wsk_nest_init(&nest[1], &win, WSK_COL);
 	nest[1].pad = 0; nest[1].gap = 6; nest[1].item = FORM; nest[1].n = 8;
 	wsk_nest_init(&nest[2], &win, WSK_COL);
-	nest[2].pad = 0; nest[2].gap = 4; nest[2].item = items; nest[2].n = 30;
-	nest[2].overflow = WSK_SCROLL;
-	nest[2].select = 1;                     /* the list keeps a choice (§5m) */
+	nest[2].pad = 0; nest[2].gap = 4; nest[2].item = LIST; nest[2].n = 2;
+	wsk_nest_init(&nest[4], &win, WSK_ROW);     /* the header */
+	nest[4].pad = 4; nest[4].gap = 2; nest[4].item = HEAD; nest[4].n = 2;
+	nest[4].talign = WSK_ALIGN_START;
+	wsk_nest_init(&nest[5], &win, WSK_COL);     /* the body: scrolls, chooses */
+	nest[5].pad = 0; nest[5].gap = 2; nest[5].item = items; nest[5].n = 30;
+	nest[5].overflow = WSK_SCROLL;
+	nest[5].select = 1;
+	nest[5].head = 4;                           /* its rows follow the header */
+	for (int i = 0; i < 30; i++) {
+		wsk_nest_init(&nest[6 + i], &win, WSK_ROW);
+		nest[6 + i].pad = 4; nest[6 + i].gap = 2;
+		nest[6 + i].talign = WSK_ALIGN_START;
+		nest[6 + i].item = cells[i]; nest[6 + i].n = 2;
+	}
 	wsk_nest_init(&nest[3], &win, WSK_COL);    /* the menu Save opens */
 	nest[3].pad = 6; nest[3].gap = 4; nest[3].bg = 0x2a3a4au;
 	nest[3].item = SAVEMENU; nest[3].n = 3;

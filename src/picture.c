@@ -1237,6 +1237,94 @@ int main(void)
 		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
 	}
 
+	/*
+	 * A table, at the pixels (design.md §5n): a header of three columns over
+	 * a scrolling body of rows that follow it, one row chosen. For a person
+	 * to look at -- whether it reads as a table is not a thing a test can
+	 * say -- and a choice repainted in its rows equal to a full redraw.
+	 */
+	{
+		static const wsk_widget_t TOPT[] = {
+			{ .kind = WSK_STACK, .id = "hdr",  .sub = 0, .size = 24 },
+			{ .kind = WSK_STACK, .id = "body", .sub = 1, .weight = 1 },
+		};
+		static const wsk_widget_t HDR[] = {
+			{ .kind = WSK_BUTTON, .id = "hn", .text = "Name", .weight = 2, .fill = 0x1c3550u },
+			{ .kind = WSK_BUTTON, .id = "hs", .text = "Size", .size = 64,  .fill = 0x1c3550u },
+			{ .kind = WSK_BUTTON, .id = "hd", .text = "Date", .weight = 1, .fill = 0x1c3550u },
+		};
+		static const char *NAMES[] = { "alpha.txt", "build.sh", "design.md", "keys.c",
+		                               "notes", "picture.c", "README.md" };
+		static const char *SIZES[] = { "12K", "3K", "180K", "9K", "1K", "41K", "6K" };
+		static const char *DATES[] = { "Nov 1", "Oct 30", "Nov 12", "Nov 11", "Sep 2", "Nov 12", "Nov 11" };
+		static wsk_widget_t rows[7], cells[7][3];
+		static uint16_t want[PW * PH];
+		wsk_tree_t w, k[9];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		uint32_t v;
+		int y0, y1;
+
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 0; w.gap = 0; w.bg = 0x10203au; w.item = TOPT; w.n = 2; w.nest = k; w.nests = 9;
+		wsk_nest_init(&k[0], &w, WSK_ROW);
+		k[0].pad = 4; k[0].gap = 1; k[0].item = HDR; k[0].n = 3; k[0].talign = WSK_ALIGN_START;
+		k[0].font = 14;
+		wsk_nest_init(&k[1], &w, WSK_COL);
+		k[1].pad = 0; k[1].gap = 1; k[1].item = rows; k[1].n = 7;
+		k[1].overflow = WSK_SCROLL; k[1].select = 1; k[1].head = 0; k[1].sel = 2;
+		for (int i = 0; i < 7; i++) {
+			memset(&rows[i], 0, sizeof rows[i]);
+			rows[i].kind = WSK_STACK; rows[i].sub = (short)(2 + i); rows[i].size = 20;
+			rows[i].fill = (i % 2) ? 0x14283fu : 0x10203au;
+			for (int j = 0; j < 3; j++) {
+				memset(&cells[i][j], 0, sizeof cells[i][j]);
+				cells[i][j].kind = WSK_LABEL;
+				snprintf(cells[i][j].text, WSK_TEXT_MAX, "%s",
+				         j == 0 ? NAMES[i] : j == 1 ? SIZES[i] : DATES[i]);
+			}
+			wsk_nest_init(&k[2 + i], &w, WSK_ROW);
+			k[2 + i].pad = 4; k[2 + i].gap = 1; k[2 + i].font = 14;
+			k[2 + i].talign = WSK_ALIGN_START; k[2 + i].item = cells[i]; k[2 + i].n = 3;
+		}
+		wsk_ui_init(&ui, &w);
+		s.put = to_window; s.ctx = &dev;
+
+		printf("\n  a table (§5n)\n");
+		ok(wsk_check(&w, 0) == WSK_OK, "a header and seven rows that follow it");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		{
+			int b = wsk_render(&w, &s, 4096);
+			printf("    the table: %d bytes\n", b);
+			ok(b > 0, "it renders");
+		}
+		shot("table.ppm");
+
+		/* choose the fifth row by a tap on its size cell */
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 215; ev.y = 24 + 4 * 21 + 10;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(k[1].sel == 4, "a tap on a cell of the fifth row chooses it");
+		v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		wsk_render_rows(&w, y0, y1, &s, 4096);
+		memcpy(want, screen, sizeof screen);
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		wsk_render(&w, &s, 4096);
+		ok(memcmp(screen, want, sizeof screen) == 0,
+		   "the old choice and the new, repainted in their rows alone, equal a full redraw");
+		shot("table_chosen.ppm");
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

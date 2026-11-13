@@ -17,7 +17,7 @@ in `design.md` §8; nothing of it is built yet.
 **Status of the drawing layer.** `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m and §7 — **457 checks** plus the profile gate,
+`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n and §7 — **472 checks** plus the profile gate,
 the pixels through RV-9's own rasteriser, seventeen module builds with the
 double-link, and a person looking at the pictures. `host/linux/run.sh --test`
 adds **19** more.
@@ -64,6 +64,9 @@ for taps — and a band repaint under an open menu is exact.
 
 **And forms are complete enough to fill in** (§5m): checkboxes, a list that
 keeps a choice, and Tab that reaches buttons as well as fields.
+
+**And tables line up** (§5n): a header row decides the columns, and every
+row under it puts its cells there — scrolled or not.
 
 **And there is now a program to leave running.** `src/module_stat.c` — staged
 in RV-9's tree as `wstat` — puts the board's die temperature, free heap and

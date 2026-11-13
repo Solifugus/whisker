@@ -109,6 +109,6 @@ finally:
     out, err = p.communicate(timeout=5)
 
 ok("enter  city = \"Paris\"" in out, "Enter on the second field printed it: city = \"Paris\"")
-ok("click  it" in out, "the click in the list reached the program as a CLICK")
+ok("select it" in out, "the click in the table reached the program: a cell clicked, its row chosen")
 print(("\n%d web check(s) failed" % fails) if fails else "\nall web checks passed")
 sys.exit(1 if fails else 0)

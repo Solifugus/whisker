@@ -127,7 +127,7 @@ try {
   // A check and a choice (§5m): Remember me is under Save, 402..438; the
   // list on the right keeps a choice.
   await click(40, 418);
-  await click(800, 124);              // Item 1: 56 + 44 + 4 = 104..148
+  await click(700, 160);              // row 1 of the table: 56 + 40 + 4 = 100, + 40 + 2 = 142..182
   await settle();
   await sleep(300);
   ok(said.includes('change remember = 1'), 'the check ticked by a click: change remember = 1');

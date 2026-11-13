@@ -209,7 +209,7 @@ What moved is whisker. Twelve iterations since October's count (§5e–§5m):
 | `popup` | 2 | an overlay — opened by **right-click**, which no host sends yet | by composition |
 | `choice` | 4 | a button whose click opens an overlay, its label set by the program | by composition |
 | `memo` | 7 | a **viewer** is answered — wrap, text items, a scrolling page (§5g–h); **editing** many lines is not | in part |
-| `table` | 2 | rows, a selecting stack (§5m), a slice for length (§5e) — **no columns, header or sort** | in part |
+| `table` | 2 | rows, a selecting stack (§5m), a slice for length (§5e) — **no columns, header or sort** | in part — **columns and header since §5n, the same night; sort is the program's** |
 | `tree` | 1 | nested stacks could show one; **no expand and collapse** | in part |
 | `source` | 2 | a code editor: highlighting, gutter, marks | **no** |
 

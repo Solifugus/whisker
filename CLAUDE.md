@@ -45,11 +45,12 @@ GTK tree** (last GTK commit `d997c94`): `gbasic-gap.md` and `studio-gap.md`
 are history. **`docs/window-gap.md` (2026-10-24) is the current distance**:
 Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
 21 of its 25 words** (14 directly, 7 by composition), 3 in part (`memo`,
-`table`, `tree`), 1 not (`source`) — `window-gap.md` §7.
+`table`, `tree`), 1 not (`source`) — `window-gap.md` §7. Since then §5n gave
+`table` its columns.
 
 ## Status
 
-**Thirteen iterations are built, and two of them have now run on the C5.**
+**Fourteen iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -143,7 +144,13 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
   Enter clicks it. All in rectangles, no `<path>`. `WSK_NO_CHECK`.
   Default build for a small panel is now 10.5 KB; `WSK_PANEL` 8.4 KB.
 
-`src/run.sh --module` is the whole of it: **457 checks**, the pixels through
+- **§5n — table columns** (2026-11-12). The **header decides**: a stack with
+  `head` makes every row in it take its cells' places and widths from the
+  header's cells (laid out across the row's own area, so scrolling never
+  moves columns). `talign = WSK_ALIGN_START` for cell text. Selection finds
+  the deepest selecting stack, so a tap on a cell chooses its row.
+
+`src/run.sh --module` is the whole of it: **472 checks**, the pixels through
 RV-9's own rasteriser, seventeen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 26, including the
 typing loop end to end and the real keyboard path; `--input` is the same loop with a person in it.

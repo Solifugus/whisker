@@ -242,6 +242,10 @@ enum {
 /* No tree: `over` with nothing open. */
 #define WSK_NONE      (-1)
 
+/* Where a stack's labels and buttons put their text (§5n): the middle of
+   the widget, or its start, as a table's cells do. */
+enum { WSK_MIDDLE = 0, WSK_ALIGN_START };
+
 typedef struct {
 	unsigned char kind;
 	char          id[WSK_ID_MAX];
@@ -406,6 +410,17 @@ typedef struct wsk_tree {
 	unsigned char select;
 	short         sel;
 	unsigned int  selfill;
+
+	/*
+	 * Tables (§5n). `head` names a tree in `nest` -- a header row -- and
+	 * every row at this stack's first level takes its cells' places and
+	 * widths from the header's cells. `talign` puts labels' and buttons'
+	 * text at the start of the widget. `ghead` is whisker's, set in the
+	 * copies it lays a row out in: the header that row follows.
+	 */
+	short         head;
+	unsigned char talign;
+	const struct wsk_tree *ghead;
 
 	/* Set by whisker in those copies, never by a caller: the intersection of
 	   every scrolling viewport above this stack, which cuts it (§5f rule 3). */
@@ -770,6 +785,17 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 #endif
 	}
 
+#ifndef WSK_NO_NEST
+	/* A row in a table (§5n): its widths are its header's, which was
+	   checked as itself; what it may not have is a cell with no column. */
+	if (t->ghead != 0) {
+		if (t->n > t->ghead->n) {
+			if (which != 0) *which = t->ghead->n;
+			return WSK_E_FIT;
+		}
+		return WSK_OK;
+	}
+#endif
 #ifdef WSK_NO_WRAP
 	if (t->overflow == WSK_WRAP) {
 		if (which != 0) *which = -1;
@@ -956,6 +982,9 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->select = 0;
 	t->sel = WSK_NONE;
 	t->selfill = 0xb06a2au;
+	t->head = WSK_NONE;
+	t->talign = WSK_MIDDLE;
+	t->ghead = 0;
 	t->clipped = 0;
 	t->cx0 = t->cy0 = t->cx1 = t->cy1 = 0;
 }
@@ -1281,6 +1310,39 @@ static inline int wsk__lead(const wsk_tree_t *t, int idx, int free)
 	}
 }
 
+#ifndef WSK_NO_NEST
+static inline void wsk__tcopy(wsk_tree_t *d, const wsk_tree_t *s);
+static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx);
+
+/*
+ * Cell idx of a row that follows a header (§5n): along the row, where the
+ * header's cell idx is, the header laid out across this row's own area; and
+ * across, the row's own depth. The header is a tree like any other, sized by
+ * `size` and `weight`, so the columns are whatever it says they are.
+ */
+static inline wsk_rect_t wsk__cell(const wsk_tree_t *t, int idx)
+{
+	wsk_rect_t r, hc;
+	wsk_tree_t h;
+	int ch = t->ah - 2 * t->pad;
+
+	wsk__tcopy(&h, t->ghead);
+	h.w = t->w; h.h = t->h;
+	h.nest = t->nest; h.nests = t->nests;
+	h.str = t->str; h.strs = t->strs;
+	h.ax = t->ax; h.aw = t->aw; h.ay = t->ay; h.ah = t->ah;
+	h.ghead = 0; h.clipped = 0;
+	if (idx < h.n) hc = wsk_rect(&h, idx);
+	else { hc.x = (short)(t->ax + t->aw); hc.w = 0; }   /* refused by wsk_check */
+	if (t->cross_max > 0 && ch > t->cross_max) ch = t->cross_max;
+	r.x = hc.x;
+	r.w = hc.w;
+	r.y = (short)(t->ay + (t->ah - ch) / 2);
+	r.h = (short)ch;
+	return r;
+}
+#endif
+
 static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 {
 	wsk_rect_t r;
@@ -1289,6 +1351,9 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 
 #ifndef WSK_NO_WRAP
 	if (t->overflow == WSK_WRAP) return wsk__wrap_rect(t, idx);
+#endif
+#ifndef WSK_NO_NEST
+	if (t->ghead != 0) return wsk__cell(t, idx);
 #endif
 
 	for (int i = 0; i < t->n; i++) {
@@ -1407,6 +1472,9 @@ static inline int wsk__child(const wsk_tree_t *t, int i, wsk_tree_t *c)
 	c->over = WSK_NONE;                 /* an overlay is the root's alone */
 	c->state = t->state;
 	c->states = t->states;
+	/* a row in a table follows its header (§5n) */
+	c->ghead = (t->head != WSK_NONE && t->head >= 0 && t->head < t->nests &&
+	            c->axis == WSK_ROW) ? &t->nest[t->head] : 0;
 	r = wsk_rect(t, i);
 	c->ax = r.x; c->ay = r.y; c->aw = r.w; c->ah = r.h;
 
@@ -1563,6 +1631,7 @@ static inline int wsk__over_tree(const wsk_tree_t *t, wsk_tree_t *c)
 	c->buf = t->buf; c->bufs = t->bufs;
 	c->held = t->held; c->focus = t->focus;
 	c->state = t->state; c->states = t->states;
+	c->ghead = 0;
 	c->ax = t->ox; c->ay = t->oy; c->aw = t->ow; c->ah = t->oh;
 	c->clipped = 0;
 	c->over = WSK_NONE;
@@ -2221,10 +2290,12 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
                              const wsk_widget_t *w, const char *txt, wsk_rect_t r)
 {
 	int chars = wsk__len(txt);
+	int start = (t->talign == WSK_ALIGN_START);
 	/* All of the width: a label exactly its text's width -- every widget in
 	   a row with no padding -- draws all of it. It wanted two pixels of
-	   slack until 2026-11-11, which cut "OK" to "O" (design.md §5f). */
-	int room = r.w / wsk_advance(t->font);
+	   slack until 2026-11-11, which cut "OK" to "O" (design.md §5f). Text
+	   at the start of a cell keeps the padding at both ends (§5n). */
+	int room = (start ? r.w - 2 * t->pad : r.w) / wsk_advance(t->font);
 	int top = r.y + (r.h - t->font) / 2;
 
 	if (room < 1) return;
@@ -2232,10 +2303,12 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
 	if (chars == 0) return;
 	/* the text's own cell, which is all a scroll can cut */
 	{
-		int tw = wsk_text_w(t->font, chars), x0 = r.x + r.w / 2 - tw / 2;
+		int tw = wsk_text_w(t->font, chars);
+		int x0 = start ? r.x + t->pad : r.x + r.w / 2 - tw / 2;
 		if (!wsk__shows(t, x0, x0 + tw, top)) return;
+		wsk__textel(s, start, start ? x0 : r.x + r.w / 2,
+		            wsk_baseline_of(top, t->font), w->ink, txt, chars);
 	}
-	wsk__textel(s, 0, r.x + r.w / 2, wsk_baseline_of(top, t->font), w->ink, txt, chars);
 }
 
 
@@ -2517,6 +2590,10 @@ static void wsk__stack(const wsk_doc_t *d, const wsk_tree_t *t, int i,
 		if (c.ink != t->ink) { wsk__s(s, " fill=\""); wsk__col(s, c.ink); wsk__s(s, "\""); }
 		wsk__s(s, ">");
 	}
+#ifndef WSK_NO_INPUT
+	if (t->select && i == t->sel) wsk__box(s, 0, v, t->selfill);   /* a chosen row */
+	else
+#endif
 	if (w->fill != WSK_INHERIT) wsk__box(s, 0, v, w->fill);
 	wsk__items(d, &c, s);
 	if (g) wsk__s(s, "</g>");
@@ -3055,6 +3132,51 @@ static inline void wsk__rput(wsk_rect_t *d, wsk_rect_t s)
 	d->x = s.x; d->y = s.y; d->w = s.w; d->h = s.h;
 }
 
+/*
+ * The deepest selecting stack with an item under the point (§5m, §5n): the
+ * caller's tree, to write `sel` into; the item's index; and the stack as laid
+ * out, for the rows to repaint. 0 when no selecting stack has one there.
+ */
+static inline wsk_tree_t *wsk__selector(const wsk_tree_t *t, wsk_tree_t *orig,
+                                        int x, int y, wsk_tree_t *at,
+                                        const wsk_tree_t **lay, int *item, int depth)
+{
+	(void)depth;
+#ifndef WSK_NO_OVER
+	if (depth == 0 && wsk__on_over(t, x, y)) {
+		wsk_tree_t c;
+		if (!wsk__over_tree(t, &c)) return 0;
+		return wsk__selector(&c, (wsk_tree_t *)&t->nest[t->over], x, y, at, lay, item, 1);
+	}
+#endif
+	for (int i = 0; i < t->n; i++) {
+		wsk_rect_t r = wsk_rect(t, i);
+		if (!wsk__cut(t, &r)) continue;
+		if (!(x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)) continue;
+#ifndef WSK_NO_NEST
+		if (t->item[i].kind == WSK_STACK && depth + 1 < WSK_DEPTH_MAX) {
+			wsk_tree_t c;
+			if (wsk__child(t, i, &c)) {
+				wsk_tree_t *f = wsk__selector(&c, (wsk_tree_t *)&t->nest[t->item[i].sub],
+				                              x, y, at, lay, item, depth + 1);
+				if (f != 0) return f;
+			}
+		}
+#endif
+		if (!t->select) return 0;
+#ifndef WSK_NO_NEST
+		wsk__tcopy(at, t);
+		*lay = at;
+#else
+		(void)at;
+		*lay = t;
+#endif
+		*item = i;
+		return orig;
+	}
+	return 0;
+}
+
 static inline void wsk__span(int *lo, int *hi, int a, int b)
 {
 	if (b <= a) return;
@@ -3349,17 +3471,25 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 					wsk__span(&lo, &hi, rect.y, rect.y + rect.h);
 				}
 #endif
-				/* an item of a selecting stack is chosen (§5m rule 3): the
-				   stack is the caller's tree, which is writable */
-				if (in->select && in->sel != k) {
-					wsk_tree_t *own = (wsk_tree_t *)in;
-					if (own->sel >= 0 && own->sel < lay->n) {
-						wsk_rect_t old = wsk_rect(lay, own->sel);
-						if (wsk__cut(lay, &old)) wsk__span(&lo, &hi, old.y, old.y + old.h);
+				/* an item of a selecting stack is chosen (§5m rule 3) -- the
+				   deepest such stack under the finger, so that a tap on any
+				   cell of a table's row chooses the row (§5n). The stack is
+				   the caller's tree, which is writable. */
+				{
+					wsk_tree_t sat;
+					const wsk_tree_t *slay = 0;
+					int si = -1;
+					wsk_tree_t *own = wsk__selector(r, r, x, y, &sat, &slay, &si, 0);
+					if (own != 0 && own->sel != si) {
+						wsk_rect_t nr = wsk_rect(slay, si);
+						if (own->sel >= 0 && own->sel < slay->n) {
+							wsk_rect_t old = wsk_rect(slay, own->sel);
+							if (wsk__cut(slay, &old)) wsk__span(&lo, &hi, old.y, old.y + old.h);
+						}
+						own->sel = (short)si;
+						if (wsk__cut(slay, &nr)) wsk__span(&lo, &hi, nr.y, nr.y + nr.h);
+						n = wsk__note(note, max, n, WSK_NOTE_SELECT, own, si, si);
 					}
-					own->sel = (short)k;
-					wsk__span(&lo, &hi, rect.y, rect.y + rect.h);
-					n = wsk__note(note, max, n, WSK_NOTE_SELECT, in, k, k);
 				}
 #ifndef WSK_NO_OVER
 				/* a menu's choice is made once: a button in it closes it */
