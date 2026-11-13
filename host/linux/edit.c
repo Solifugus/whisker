@@ -6,7 +6,8 @@
  *     host/web/run.sh                the same program, in a browser (§5k)
  *
  * design.md §5j. Three fields in a form and a list beside them that scrolls.
- * Click a field and type; Tab and Shift-Tab move between the fields; the
+ * Click a field and type; Tab and Shift-Tab move between fields, buttons and
+ * the check (Enter presses a focused button or ticks the check); the
  * arrows, Home, End, Backspace and Delete edit; Enter prints the field. Drag
  * the list, or use the wheel over it. Save opens a menu (§5l): choose from
  * it, or tap anywhere else to close it. Escape quits -- or, in a browser,
@@ -42,6 +43,7 @@ static const wsk_widget_t FORM[] = {
 	{ .kind = WSK_LABEL,  .id = "l3",   .text = "Note", .size = 32 },
 	{ .kind = WSK_FIELD,  .id = "note", .sub = 2, .size = 48 },
 	{ .kind = WSK_BUTTON, .id = "save", .text = "Save" },
+	{ .kind = WSK_CHECK,  .id = "remember", .text = "Remember me", .sub = 0, .size = 36 },
 };
 
 static const wsk_widget_t SAVEMENU[] = {
@@ -52,6 +54,7 @@ static const wsk_widget_t SAVEMENU[] = {
 
 static wsk_widget_t items[30];
 static char name[40], city[40], note[80];
+static unsigned char state[1];          /* Remember me, ticked or not (§5m) */
 static const char *strs[1] = { "Tab between fields, Enter prints a field, Esc quits" };
 static wsk_buf_t buf[3];
 static wsk_tree_t win, nest[4];
@@ -84,13 +87,15 @@ int main(int argc, char **argv)
 	win.nest = nest; win.nests = 4;
 	win.buf = buf; win.bufs = 3;
 	win.str = strs; win.strs = 1;
+	win.state = state; win.states = 1;
 	wsk_nest_init(&nest[0], &win, WSK_ROW);
 	nest[0].pad = 8; nest[0].gap = 16; nest[0].item = BODY; nest[0].n = 2;
 	wsk_nest_init(&nest[1], &win, WSK_COL);
-	nest[1].pad = 0; nest[1].gap = 6; nest[1].item = FORM; nest[1].n = 7;
+	nest[1].pad = 0; nest[1].gap = 6; nest[1].item = FORM; nest[1].n = 8;
 	wsk_nest_init(&nest[2], &win, WSK_COL);
 	nest[2].pad = 0; nest[2].gap = 4; nest[2].item = items; nest[2].n = 30;
 	nest[2].overflow = WSK_SCROLL;
+	nest[2].select = 1;                     /* the list keeps a choice (§5m) */
 	wsk_nest_init(&nest[3], &win, WSK_COL);    /* the menu Save opens */
 	nest[3].pad = 6; nest[3].gap = 4; nest[3].bg = 0x2a3a4au;
 	nest[3].item = SAVEMENU; nest[3].n = 3;
@@ -145,6 +150,10 @@ int main(int argc, char **argv)
 				}
 			} else if (t->kind == WSK_NOTE_CLOSE)
 				printf("close  the menu\n");
+			else if (t->kind == WSK_NOTE_CHANGE)
+				printf("change %s = %d\n", t->in->item[t->item].id, t->value);
+			else if (t->kind == WSK_NOTE_SELECT)
+				printf("select %s\n", t->in->item[t->item].id);
 			else if (t->kind == WSK_NOTE_ENTER)
 				printf("enter  %s = \"%s\"\n", t->in->item[t->item].id,
 				       buf[t->in->item[t->item].sub].b);

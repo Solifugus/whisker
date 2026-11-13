@@ -48,7 +48,7 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
 
 ## Status
 
-**Twelve iterations are built, and two of them have now run on the C5.**
+**Thirteen iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -135,11 +135,18 @@ Studio's window is a pure record, and whisker answers 15 of its 25 words —
   closes it (CLOSE, no click beneath); a button in it is CLICK then CLOSE;
   Escape closes. Band repaints under an open menu are exact. `WSK_NO_OVER`.
 
-`src/run.sh --module` is the whole of it: **433 checks**, the pixels through
-RV-9's own rasteriser, sixteen module builds with the double-link, and a person
+- **§5m — check, selection, focus on buttons** (2026-11-12). `WSK_CHECK`'s
+  ticked state is a byte in the caller's `root.state`; selection is a stack's
+  (`select`, `sel`, `selfill`) in its writable tree. Tab reaches fields,
+  buttons and checks; a focused button wears a ring of thin rectangles and
+  Enter clicks it. All in rectangles, no `<path>`. `WSK_NO_CHECK`.
+  Default build for a small panel is now 10.5 KB; `WSK_PANEL` 8.4 KB.
+
+`src/run.sh --module` is the whole of it: **457 checks**, the pixels through
+RV-9's own rasteriser, seventeen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 26, including the
 typing loop end to end and the real keyboard path; `--input` is the same loop with a person in it.
-`host/web/run.sh --test` adds 12 over HTTP and 8 in headless Chrome.
+`host/web/run.sh --test` adds 12 over HTTP and 10 in headless Chrome.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

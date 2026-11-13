@@ -98,6 +98,7 @@
  *     -DWSK_NO_NEST     drop nesting -- a stack inside a stack (1,780 bytes)
  *     -DWSK_NO_WRAP     drop wrapping onto new lines (2,044 bytes with text)
  *     -DWSK_NO_OVER     drop overlays -- a menu over the window (§5l)
+ *     -DWSK_NO_CHECK    drop the checkbox (§5m)
  *     -DWSK_NO_INPUT    drop the toolkit: no events, nothing to press
  *     -DWSK_NO_TEXT     drop text items -- a paragraph as one widget (1,104 bytes)
  *
@@ -123,6 +124,9 @@
 #  endif
 #  ifndef WSK_NO_OVER
 #    define WSK_NO_OVER 1
+#  endif
+#  ifndef WSK_NO_CHECK
+#    define WSK_NO_CHECK 1
 #  endif
 #endif
 #ifdef WSK_MINIMAL
@@ -166,7 +170,7 @@
 /* Every profile declares every kind, and the values never move: a reduced
    build refuses WSK_FIELD, it does not renumber around it. A caller's panel,
    a golden and an id mean the same thing whatever this was compiled with. */
-enum { WSK_LABEL = 1, WSK_BUTTON, WSK_FIELD, WSK_STACK, WSK_TEXT };
+enum { WSK_LABEL = 1, WSK_BUTTON, WSK_FIELD, WSK_STACK, WSK_TEXT, WSK_CHECK };
 enum { WSK_COL = 1, WSK_ROW };
 
 /*
@@ -386,6 +390,18 @@ typedef struct wsk_tree {
 	 */
 	short         over;
 	short         ox, oy, ow, oh;
+
+	/*
+	 * State (§5m): bytes a WSK_CHECK's `sub` indexes -- ticked or not --
+	 * on the root and carried into copies, the caller's memory, as buffers
+	 * are. And selection, which is a stack's: with `select` set, `sel` is
+	 * the index of its chosen item (or WSK_NONE), drawn in `selfill`.
+	 */
+	unsigned char *state;
+	short         states;
+	unsigned char select;
+	short         sel;
+	unsigned int  selfill;
 
 	/* Set by whisker in those copies, never by a caller: the intersection of
 	   every scrolling viewport above this stack, which cuts it (§5f rule 3). */
@@ -670,6 +686,12 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 			if (which != 0) *which = i;
 			return WSK_E_TEXT;
 		}
+#ifdef WSK_NO_CHECK
+		if (t->item[i].kind == WSK_CHECK) {
+			if (which != 0) *which = i;
+			return WSK_E_KIND;
+		}
+#endif
 #ifdef WSK_NO_TEXT
 		if (t->item[i].kind == WSK_TEXT) {
 			if (which != 0) *which = i;
@@ -925,6 +947,11 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->focus = 0;
 	t->over = WSK_NONE;
 	t->ox = t->oy = t->ow = t->oh = 0;
+	t->state = 0;
+	t->states = 0;
+	t->select = 0;
+	t->sel = WSK_NONE;
+	t->selfill = 0xb06a2au;
 	t->clipped = 0;
 	t->cx0 = t->cy0 = t->cx1 = t->cy1 = 0;
 }
@@ -957,6 +984,9 @@ static inline int wsk__natural(const wsk_tree_t *t, int i)
 	if (w->size > 0) return w->size;
 	if (t->axis == WSK_ROW) {
 		int text = wsk_text_w(t->font, wsk__len(wsk__say(t, t, i)));
+#ifndef WSK_NO_CHECK
+		if (w->kind == WSK_CHECK) text += t->font + t->font / 2;
+#endif
 		return text + 2 * t->pad;
 	}
 	if (w->kind == WSK_BUTTON) return WSK_BTN_ROWS;
@@ -1027,6 +1057,9 @@ static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
 	}
 	if (axis == WSK_ROW) {
 		int text = wsk_text_w(t->font, wsk__len(wsk__say(r, t, i)));
+#ifndef WSK_NO_CHECK
+		if (w->kind == WSK_CHECK) text += t->font + t->font / 2;
+#endif
 		return text + 2 * t->pad;
 	}
 	if (w->kind == WSK_BUTTON) return WSK_BTN_ROWS;
@@ -1063,7 +1096,12 @@ static inline int wsk__meas(const wsk_tree_t *r, const wsk_tree_t *t, int i,
 	const wsk_widget_t *w = &t->item[i];
 	(void)depth; (void)avail;
 	if (w->size > 0 && axis == t->axis) return w->size;
-	if (axis == WSK_ROW) return wsk_text_w(t->font, wsk__len(wsk__say(r, t, i))) + 2 * t->pad;
+	if (axis == WSK_ROW)
+		return wsk_text_w(t->font, wsk__len(wsk__say(r, t, i))) + 2 * t->pad
+#ifndef WSK_NO_CHECK
+		     + ((w->kind == WSK_CHECK) ? t->font + t->font / 2 : 0)
+#endif
+		     ;
 	if (w->kind == WSK_BUTTON) return WSK_BTN_ROWS;
 	return wsk__round_band(t->font + t->gap);
 #endif
@@ -1363,6 +1401,8 @@ static inline int wsk__child(const wsk_tree_t *t, int i, wsk_tree_t *c)
 	c->bufs = t->bufs;
 	c->focus = t->focus;
 	c->over = WSK_NONE;                 /* an overlay is the root's alone */
+	c->state = t->state;
+	c->states = t->states;
 	r = wsk_rect(t, i);
 	c->ax = r.x; c->ay = r.y; c->aw = r.w; c->ah = r.h;
 
@@ -1518,6 +1558,7 @@ static inline int wsk__over_tree(const wsk_tree_t *t, wsk_tree_t *c)
 	c->str = t->str; c->strs = t->strs;
 	c->buf = t->buf; c->bufs = t->bufs;
 	c->held = t->held; c->focus = t->focus;
+	c->state = t->state; c->states = t->states;
 	c->ax = t->ox; c->ay = t->oy; c->aw = t->ow; c->ah = t->oh;
 	c->clipped = 0;
 	c->over = WSK_NONE;
@@ -2486,6 +2527,91 @@ static void wsk__stack(const wsk_doc_t *d, const wsk_tree_t *t, int i,
 }
 #endif
 
+#ifndef WSK_NO_INPUT
+/*
+ * The focus ring (§5m rule 4): four thin rectangles inset two pixels, in the
+ * widget's ink -- rectangles, not a stroke, so it costs the window nothing
+ * it does not already draw.
+ */
+static inline void wsk__ring(wsk_sink_t *s, const wsk_tree_t *t,
+                             const wsk_widget_t *w, wsk_rect_t r)
+{
+	unsigned int ink = (w->ink != WSK_INHERIT) ? w->ink : t->ink;
+	wsk_rect_t e;
+	if (r.w < 12 || r.h < 12) return;
+	e.x = (short)(r.x + 2); e.y = (short)(r.y + 2); e.w = (short)(r.w - 4); e.h = 2;
+	wsk__box(s, 0, e, ink);
+	e.y = (short)(r.y + r.h - 4);
+	wsk__box(s, 0, e, ink);
+	e.y = (short)(r.y + 2); e.w = 2; e.h = (short)(r.h - 4);
+	wsk__box(s, 0, e, ink);
+	e.x = (short)(r.x + r.w - 4);
+	wsk__box(s, 0, e, ink);
+}
+#endif
+
+#ifndef WSK_NO_CHECK
+/* Whether a check is ticked: its byte of the root's state, or not at all. */
+static inline int wsk__ticked(const wsk_tree_t *t, const wsk_widget_t *w)
+{
+	return t->state != 0 && w->sub >= 0 && w->sub < t->states && t->state[w->sub] != 0;
+}
+
+/*
+ * A check (§5m rule 1): a box -- a border in the ink, the trough inside it --
+ * a smaller box in the accent inside that when ticked, and the label
+ * left-aligned after it. In
+ * rectangles, so no <path>; whole or not at all, as a field's text is.
+ */
+static inline void wsk__check(wsk_sink_t *s, const wsk_tree_t *t,
+                              const wsk_widget_t *w, wsk_rect_t r)
+{
+	int b = t->font * 3 / 4, top = r.y + (r.h - t->font) / 2, len;
+	wsk_rect_t box;
+
+	if (t->axis == WSK_COL ? !wsk__whole(t, top, top + t->font)
+	                       : !wsk__whole(t, r.x, r.x + r.w)) return;
+#ifndef WSK_NO_NEST
+	if (!wsk__seen(t, r.x, top, r.x + r.w, top + t->font)) return;
+#endif
+	box.x = (short)(r.x + t->pad);
+	box.y = (short)(r.y + (r.h - b) / 2);
+	box.w = (short)b; box.h = (short)b;
+	/* a border in the ink, then the trough inside it: a trough-coloured box
+	   alone was all but invisible on the scene, which the first picture
+	   showed and no test could have */
+	wsk__box(s, t->ids ? w->id : 0, box, (w->ink != WSK_INHERIT) ? w->ink : t->ink);
+	{
+		wsk_rect_t in = box;
+		in.x = (short)(in.x + 2); in.y = (short)(in.y + 2);
+		in.w = (short)(in.w - 4); in.h = (short)(in.h - 4);
+		wsk__box(s, 0, in, t->trough);
+	}
+	if (wsk__ticked(t, w)) {
+		box.x = (short)(box.x + b / 4); box.y = (short)(box.y + b / 4);
+		box.w = (short)(b - b / 2);     box.h = (short)(b - b / 2);
+		wsk__box(s, 0, box, (w->fill != WSK_INHERIT) ? w->fill : t->accent);
+	}
+	len = wsk__len(w->text);
+	if (len > 0) {
+		wsk__s(s, "<text text-anchor=\"start\" x=\"");
+		wsk__n(s, r.x + t->pad + b + b / 2);
+		wsk__s(s, "\" y=\"");
+		wsk__n(s, wsk_baseline_of(top, t->font));
+		if (w->ink != WSK_INHERIT) {
+			wsk__s(s, "\" fill=\"");
+			wsk__col(s, w->ink);
+		}
+		wsk__s(s, "\">");
+		wsk__w(s, w->text, len);
+		wsk__s(s, "</text>");
+	}
+#ifndef WSK_NO_INPUT
+	if ((const void *)w == t->focus) wsk__ring(s, t, w, r);
+#endif
+}
+#endif
+
 /*
  * One stack's widgets into a document, clipped to its rows -- and, for a
  * WSK_STACK, the tree inside it, in the rectangle it was given (§5f).
@@ -2512,10 +2638,26 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 #if !defined(WSK_NO_TEXT) && !defined(WSK_NO_WRAP)
 		if (w->kind == WSK_TEXT && t->overflow == WSK_WRAP) { wsk__runs(d, t, i, s); continue; }
 #endif
+#ifndef WSK_NO_INPUT
+		/* the chosen item of a selecting stack, in its own fill (§5m) */
+		if (t->select && i == t->sel &&
+		    (w->kind == WSK_BUTTON || w->kind == WSK_LABEL)) {
+			wsk__box(s, t->ids ? w->id : 0, v, t->selfill);
+			if (w->kind == WSK_LABEL) { wsk__text(s, t, w, wsk__say(t, t, i), r); continue; }
+		} else
+#endif
 #ifdef WSK_NO_FIELD
 		if (w->kind == WSK_BUTTON) wsk__rect(s, t, w, v);
 #else
 		if (w->kind == WSK_BUTTON || w->kind == WSK_FIELD) wsk__rect(s, t, w, v);
+#endif
+#ifndef WSK_NO_CHECK
+		if (w->kind == WSK_CHECK) { wsk__check(s, t, w, r); continue; }
+#endif
+#ifndef WSK_NO_INPUT
+		if ((const void *)w == t->focus && w->kind == WSK_BUTTON &&
+		    (t->axis == WSK_COL ? v.h == r.h : v.w == r.w))
+			wsk__ring(s, t, w, r);
 #endif
 #ifndef WSK_NO_MARKS
 		if ((w->mark == WSK_MARK_CORNERS
@@ -2777,7 +2919,7 @@ typedef struct {
 /* What changed. A notice names its widget as wsk_hit_in does -- the
    caller's own tree and an index in it -- because stacks nest (§5f). */
 enum { WSK_NOTE_CLICK = 1, WSK_NOTE_SCROLL, WSK_NOTE_TEXT, WSK_NOTE_ENTER,
-       WSK_NOTE_FOCUS, WSK_NOTE_CLOSE };
+       WSK_NOTE_FOCUS, WSK_NOTE_CLOSE, WSK_NOTE_CHANGE, WSK_NOTE_SELECT };
 
 /* The keys that mean something to a field (§5j). A character typed is TEXT,
    not a key, so that a keyboard layout stays the host's business. */
@@ -2965,7 +3107,12 @@ static inline int wsk__fields(const wsk_tree_t *t, const wsk_tree_t *orig,
 	for (int i = 0; i < t->n; i++) {
 		const wsk_widget_t *w = &t->item[i];
 		wsk_buf_t *b = wsk__fbuf(t, w);
-		if (b != 0) {
+		/* focusable (§5m rule 4): an editable field, a button, a check */
+		if (b != 0 || w->kind == WSK_BUTTON
+#ifndef WSK_NO_CHECK
+		    || w->kind == WSK_CHECK
+#endif
+		    ) {
 			if ((const void *)w == want || (want == 0 && count == nth)) {
 				wsk_rect_t r = wsk_rect(t, i);
 				if (!wsk__cut(t, &r)) r.h = 0;        /* out of view */
@@ -2992,22 +3139,32 @@ static inline int wsk__fields(const wsk_tree_t *t, const wsk_tree_t *orig,
 static inline void wsk__refocus(wsk_ui_t *ui, const wsk_tree_t *in, int item,
                                 wsk_rect_t r, wsk_buf_t *b, int *lo, int *hi)
 {
-	if (ui->focus_b != 0) wsk__span(lo, hi, ui->focus_r.y, ui->focus_r.y + ui->focus_r.h);
+	if (ui->root->focus != 0) wsk__span(lo, hi, ui->focus_r.y, ui->focus_r.y + ui->focus_r.h);
 	ui->focus_in = in;
 	ui->focus_item = (short)item;
 	wsk__rput(&ui->focus_r, r);
 	ui->focus_b = b;
-	ui->root->focus = (b != 0) ? (const void *)&in->item[item] : 0;
-	if (b != 0) wsk__span(lo, hi, r.y, r.y + r.h);
+	ui->root->focus = (in != 0 && item >= 0) ? (const void *)&in->item[item] : 0;
+	if (in != 0 && item >= 0) wsk__span(lo, hi, r.y, r.y + r.h);
 }
 
 /* Where the focused field is NOW -- a drag may have moved it since. */
 static inline void wsk__focus_now(wsk_ui_t *ui)
 {
-	if (ui->focus_b == 0) return;
+	if (ui->root->focus == 0) return;
 	(void)wsk__fields(ui->root, ui->root, 0, ui->root->focus, -1, 0, &ui->focus_in,
 	                  &ui->focus_item, &ui->focus_r, &ui->focus_b, 0);
 }
+
+#ifndef WSK_NO_CHECK
+/* Tick or untick a check: its byte of the root's state. -1 if it has none. */
+static inline int wsk__toggle(wsk_tree_t *r, const wsk_widget_t *w)
+{
+	if (r->state == 0 || w->sub < 0 || w->sub >= r->states) return -1;
+	r->state[w->sub] = (unsigned char)!r->state[w->sub];
+	return r->state[w->sub];
+}
+#endif
 
 /* Characters moved within a buffer. A loop the compiler is told to keep:
    it would otherwise become memmove, which a module cannot link. */
@@ -3200,6 +3357,26 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			int word = -1, k = wsk__ui_hit(r, x, y, &in, &rect, &word, &at, &lay);
 			if (k == ui->hit && in == ui->hit_in) {
 				n = wsk__note(note, max, n, WSK_NOTE_CLICK, in, k, ui->word);
+#ifndef WSK_NO_CHECK
+				/* a check toggles (§5m rule 2) */
+				if (in->item[k].kind == WSK_CHECK && wsk__toggle(r, &in->item[k]) >= 0) {
+					n = wsk__note(note, max, n, WSK_NOTE_CHANGE, in, k,
+					              wsk__ticked(r, &in->item[k]));
+					wsk__span(&lo, &hi, rect.y, rect.y + rect.h);
+				}
+#endif
+				/* an item of a selecting stack is chosen (§5m rule 3): the
+				   stack is the caller's tree, which is writable */
+				if (in->select && in->sel != k) {
+					wsk_tree_t *own = (wsk_tree_t *)in;
+					if (own->sel >= 0 && own->sel < lay->n) {
+						wsk_rect_t old = wsk_rect(lay, own->sel);
+						if (wsk__cut(lay, &old)) wsk__span(&lo, &hi, old.y, old.y + old.h);
+					}
+					own->sel = (short)k;
+					wsk__span(&lo, &hi, rect.y, rect.y + rect.h);
+					n = wsk__note(note, max, n, WSK_NOTE_SELECT, in, k, k);
+				}
 #ifndef WSK_NO_OVER
 				/* a menu's choice is made once: a button in it closes it */
 				if (r->over != WSK_NONE && in == &r->nest[r->over] &&
@@ -3216,6 +3393,39 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		ui->drag = 0;
 	}
 #ifndef WSK_NO_FIELD
+	/* Tab and Shift-Tab: the next or previous focusable widget -- field,
+	   button, check -- in declaration order, depth first (§5m rule 4). */
+	else if (ev->kind == WSK_EV_KEY && (ev->key == WSK_KEY_TAB || ev->key == WSK_KEY_BACKTAB)) {
+		const wsk_tree_t *in = 0;
+		short item = -1;
+		wsk_rect_t fr = { 0, 0, 0, 0 };
+		wsk_buf_t *nb = 0;
+		int pos = -1, all;
+		wsk__focus_now(ui);
+		all = wsk__fields(r, r, 0, r->focus, -1, &pos, &in, &item, &fr, &nb, 0);
+		if (all > 0 && !(all == 1 && pos == 0)) {
+			int to = (ev->key == WSK_KEY_TAB) ? (pos + 1) % all
+			       : (pos < 0) ? all - 1 : (pos + all - 1) % all;
+			nb = 0;
+			(void)wsk__fields(r, r, 0, 0, to, 0, &in, &item, &fr, &nb, 0);
+			wsk__refocus(ui, in, item, fr, nb, &lo, &hi);
+			n = wsk__note(note, max, n, WSK_NOTE_FOCUS, in, item, 0);
+		}
+	}
+	/* ENTER on a focused button is its click, and on a check its toggle. */
+	else if (ev->kind == WSK_EV_KEY && ev->key == WSK_KEY_ENTER && r->focus != 0 &&
+	         ui->focus_b == 0) {
+		wsk__focus_now(ui);
+		n = wsk__note(note, max, n, WSK_NOTE_CLICK, ui->focus_in, ui->focus_item, -1);
+#ifndef WSK_NO_CHECK
+		if (ui->focus_in->item[ui->focus_item].kind == WSK_CHECK &&
+		    wsk__toggle(r, &ui->focus_in->item[ui->focus_item]) >= 0) {
+			n = wsk__note(note, max, n, WSK_NOTE_CHANGE, ui->focus_in, ui->focus_item,
+			              wsk__ticked(r, &ui->focus_in->item[ui->focus_item]));
+			wsk__span(&lo, &hi, ui->focus_r.y, ui->focus_r.y + ui->focus_r.h);
+		}
+#endif
+	}
 	else if ((ev->kind == WSK_EV_TEXT || ev->kind == WSK_EV_KEY) && ui->focus_b != 0) {
 		wsk_buf_t *b;
 		int edit = 0, moved = 0;
@@ -3253,18 +3463,6 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			b->len--; edit = 1;
 		} else if (ev->key == WSK_KEY_ENTER) {
 			n = wsk__note(note, max, n, WSK_NOTE_ENTER, ui->focus_in, ui->focus_item, b->len);
-		} else if (ev->key == WSK_KEY_TAB || ev->key == WSK_KEY_BACKTAB) {
-			const wsk_tree_t *in = 0;
-			short item = -1;
-			wsk_rect_t fr = { 0, 0, 0, 0 };
-			wsk_buf_t *nb = 0;
-			int pos = -1, all = wsk__fields(r, r, 0, r->focus, -1, &pos, &in, &item, &fr, &nb, 0);
-			if (all > 1) {
-				int to = (ev->key == WSK_KEY_TAB) ? (pos + 1) % all : (pos + all - 1) % all;
-				(void)wsk__fields(r, r, 0, 0, to, 0, &in, &item, &fr, &nb, 0);
-				wsk__refocus(ui, in, item, fr, nb, &lo, &hi);
-				n = wsk__note(note, max, n, WSK_NOTE_FOCUS, in, item, 0);
-			}
 		}
 		if (edit) n = wsk__note(note, max, n, WSK_NOTE_TEXT, ui->focus_in, ui->focus_item, b->len);
 		if (edit || moved) wsk__span(&lo, &hi, ui->focus_r.y, ui->focus_r.y + ui->focus_r.h);

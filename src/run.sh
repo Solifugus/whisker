@@ -2,7 +2,7 @@
 #
 # Every done-criterion in design.md §5 (the renderer), §5b (hit),
 # §5c (composition), §5d (input), §5e (scrolling), §5f (nesting), §5g (wrap), §5h (text items), §5i (the toolkit)
-# §5j (editing) and §5l (overlays).
+# §5j (editing), §5l (overlays) and §5m (check, selection, focus).
 #
 #   ./run.sh              the suite, the picture, and the XML check
 #   ./run.sh --module     and the module build, which is criterion 7
@@ -61,7 +61,7 @@ for W in wrapped text; do
 done
 # The controls. Without these, "byte for byte" is satisfied by a minimal build
 # that draws a field as a label and says nothing.
-for W in field marked scrolled nested wrapped text; do
+for W in field marked scrolled nested wrapped text check; do
 	F="$(/tmp/wsk_prof_full $W)"; M="$(/tmp/wsk_prof_min $W)"
 	case "$F$M" in
 	drew*refused\ -6*) echo "ok    CONTROL: $W -- full ${F%% bytes*} bytes, minimal ${M}" ;;
@@ -121,6 +121,8 @@ link_check module_shape.c "module_shape.c -DWSK_NO_TEXT" -DWSK_NO_TEXT
 NOTEXT="$SIZE"
 link_check module_nest.c "module_nest.c -DWSK_NO_OVER" -DWSK_NO_OVER
 NOOVER="$SIZE"
+link_check module_shape.c "module_shape.c -DWSK_NO_CHECK" -DWSK_NO_CHECK
+NOCHECK="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_PANEL" -DWSK_PANEL
 PANEL="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
@@ -143,6 +145,7 @@ echo "      module_shape.c $(( FULL - NONEST )) bytes, in the default profile on
 echo "      Wrapping costs it $(( FULL - NOWRAP )) (§5g), likewise."
 echo "      Text items cost it $(( FULL - NOTEXT )) (§5h), likewise."
 echo "      Overlays cost module_nest.c, a toolkit program, $(( NEST - NOOVER )) (§5l)."
+echo "      The check costs module_shape.c $(( FULL - NOCHECK )) (§5m)."
 echo "      WSK_PANEL, a touch panel's worth without wrap or text (D20): $PANEL."
 echo "      module_keys.c is wkeys: a field and an on-screen keyboard on the"
 echo "      toolkit, two layers so a screen of keys fits SRC_MAX (§5j)."

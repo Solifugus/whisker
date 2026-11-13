@@ -2432,6 +2432,93 @@ set; it draws byte for byte as before. Out of `WSK_MINIMAL`, in `WSK_PANEL`.
 submenu (one overlay at a time); and a focus model for menus from the
 keyboard (arrows through items) — that waits for focus on buttons.
 
+
+---
+
+## 5m. Iteration 13 — check, selection, and focus on buttons
+
+**Written 2026-11-12, before any code.** §8.9's third step, and the three
+small things a real form needs that whisker still lacks: a **checkbox**
+(`window-gap.md`'s `check`, 5 sites in Studio), a **selected row** in a list
+(`table`, `tree` and every list that is a choice), and **Tab reaching
+buttons** — today it reaches fields only (§5j rule 1).
+
+### The rules, each answering to "the toolkit never writes a widget"
+
+1. **`WSK_CHECK`**: a box and its label. Whether it is ticked is **state**,
+   so it lives where editable text does — beside the tree, in the caller's
+   memory: `root.state`, an array of bytes, and the check's `sub` indexes
+   it. With no state array, a check is drawn unticked and is read-only.
+   Drawn **in rectangles only** — a box in the trough colour, and when ticked
+   a smaller box in the accent inside it — so it needs no `<path>` and costs
+   the C5 nothing it does not already draw. Its label is left-aligned after
+   the box, as a field's text is.
+2. **A click on a check toggles it**: a **`WSK_NOTE_CHANGE`** with the new
+   value, and its rows.
+3. **Selection is a stack's**, not a widget's: a stack with `select` set
+   keeps the index of its chosen item in `sel` (or `WSK_NONE`), in the
+   tree — which is the caller's and writable. The chosen item is drawn in the
+   stack's `selfill`. **A click on an item of a selecting stack selects it**:
+   a **`WSK_NOTE_SELECT`** with the index, and the rows of the old choice and
+   the new.
+4. **Focus reaches buttons and checks.** Tab walks every **focusable**
+   widget — field, button, check — in declaration order, depth first. A
+   focused button or check is drawn with a **ring**: four thin rectangles in
+   the ink colour, inset two pixels; `ENTER` on it is the CLICK (and toggles a
+   check). A tap on a button still does not move focus (§5j rule 2 stands:
+   the keyboard's keys are buttons).
+
+### Profile
+
+`WSK_NO_CHECK` drops the check kind; selection and the ring are part of the
+toolkit (`WSK_NO_INPUT`). `WSK_MINIMAL` keeps none of them; `WSK_PANEL` all.
+
+### Done criteria
+
+1. Every earlier check and golden unchanged.
+2. A check drawn unticked and ticked, at the bytes and at the pixels; read-only
+   without state; refused by `WSK_MINIMAL` by name.
+3. Toolkit: a click toggles a check (CHANGE, rows); a click on a list item of
+   a selecting stack selects it (SELECT, both rows); a click on a plain
+   stack's item selects nothing (the control).
+4. Tab order across fields, buttons and checks, depth first; the ring drawn
+   on the focused button and not on a field; ENTER on a focused button is a
+   CLICK, on a focused check a toggle.
+5. At the pixels: a toggle and a selection, repainted in their rows alone,
+   equal a full redraw.
+6. `edit.c` gains a check and a selecting list, in SDL and the browser.
+
+
+### What it came to, 2026-11-12
+
+Built the same evening; criteria 1–6 met. **457 checks** in `src/run.sh
+--module` (433 before): 20 in the suite, 2 at the pixels, a profile control
+and a module link; the browser check grew by 2. Every output of the commit
+before — 27 files — byte-identical.
+
+- **The check**, in rectangles only: `<path>` nowhere, so nothing the C5
+  cannot draw — though the C5's profile refuses it by name, as a control.
+  **Found by looking**: the first picture drew an unticked box in the trough
+  colour alone, and on the scene it was all but invisible; no test could have
+  said so. It now has a border in the ink, the trough inside, and the tick
+  inside that.
+- **Selection** is a stack's, in the caller's tree: a tap selects, the old
+  choice's rows and the new one's repaint, and a stack that does not select
+  is only clicked (the control).
+- **Focus reaches buttons and checks**, with a ring of four thin rectangles;
+  Enter on a focused button is its click and on a check its toggle. **This
+  moved three checks of §5j on purpose** — they were written when Tab
+  reached fields only, and now step over the Q and W buttons in their row;
+  each was rewritten and says why.
+- **At the pixels**, a toggle and a choice each repainted in the rows
+  `wsk_feed` returned equal a full redraw.
+- **`edit.c`** has a "Remember me" check and a list that keeps a choice; in
+  headless Chrome a click ticked it (`change remember = 1`) and chose a row.
+
+**§7's question**: the check is 508 bytes of the default. A small panel's
+default build is now **10,540**, `WSK_PANEL`'s **8,404**, and `WSK_MINIMAL`'s
+3,608 — 32 more than the iteration before, the root's new fields being set.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

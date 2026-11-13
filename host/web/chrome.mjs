@@ -124,6 +124,16 @@ try {
   ok(said.includes('click  save-now') && said.includes('close  the menu'),
      'and its menu: "Save now" chosen, the menu closed');
 
+  // A check and a choice (§5m): Remember me is under Save, 402..438; the
+  // list on the right keeps a choice.
+  await click(40, 418);
+  await click(800, 124);              // Item 1: 56 + 44 + 4 = 104..148
+  await settle();
+  await sleep(300);
+  ok(said.includes('change remember = 1'), 'the check ticked by a click: change remember = 1');
+  ok(said.includes('select it1'), 'and a list item chosen: select it1');
+  await snap('web_check.png');
+
   // The banded rule: everything above was clipped repaints. Keep that canvas,
   // ask the program to draw it all again, and compare.
   await js('window.__a = whisker.canvas.getContext("2d").getImageData(0,0,1024,600).data.slice(); true');

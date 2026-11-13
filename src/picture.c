@@ -1176,6 +1176,67 @@ int main(void)
 		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
 	}
 
+	/*
+	 * Check and selection, at the pixels (design.md §5m): a toggle and a
+	 * choice, each repainted in the rows wsk_feed returns, against a full
+	 * redraw -- the choice moving from one row to another being two places
+	 * at once.
+	 */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_CHECK,  .id = "c1", .text = "Notify me", .sub = 0, .size = 28 },
+			{ .kind = WSK_CHECK,  .id = "c2", .text = "Dark panel", .sub = 1, .size = 28 },
+			{ .kind = WSK_STACK,  .id = "l",  .sub = 0, .weight = 1 },
+		};
+		static const wsk_widget_t L[] = {
+			{ .kind = WSK_BUTTON, .id = "x0", .text = "First",  .size = 26 },
+			{ .kind = WSK_BUTTON, .id = "x1", .text = "Second", .size = 26 },
+			{ .kind = WSK_BUTTON, .id = "x2", .text = "Third",  .size = 26 },
+		};
+		static uint16_t want[PW * PH];
+		unsigned char st[2] = { 1, 0 };
+		wsk_tree_t w, k[1];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		uint32_t v;
+		int y0, y1, good = 1;
+
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 6; w.gap = 4; w.bg = 0x10203au; w.item = F; w.n = 3; w.nest = k; w.nests = 1;
+		w.state = st; w.states = 2;
+		wsk_nest_init(&k[0], &w, WSK_COL); k[0].pad = 0; k[0].gap = 2;
+		k[0].item = L; k[0].n = 3; k[0].select = 1; k[0].sel = 1;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		s.put = to_window; s.ctx = &dev;
+
+		printf("\n  check and selection (§5m)\n");
+#define DRAW_ALL() do { v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); \
+                        s.len = 0; wsk_render(&w, &s, 4096); } while (0)
+#define DRAW_ROWS() do { v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu); \
+                         svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); s.len = 0; \
+                         wsk_render_rows(&w, y0, y1, &s, 4096); } while (0)
+#define TAP(X, Y) do { ev.kind = WSK_EV_DOWN; ev.x = (X); ev.y = (Y); \
+                       wsk_feed(&ui, &ev, nt, 4, &y0, &y1); DRAW_ROWS(); \
+                       ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1); DRAW_ROWS(); \
+                       memcpy(want, screen, sizeof screen); DRAW_ALL(); \
+                       if (memcmp(screen, want, sizeof screen) != 0) good = 0; } while (0)
+		DRAW_ALL();
+		TAP(20, 50);                 /* tick Dark panel */
+		TAP(100, 135);               /* choose Third: 70 + 2 x 28 = 126..152 */
+		TAP(20, 20);                 /* untick Notify me */
+		ok(good, "a toggle and a choice, each repainted in its rows alone, equal a full redraw");
+		ok(st[0] == 0 && st[1] == 1 && k[0].sel == 2, "and the state says what was done");
+		shot("check_select.ppm");
+#undef TAP
+#undef DRAW_ALL
+#undef DRAW_ROWS
+		v = 0;
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

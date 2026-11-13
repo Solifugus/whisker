@@ -2140,13 +2140,20 @@ int main(void)
 		/* Tab order: declaration order, depth first, round and back. */
 		KEY(WSK_KEY_TAB);
 		ok(n == 1 && nt[0].kind == WSK_NOTE_FOCUS && w.focus == &FORMW[3], "TAB: name to city");
+		/* Since §5m, Tab reaches buttons too: the row's Q and W are in the
+		   order -- a deliberate change to these three checks, which were
+		   written when only fields took focus. */
+		KEY(WSK_KEY_TAB);
+		ok(w.focus == &ROWW[0], "TAB: city to the Q button, two deep in the row (§5m)");
 		KEY(WSK_KEY_TAB);
 		ok(w.focus == &ROWW[1] && nt[0].in == &k[0] && nt[0].item == 1,
-		   "TAB: city to note, two deep in the row");
+		   "TAB: to note, beside it");
 		KEY(WSK_KEY_TAB);
-		ok(w.focus == &FORMW[1], "TAB from the last goes round to the first");
+		KEY(WSK_KEY_TAB);
+		ok(w.focus == &FORMW[1], "TAB past W, the last, goes round to the first");
 		KEY(WSK_KEY_BACKTAB);
-		ok(w.focus == &ROWW[1], "and BACKTAB back round to the last");
+		KEY(WSK_KEY_BACKTAB);
+		ok(w.focus == &ROWW[1], "and BACKTAB back round past W to note");
 
 		/* A tap: on a field, focus and a caret where it landed; on a key,
 		   focus stays where it was. */
@@ -2303,6 +2310,111 @@ int main(void)
 		ok(wsk_check(&w, &which) == WSK_E_KIND && which == -1,
 		   "an overlay placed off the screen by hand is refused");
 		w.over = WSK_NONE;
+	}
+
+	/* ---- §5m. check, selection, focus on buttons ---- */
+	printf("\n-- §5m  check, selection, focus\n");
+	{
+		static const wsk_widget_t FORMC[] = {
+			{ .kind = WSK_CHECK,  .id = "wifi", .text = "WiFi", .sub = 0, .size = 32 },
+			{ .kind = WSK_CHECK,  .id = "bt",   .text = "Bluetooth", .sub = 1, .size = 32 },
+			{ .kind = WSK_BUTTON, .id = "ok",   .text = "OK", .size = 40 },
+			{ .kind = WSK_STACK,  .id = "list", .sub = 0, .weight = 1 },
+		};
+		static const wsk_widget_t LISTC[] = {
+			{ .kind = WSK_BUTTON, .id = "a0", .text = "Apple",  .size = 30 },
+			{ .kind = WSK_BUTTON, .id = "a1", .text = "Banana", .size = 30 },
+			{ .kind = WSK_BUTTON, .id = "a2", .text = "Cherry", .size = 30 },
+			{ .kind = WSK_BUTTON, .id = "a3", .text = "Date",   .size = 30 },
+			{ .kind = WSK_BUTTON, .id = "a4", .text = "Elder",  .size = 30 },
+		};
+		unsigned char st[2] = { 0, 1 };
+		wsk_tree_t w, k[1];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char cd[4096];
+		int n, y0 = 0, y1 = 0;
+
+		wsk_init(&w, WSK_COL, 320, 300);
+		w.pad = 4; w.gap = 4; w.ids = 1; w.item = FORMC; w.n = 4; w.nest = k; w.nests = 1;
+		wsk_nest_init(&k[0], &w, WSK_COL); k[0].pad = 0; k[0].gap = 2;
+		k[0].item = LISTC; k[0].n = 5; k[0].select = 1;
+		ok(wsk_check(&w, 0) == WSK_OK, "two checks, a button and a selecting list");
+
+		/* Rule 1, without state: drawn unticked, read-only. */
+		render_into(&w, cd, sizeof cd, 4096);
+		ok(has(cd, "<rect id=\"bt\" x=\"8\" y=\"50\" width=\"12\" height=\"12\" fill=\"#fff\"/>"
+		           "<rect x=\"10\" y=\"52\" width=\"8\" height=\"8\" fill=\"#081620\"/>") &&
+		   !has(cd, "width=\"6\" height=\"6\""),
+		   "with no state, a check is a box -- a border in the ink, the trough inside -- and nothing in it");
+		/* With state: Bluetooth's byte is 1. */
+		w.state = st; w.states = 2;
+		render_into(&w, cd, sizeof cd, 4096);
+		ok(has(cd, "<rect id=\"wifi\" x=\"8\" y=\"14\" width=\"12\" height=\"12\" fill=\"#fff\"/>"),
+		   "WiFi, unticked: a 12-pixel box (three quarters of the font), in from the padding");
+		ok(has(cd, "<rect x=\"11\" y=\"53\" width=\"6\" height=\"6\" fill=\"#2a6b8f\"/>") &&
+		   count(cd, "width=\"6\" height=\"6\"") == 1,
+		   "Bluetooth, ticked: a smaller box inside its box, in the accent -- and only it");
+		ok(has(cd, "<text text-anchor=\"start\" x=\"26\""),
+		   "and the label starts after the box: 4 + 4 + 12 + 6 = 26");
+		ok(!has(cd, "<path"), "in rectangles only: no <path>, so nothing the C5 cannot draw");
+
+		/* Rules 2 and 3, by the toolkit. */
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+#define TAP(X, Y) (ev.kind = WSK_EV_DOWN, ev.x = (X), ev.y = (Y), \
+                   wsk_feed(&ui, &ev, nt, 4, &y0, &y1), \
+                   ev.kind = WSK_EV_UP, n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define KEY(K)  (ev.kind = WSK_EV_KEY, ev.key = (K), n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+		TAP(20, 20);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_CLICK && nt[1].kind == WSK_NOTE_CHANGE &&
+		   nt[1].value == 1 && st[0] == 1 && y0 == 0 && y1 == 40,
+		   "a tap on WiFi: CLICK, then CHANGE to 1 -- in the caller's byte -- and its rows");
+		TAP(20, 20);
+		ok(st[0] == 0 && nt[1].value == 0, "and again: unticked");
+		/* the list: OK is 76..116, so the list starts at 120; rows of 30 + 2 */
+		TAP(100, 200);
+		ok(n == 2 && nt[1].kind == WSK_NOTE_SELECT && nt[1].in == &k[0] && nt[1].value == 2 &&
+		   k[0].sel == 2 && y0 == 184 && y1 == 216,
+		   "a tap on Cherry selects it: SELECT 2, the list's sel, its rows 184..216");
+		TAP(100, 130);
+		ok(k[0].sel == 0 && y0 == 120 && y1 == 216,
+		   "a tap on Apple: the old choice's rows and the new one's both repaint");
+		render_into(&w, cd, sizeof cd, 4096);
+		ok(has(cd, "<rect id=\"a0\" x=\"4\" y=\"120\" width=\"312\" height=\"30\" fill=\"#b06a2a\"/>"),
+		   "and Apple is drawn in the list's selection fill");
+		k[0].select = 0;
+		TAP(100, 200);
+		ok(n == 1 && k[0].sel == 0, "CONTROL: in a list that does not select, a tap is only a click");
+		k[0].select = 1;
+		w.state = 0; w.states = 0;
+		TAP(20, 20);
+		ok(n == 1, "CONTROL: a check with no state is read-only -- a click, no change");
+		w.state = st; w.states = 2;
+
+		/* Rule 4: focus reaches buttons and checks. */
+		KEY(WSK_KEY_TAB);
+		ok(w.focus == &FORMC[0], "TAB from nothing: the first focusable, the WiFi check");
+		KEY(WSK_KEY_TAB);
+		KEY(WSK_KEY_TAB);
+		ok(w.focus == &FORMC[2], "and on to the OK button");
+		render_into(&w, cd, sizeof cd, 4096);
+		ok(has(cd, "<rect x=\"6\" y=\"78\" width=\"308\" height=\"2\" fill=\"#fff\"/>") &&
+		   has(cd, "<rect x=\"312\" y=\"78\" width=\"2\" height=\"36\" fill=\"#fff\"/>"),
+		   "the focused button has a ring: thin rectangles inset 2, in the ink");
+		KEY(WSK_KEY_ENTER);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &w && nt[0].item == 2,
+		   "ENTER on the focused button is its click");
+		KEY(WSK_KEY_BACKTAB);
+		KEY(WSK_KEY_ENTER);
+		ok(n == 2 && nt[1].kind == WSK_NOTE_CHANGE && st[1] == 0,
+		   "BACKTAB to Bluetooth, ENTER: it toggles off");
+		KEY(WSK_KEY_TAB);
+		KEY(WSK_KEY_TAB);
+		ok(w.focus == &LISTC[0], "and Tab goes on into the list, depth first");
+#undef TAP
+#undef KEY
 	}
 
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
