@@ -129,7 +129,7 @@ link_check () {   # link_check <source> <label> [extra flags...]
 		exit 1
 	fi
 }
-for SRC in module_shape.c module_compose.c module_input.c module_stat.c module_font.c module_slop.c module_scroll.c module_nest.c module_keys.c; do
+for SRC in module_shape.c module_compose.c module_input.c module_stat.c module_font.c module_slop.c module_scroll.c module_nest.c module_keys.c module_piano.c; do
 	link_check "$SRC" "$SRC"
 	# Named, not "whichever came last": this has been the wrong number twice,
 	# both times because a module was added to the loop after it.

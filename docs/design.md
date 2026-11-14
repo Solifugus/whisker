@@ -3143,6 +3143,37 @@ skipped animation never shows anything false about the program's state.
 
 ### 9.4 Unconventional widgets, and the one ability they share
 
+**Built first without shapes, 2026-11-14: `wpiano`** (`src/module_piano.c`),
+two octaves on the P4 through its speaker. A piano's black keys overlap its
+white ones and whisker's stacks never overlap, so the keyboard is two rows:
+the white keys, and above them the black keys with the narrow upper parts of
+the white keys between, sized to sit exactly over their lower parts, with a
+two-pixel spacer where two white keys meet. Every part a finger can land on
+is a rectangle, and it looks like a piano. Matthew, playing it: *"no delay...
+very nice sounds."* Getting there taught four things, three of them about any
+whisker program on the board:
+
+1. **Every finger is its own.** `/touch` names the finger of every event; the
+   first version read them all as one, and two fingers re-struck each other's
+   keys — heard as "only one sound channel". The mixing was never the limit.
+2. **A tall repaint is a long pause.** Pressing a key repainted it, and a key
+   is nearly the screen's height: about 200 ms on the P4 (§5e's 229 ms for
+   552 rows), during which no finger was read and no note started. Notes came
+   seconds late (27 of 27 over 50 ms, worst 5.7 s). Now a held key lights a
+   strip a dozen rows high, and in every pass the sound is struck and written
+   **before** anything is drawn. **Draw little, and draw after the thing a
+   person is waiting for.**
+3. **Time lost is skipped, not owed.** Catching up the sound a long repaint
+   had missed filled the codec's 120 ms queue with sound that should already
+   have played, and every note after waited behind it.
+4. **A stack figure copied is a stack figure wrong.** 8,192 was taken from
+   `wkeys`; the light strip's 1,792 bytes of widgets on the stack took the
+   program past it, and the board **panicked twice** the moment it started.
+   Measured, its own frame is 6,000 and its chain over 11,700 with the
+   rasteriser beneath; it declares 16,384. CLAUDE.md said this in October
+   ("do not hand a whisker program a stack number from modules/pic") and the
+   rule held: measure it.
+
 **Hit by shape**: `hit` today tests rectangles. Testing a widget's own path —
 a circle, a sector, a room on a plan — is what opens: radial menus (better
 than drop-downs under a finger), dials and knobs turned by dragging round,
