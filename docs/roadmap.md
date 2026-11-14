@@ -50,6 +50,7 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **Table columns** (§5n) | built 2026-11-12: the header decides; rows follow it; a tap on a cell chooses its row |
 | **Memo** (§5o) | built 2026-11-14: many lines edited; every switch now built each run |
 | **Trees** (§5p) | built 2026-11-14: depths over a flat list, the program owns expansion, as Studio's `window` does |
+| **World** (§5q) | designed 2026-11-14, not built: placed children over a larger space, view and zoom, bounded/open/toroidal, per-item scale and fade -- games, diagrams, Matthew's virtual conference |
 | **Profiles** (§7, D8) | built; the C5 pays for nothing it cannot use |
 | **On the board** | `wflick` and `wcompose` run on the C5, committed in RV-9 |
 | **On a desk** | `host/linux`, typing loop closed with a mouse (D7) |

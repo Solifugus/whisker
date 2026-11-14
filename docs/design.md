@@ -2768,6 +2768,107 @@ values can use it. Default 11,472, `WSK_PANEL` 9,336.
 draw them; whisker refuses them by name. A browser could. That is D21's
 runtime half, wanting its own design.
 
+
+---
+
+## 5q. A world: a view onto a space larger than the screen — designed, not built
+
+**Written 2026-11-14, design only**, at Matthew's asking: *"a container that
+can window its physical size over a larger virtual size and zoom in/out.
+Inside would be any other kinds of widgets"*, with **fixed, continuous or
+toroidal** space. Name: **world** (Matthew). Pinch-to-zoom **later**.
+
+### Who it is for, and what each asks
+
+- **Games** — sprites that move every frame, overlapping; a toroidal field.
+- **Flow charts, large diagrams** — a big fixed space, panned and zoomed.
+- **Large images** — which `/w0` cannot draw at all (it has no `<image>`);
+  a browser host could. D21's runtime half again: a host that has more.
+- **Matthew's own: a virtual conference in gBASIC.** Each attendee an avatar
+  walking a floor plan; posters (poster sessions) on the walls; nearby
+  avatars visible, and **text between people shown above them, shrinking and
+  fading with distance**, so that a virtual conference keeps the
+  serendipity and exploration of a real one. Three requirements come from it
+  and shape everything below:
+  1. **A point on the floor means something** — click where to walk — so
+     whisker must turn a screen point into a *world* position, not only into
+     a widget.
+  2. **Every placed thing has its own scale and its own fade.** The program
+     decides how far is how small and how faint — that is the application's
+     policy, not whisker's — and whisker draws what it is told.
+  3. **A poster is a whole panel** — title, abstract, author, a stack of
+     widgets — and it must zoom as one: sizes, padding, gaps and fonts.
+
+### The model
+
+1. **A world is a stack whose children are placed, not stacked.** `layout =
+   WSK_PLACE` on a tree; its `item` array is the widgets, any kind,
+   **including stacks** (a poster). They may **overlap**: array order is
+   drawing order, later on top, and `hit` asks the topmost first — the first
+   container in whisker where that is true.
+2. **Places live beside the tree, in the caller's memory**, as buffers and
+   state do (§5j, §5m): `place[i] = { int32 x, y; short w, h; scale; fade }`.
+   A game moves a sprite by writing two numbers; whisker never writes a
+   widget. **32-bit** world positions — a continuous world outgrows a short
+   (§5e found the 32,767 wall once already) — converted to screen positions
+   only for what is in view.
+3. **The view is the tree's**, as `scroll` is: `vx, vy` (32-bit, the world
+   point at the view's top left) and `zoom` (fixed point, 256 = 1:1; a module
+   has no floating point and no 64-bit division). A child's screen rectangle is
+   its place, less the view, times the zoom, times its own scale.
+4. **Topology**, `world` = one of three:
+   - **`WSK_BOUNDED`** — a fixed size; the view may not leave it. Out of range
+     is **refused** (D11), and the toolkit clamps a drag, as it does a scroll.
+   - **`WSK_OPEN`** — no edges.
+   - **`WSK_TORUS`** — a fixed size that wraps both ways: positions are taken
+     modulo the size, the view wraps, a thing straddling the seam is drawn
+     **twice** (up to four times at a corner), and `hit` wraps with it.
+5. **Everything inside scales.** A placed widget's rectangle, and — for a
+   stack inside — its padding, gap and font, by the zoom times its own scale.
+   RV-9 draws text at any size, so a font scaled is a font drawn.
+6. **Fade is a colour, not an opacity.** `/w0` has no opacity (it is in
+   *What whisker must never require*), so `fade` blends a widget's ink and
+   fill toward the world's background by that fraction. On `/w0` it looks
+   like fading; a host that has opacity could do it properly (D21).
+7. **The view clips** — both axes, as a nested scrolling pane already does
+   (§5f) — and only what is in view is emitted, so a conference hall of a
+   thousand avatars costs the document only the dozen nearby. Text is whole
+   or not drawn at the view's edge (D12).
+8. **Screen to world**: `wsk_world_at(tree, x, y, &wx, &wy)` — the inverse
+   of rule 3, toroidal wrap included — so a click on bare floor is a place to
+   walk to.
+
+### The toolkit (§5i), later than the drawing
+
+A drag on bare floor pans; the wheel zooms about the pointer (zoom anchored
+at a point, the view's centre being one such point); pinch is later, needing
+two fingers, which the piano showed the panel reports well. A moved item
+repaints its old rows and its new; a pan or a zoom repaints the view.
+
+### On each tier (D21)
+
+- **Desktop and browser**: all of it, smoothly; a browser host could zoom
+  with an SVG transform instead of whisker's arithmetic.
+- **The P4**: a moving sprite is cheap (its own rows); a pan or zoom of a
+  full-screen view is the ~200 ms §5e measured — so a game there moves its
+  sprites under a still view, or keeps its view small.
+- **The C5**: none of it (`WSK_NO_WORLD`, in `WSK_MINIMAL`).
+
+### Done criteria, for when it is built
+
+1. Every earlier output unchanged.
+2. Placement, view and zoom: rectangles by hand, at 1:1, zoomed in and out.
+3. Overlap: draw order and hit order, with the topmost answering.
+4. Each topology: bounded refusing a view off its edge; open far from the
+   origin (past 32,767); a torus drawing a seam-straddler twice and hitting
+   both halves.
+5. Scale and fade per item: a label's font scaled, its ink blended — by the
+   bytes and at the pixels.
+6. A poster — a stack inside — zoomed as one.
+7. `wsk_world_at`, toroidal wrap included.
+8. A demo: a small toroidal game on the P4, and a conference floor in the
+   browser — avatars walking, speech above them fading with distance.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this
