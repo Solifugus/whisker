@@ -63,6 +63,55 @@ static const wsk_widget_t HEAD[] = {
 	{ .kind = WSK_BUTTON, .id = "h-size", .text = "Size", .size = 90,  .fill = 0x1c3550u },
 };
 static wsk_widget_t items[30], cells[30][2];
+
+/* The table is a FILE TREE (§5p), and its expansion is this program's, as
+   Studio's is: the model below is ours, and what whisker is handed is the
+   flat list of rows we show, each with its depth. A tap selects a row; on a
+   folder we open or close it and hand over the rows again. */
+typedef struct { const char *name, *size; unsigned char depth, kids, open; } node_t;
+static node_t NODES[] = {
+	{ "src", "-", 0, 1, 1 },
+	{ "whisker.h", "140K", 1, 0, 0 }, { "test.c", "90K", 1, 0, 0 },
+	{ "picture.c", "60K", 1, 0, 0 },  { "run.sh", "8K", 1, 0, 0 },
+	{ "modules", "-", 1, 1, 0 },
+	{ "module_keys.c", "12K", 2, 0, 0 }, { "module_piano.c", "14K", 2, 0, 0 },
+	{ "module_scroll.c", "10K", 2, 0, 0 },
+	{ "docs", "-", 0, 1, 0 },
+	{ "design.md", "180K", 1, 0, 0 }, { "decisions.md", "30K", 1, 0, 0 },
+	{ "roadmap.md", "40K", 1, 0, 0 },  { "window-gap.md", "20K", 1, 0, 0 },
+	{ "host", "-", 0, 1, 0 },
+	{ "linux", "-", 1, 1, 0 },
+	{ "edit.c", "7K", 2, 0, 0 }, { "host_sdl.c", "8K", 2, 0, 0 },
+	{ "web", "-", 1, 1, 0 },
+	{ "host_web.c", "12K", 2, 0, 0 }, { "chrome.mjs", "6K", 2, 0, 0 },
+	{ "tools", "-", 0, 1, 0 },
+	{ "evidence", "-", 1, 1, 0 },
+	{ "stack", "4K", 2, 0, 0 }, { "keys", "6K", 2, 0, 0 }, { "piano", "7K", 2, 0, 0 },
+	{ "README.md", "12K", 0, 0, 0 },
+	{ "CLAUDE.md", "30K", 0, 0, 0 },
+};
+#define NN ((int)(sizeof NODES / sizeof NODES[0]))
+static int rownode[30];
+
+/* The rows to show: every node not under a closed folder, + or - on a
+   folder in ASCII, which is all the window draws (§5p). */
+static int tree_rows(void)
+{
+	int n = 0, hide = 255;
+	for (int i = 0; i < NN && n < 30; i++) {
+		node_t *t = &NODES[i];
+		if (t->depth > hide) continue;
+		hide = 255;
+		items[n].depth = t->depth;
+		items[n].fill = (n % 2) ? 0x1a3048u : 0x15283du;
+		snprintf(cells[n][0].text, WSK_TEXT_MAX, "%s%s",
+		         t->kids ? (t->open ? "- " : "+ ") : "  ", t->name);
+		snprintf(cells[n][1].text, WSK_TEXT_MAX, "%s", t->size);
+		rownode[n++] = i;
+		if (t->kids && !t->open) hide = t->depth;
+	}
+	return n;
+}
 static char name[40], city[40], note[80];
 static unsigned char state[1];          /* Remember me, ticked or not (§5m) */
 static const char *strs[1] = { "Tab between fields, Enter prints a field, Esc quits" };
@@ -89,10 +138,8 @@ int main(int argc, char **argv)
 		snprintf(items[i].id, WSK_ID_MAX, "it%d", i);
 		cells[i][0].kind = WSK_LABEL;
 		snprintf(cells[i][0].id, WSK_ID_MAX, "n%d", i);
-		snprintf(cells[i][0].text, WSK_TEXT_MAX, "Item %d", i);
 		cells[i][1].kind = WSK_LABEL;
 		snprintf(cells[i][1].id, WSK_ID_MAX, "s%d", i);
-		snprintf(cells[i][1].text, WSK_TEXT_MAX, "%d KB", (i * 37) % 900 + 1);
 	}
 	buf[0].b = name; buf[0].cap = sizeof name;
 	buf[1].b = city; buf[1].cap = sizeof city;
@@ -115,7 +162,8 @@ int main(int argc, char **argv)
 	nest[4].pad = 4; nest[4].gap = 2; nest[4].item = HEAD; nest[4].n = 2;
 	nest[4].talign = WSK_ALIGN_START;
 	wsk_nest_init(&nest[5], &win, WSK_COL);     /* the body: scrolls, chooses */
-	nest[5].pad = 0; nest[5].gap = 2; nest[5].item = items; nest[5].n = 30;
+	nest[5].pad = 0; nest[5].gap = 2; nest[5].item = items; nest[5].n = tree_rows();
+	nest[5].indent = 18;                        /* a tree: depths over the rows */
 	nest[5].overflow = WSK_SCROLL;
 	nest[5].select = 1;
 	nest[5].head = 4;                           /* its rows follow the header */
@@ -181,7 +229,19 @@ int main(int argc, char **argv)
 				printf("close  the menu\n");
 			else if (t->kind == WSK_NOTE_CHANGE)
 				printf("change %s = %d\n", t->in->item[t->item].id, t->value);
-			else if (t->kind == WSK_NOTE_SELECT)
+			else if (t->kind == WSK_NOTE_SELECT && t->in == &nest[5] &&
+			         NODES[rownode[t->value]].kids) {
+				/* a folder: open or close it, and hand the rows over again */
+				node_t *f = &NODES[rownode[t->value]];
+				f->open = !f->open;
+				printf("%s  %s\n", f->open ? "open " : "close", f->name);
+				nest[5].n = tree_rows();
+				/* fewer rows may now end above where the list was scrolled to,
+				   and an offset past the end is refused (D11): back to the top */
+				nest[5].scroll = 0;
+				y0 = 0; y1 = h;                       /* the rows all moved */
+			}
+			if (t->kind == WSK_NOTE_SELECT)
 				printf("select %s\n", t->in->item[t->item].id);
 			else if (t->kind == WSK_NOTE_ENTER)
 				printf("enter  %s = \"%s\"\n", t->in->item[t->item].id,

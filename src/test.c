@@ -260,6 +260,43 @@ static wsk_rect_t rect_of(const wsk_tree_t *t, const char *key)
 	return r;
 }
 
+/* §5p: a program's own tree, as Studio keeps one -- the model is the
+   program's, and what whisker is handed is the flat list of rows it shows. */
+typedef struct { const char *name; unsigned char depth, kids, open; } tnode_t;
+static tnode_t TNODES[] = {
+	{ "src",       0, 1, 0 },
+	{ "whisker.h", 1, 0, 0 },
+	{ "test.c",    1, 0, 0 },
+	{ "docs",      0, 1, 0 },
+	{ "design.md", 1, 0, 0 },
+	{ "old",       1, 1, 0 },
+	{ "gtk.md",    2, 0, 0 },
+	{ "README.md", 0, 0, 0 },
+};
+#define TN ((int)(sizeof TNODES / sizeof TNODES[0]))
+
+/* The rows a closed parent hides are skipped; each row says + or - itself,
+   in ASCII (§5p: the window draws 32..126). Returns how many, and which node
+   each row is, which is the program's to keep. */
+static int trows(wsk_widget_t *row, int *node)
+{
+	int n = 0, hide_below = 255;
+	for (int i = 0; i < TN; i++) {
+		tnode_t *t = &TNODES[i];
+		if (t->depth > hide_below) continue;
+		hide_below = 255;
+		memset(&row[n], 0, sizeof row[n]);
+		row[n].kind = WSK_BUTTON;
+		row[n].size = 24;
+		row[n].depth = t->depth;
+		snprintf(row[n].id, WSK_ID_MAX, "n%d", i);
+		snprintf(row[n].text, WSK_TEXT_MAX, "%s%s", t->kids ? (t->open ? "- " : "+ ") : "  ", t->name);
+		node[n++] = i;
+		if (t->kids && !t->open) hide_below = t->depth;
+	}
+	return n;
+}
+
 int main(void)
 {
 	static char doc[8192], clip[8192], other[8192];
@@ -2604,6 +2641,100 @@ int main(void)
 #undef TYPE
 #undef KEY
 #undef SET
+	}
+
+	/* ---- §5p. a tree: depths over a flat list ---- */
+	printf("\n-- §5p  trees\n");
+	{
+		static const wsk_widget_t LIST[] = {
+			{ .kind = WSK_LABEL, .id = "d0", .text = "a",   .depth = 0, .size = 24 },
+			{ .kind = WSK_LABEL, .id = "d1", .text = "b",   .depth = 1, .size = 24 },
+			{ .kind = WSK_LABEL, .id = "d2", .text = "c",   .depth = 2, .size = 24 },
+			{ .kind = WSK_LABEL, .id = "d3", .text = "d",   .depth = 1, .size = 24 },
+			{ .kind = WSK_LABEL, .id = "d4", .text = "e",   .depth = 0, .size = 24 },
+		};
+		wsk_tree_t t;
+		wsk_init(&t, WSK_COL, 320, 172);
+		t.pad = 0; t.gap = 0; t.item = LIST; t.n = 5;
+		ok(rect_is(wsk_rect(&t, 2), 0, 48, 320, 24), "CONTROL: with no indent, depth changes nothing");
+		t.indent = 16;
+		ok(rect_is(wsk_rect(&t, 0), 0, 0, 320, 24) && rect_is(wsk_rect(&t, 1), 16, 24, 304, 24) &&
+		   rect_is(wsk_rect(&t, 2), 32, 48, 288, 24) && rect_is(wsk_rect(&t, 3), 16, 72, 304, 24) &&
+		   rect_is(wsk_rect(&t, 4), 0, 96, 320, 24),
+		   "depths 0, 1, 2, 1, 0 under an indent of 16: in by 0, 16, 32, 16, 0, and narrower by as much");
+	}
+	{
+		/* In a table, the first cell only. */
+		static const wsk_widget_t TOPT[] = {
+			{ .kind = WSK_STACK, .id = "hdr",  .sub = 0, .size = 24 },
+			{ .kind = WSK_STACK, .id = "body", .sub = 1, .weight = 1 },
+		};
+		static const wsk_widget_t HDR[] = {
+			{ .kind = WSK_BUTTON, .id = "hn", .text = "Name", .weight = 1 },
+			{ .kind = WSK_BUTTON, .id = "hs", .text = "Size", .size = 80 },
+		};
+		static const wsk_widget_t BODYT[] = {
+			{ .kind = WSK_STACK, .id = "r0", .sub = 2, .size = 24, .depth = 0 },
+			{ .kind = WSK_STACK, .id = "r1", .sub = 3, .size = 24, .depth = 2 },
+		};
+		static const wsk_widget_t R0[] = { { .kind = WSK_LABEL, .id = "a0", .text = "src" },
+		                                   { .kind = WSK_LABEL, .id = "a1", .text = "-" } };
+		static const wsk_widget_t R1[] = { { .kind = WSK_LABEL, .id = "b0", .text = "gtk.md" },
+		                                   { .kind = WSK_LABEL, .id = "b1", .text = "2K" } };
+		wsk_tree_t w, k[4];
+		wsk_init(&w, WSK_COL, 320, 172);
+		w.pad = 0; w.gap = 0; w.item = TOPT; w.n = 2; w.nest = k; w.nests = 4;
+		wsk_nest_init(&k[0], &w, WSK_ROW); k[0].pad = 0; k[0].gap = 0; k[0].item = HDR; k[0].n = 2;
+		wsk_nest_init(&k[1], &w, WSK_COL); k[1].pad = 0; k[1].gap = 0; k[1].item = BODYT; k[1].n = 2;
+		k[1].head = 0; k[1].indent = 20;
+		wsk_nest_init(&k[2], &w, WSK_ROW); k[2].pad = 0; k[2].gap = 0; k[2].item = R0; k[2].n = 2;
+		wsk_nest_init(&k[3], &w, WSK_ROW); k[3].pad = 0; k[3].gap = 0; k[3].item = R1; k[3].n = 2;
+		ok(wsk_check(&w, 0) == WSK_OK, "a table whose rows have depths");
+		/* columns: Name 0..240, Size 240..320 */
+		ok(rect_is(rect_of(&w, "a0"), 0, 24, 240, 24) && rect_is(rect_of(&w, "b0"), 40, 48, 200, 24),
+		   "a row at depth 2 under an indent of 20 has its first cell in by 40");
+		ok(rect_is(rect_of(&w, "b1"), 240, 48, 80, 24) && rect_of(&w, "a1").x == 240 &&
+		   rect_of(&w, "r1").x == 0,
+		   "and its other cells stay under the header -- the row itself is not indented");
+	}
+	{
+		/* Expansion is the program's (§5p rule 3): a tap selects a row, the
+		   program toggles that node and rebuilds the rows it shows. */
+		static wsk_widget_t rows[TN];
+		int node[TN], n, y0, y1;
+		wsk_tree_t t;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char td[2048];
+
+		for (int i = 0; i < TN; i++) TNODES[i].open = 0;
+		wsk_init(&t, WSK_COL, 320, 300);
+		t.pad = 0; t.gap = 0; t.indent = 16; t.select = 1; t.talign = WSK_ALIGN_START;
+		t.item = rows; t.n = trows(rows, node);
+		ok(t.n == 3, "closed, the tree shows its three top rows: src, docs, README.md");
+		wsk_ui_init(&ui, &t);
+		memset(&ev, 0, sizeof ev);
+#define TAPROW(R) do { ev.kind = WSK_EV_DOWN; ev.x = 100; ev.y = (R) * 24 + 10; \
+                       wsk_feed(&ui, &ev, nt, 4, &y0, &y1); ev.kind = WSK_EV_UP; \
+                       n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1); \
+                       for (int j = 0; j < n && j < 4; j++) if (nt[j].kind == WSK_NOTE_SELECT) { \
+                           tnode_t *tn = &TNODES[node[nt[j].value]]; \
+                           if (tn->kids) tn->open = !tn->open; \
+                           t.n = trows(rows, node); t.sel = WSK_NONE; } } while (0)
+		TAPROW(1);                          /* docs */
+		ok(t.n == 5 && strcmp(rows[2].text, "  design.md") == 0 && strcmp(rows[3].text, "+ old") == 0 &&
+		   rows[3].depth == 1, "a tap on docs opens it: design.md and old, at depth 1 -- old still closed");
+		TAPROW(3);                          /* old */
+		ok(t.n == 6 && strcmp(rows[4].text, "  gtk.md") == 0 && rows[4].depth == 2,
+		   "a tap on old opens it: gtk.md at depth 2");
+		ok(rect_is(wsk_rect(&t, 4), 32, 96, 288, 24), "drawn two indents in");
+		TAPROW(1);                          /* docs again */
+		ok(t.n == 3 && strcmp(rows[1].text, "+ docs") == 0,
+		   "and docs closed again hides old and gtk.md with it -- old stays open, in the program's model");
+		render_into(&t, td, sizeof td, 4096);
+		ok(has(td, ">+ docs</text>") && !has(td, "gtk.md"), "what is drawn is what the program handed over");
+#undef TAPROW
 	}
 
 	/* Leave the documents where run.sh can hand them to a real XML parser. */

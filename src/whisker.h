@@ -262,6 +262,8 @@ typedef struct {
 	unsigned int  fill;          /* WSK_INHERIT to take the tree's accent */
 	unsigned int  ink;           /* WSK_INHERIT to take the tree's ink */
 	unsigned char mark;          /* WSK_MARK_CORNERS, or 0 */
+	unsigned char depth;         /* its level in a tree, under a stack's indent
+	                                (§5p); in the padding, so still 64 bytes */
 
 	/*
 	 * WSK_STACK: which tree is inside it -- an INDEX into the root's `nest`,
@@ -429,6 +431,17 @@ typedef struct wsk_tree {
 	short         head;
 	unsigned char talign;
 	const struct wsk_tree *ghead;
+
+	/*
+	 * Trees (§5p): a widget at depth d is laid out d x `indent` in from the
+	 * start of a column, and narrower by as much. A tree is a flat list of the
+	 * rows a program shows, with their depths -- the program owns expansion.
+	 * `rdepth`/`rindent` are whisker's, set in a table row's copy: the row's
+	 * own depth and its body's indent, for its first cell.
+	 */
+	short         indent;
+	unsigned char rdepth;
+	short         rindent;
 
 	/* Set by whisker in those copies, never by a caller: the intersection of
 	   every scrolling viewport above this stack, which cuts it (§5f rule 3). */
@@ -953,6 +966,7 @@ static inline void wsk_clone(wsk_widget_t *dst, const wsk_widget_t *src, int n)
 		dst[i].fill   = src[i].fill;
 		dst[i].ink    = src[i].ink;
 		dst[i].mark   = src[i].mark;
+		dst[i].depth  = src[i].depth;
 		dst[i].sub    = src[i].sub;
 		wsk__scpy(dst[i].id, src[i].id, WSK_ID_MAX);
 		wsk__scpy(dst[i].text, src[i].text, WSK_TEXT_MAX);
@@ -1011,6 +1025,9 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->head = WSK_NONE;
 	t->talign = WSK_MIDDLE;
 	t->ghead = 0;
+	t->indent = 0;
+	t->rdepth = 0;
+	t->rindent = 0;
 	t->clipped = 0;
 	t->cx0 = t->cy0 = t->cx1 = t->cy1 = 0;
 }
@@ -1360,6 +1377,12 @@ static inline wsk_rect_t wsk__cell(const wsk_tree_t *t, int idx)
 	h.ghead = 0; h.clipped = 0;
 	if (idx < h.n) hc = wsk_rect(&h, idx);
 	else { hc.x = (short)(t->ax + t->aw); hc.w = 0; }   /* refused by wsk_check */
+	if (idx == 0 && t->rdepth != 0 && t->rindent > 0) {  /* a tree's row (§5p) */
+		int d = t->rdepth * t->rindent;
+		if (d > hc.w) d = hc.w;
+		hc.x = (short)(hc.x + d);
+		hc.w = (short)(hc.w - d);
+	}
 	if (t->cross_max > 0 && ch > t->cross_max) ch = t->cross_max;
 	r.x = hc.x;
 	r.w = hc.w;
@@ -1426,6 +1449,14 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 			r.x = (short)(t->ax + (t->aw - cw) / 2);
 			r.y = (short)at;
 			r.h = (short)e;
+			/* a tree (§5p) -- but a table's rows stay under their header,
+			   and only their first cell is indented (wsk__cell) */
+			if (t->indent > 0 && t->item[idx].depth != 0 && t->head == WSK_NONE) {
+				int d = t->item[idx].depth * t->indent;
+				if (d > cw) d = cw;
+				r.x = (short)(r.x + d);
+				r.w = (short)(r.w - d);
+			}
 		} else {
 			int ch = t->ah - 2 * t->pad;
 			if (t->cross_max > 0 && ch > t->cross_max) ch = t->cross_max;
@@ -1501,6 +1532,8 @@ static inline int wsk__child(const wsk_tree_t *t, int i, wsk_tree_t *c)
 	/* a row in a table follows its header (§5n) */
 	c->ghead = (t->head != WSK_NONE && t->head >= 0 && t->head < t->nests &&
 	            c->axis == WSK_ROW) ? &t->nest[t->head] : 0;
+	c->rdepth = w->depth;               /* a row's depth, for its first cell */
+	c->rindent = t->indent;
 	r = wsk_rect(t, i);
 	c->ax = r.x; c->ay = r.y; c->aw = r.w; c->ah = r.h;
 

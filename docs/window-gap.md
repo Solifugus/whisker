@@ -210,7 +210,7 @@ What moved is whisker. Twelve iterations since October's count (§5e–§5m):
 | `choice` | 4 | a button whose click opens an overlay, its label set by the program | by composition |
 | `memo` | 7 | a **viewer** is answered — wrap, text items, a scrolling page (§5g–h); **editing** many lines is not | in part — **editing since §5o, 2026-11-14; soft wrap is not** |
 | `table` | 2 | rows, a selecting stack (§5m), a slice for length (§5e) — **no columns, header or sort** | in part — **columns and header since §5n, the same night; sort is the program's** |
-| `tree` | 1 | nested stacks could show one; **no expand and collapse** | in part |
+| `tree` | 1 | nested stacks could show one; **no expand and collapse** | in part — **since §5p, 2026-11-14: depths over a flat list with the program owning expansion, which is Studio's own design; `▾`/`▸` are not ASCII** |
 | `source` | 2 | a code editor: highlighting, gutter, marks | **no** |
 
 **Twenty-one of twenty-five answered** — fourteen directly, seven by

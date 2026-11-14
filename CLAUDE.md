@@ -50,7 +50,7 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
 
 ## Status
 
-**Fifteen iterations are built, and two of them have now run on the C5.**
+**Sixteen iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -156,6 +156,12 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
   Enter breaks a line, Up/Down keep the column. No soft wrap yet. 668
   bytes; `WSK_NO_MEMO`, in `WSK_MINIMAL`, kept by `WSK_PANEL`.
 
+- **§5p — trees** (2026-11-14), as Studio's `window` says them: a **flat
+  list with depths**, and **the program owns expansion** (gBASIC measured
+  why). A widget's `depth` byte (in the struct's padding) times a stack's
+  `indent`; in a table only the first cell indents. `▾`/`▸` are not ASCII
+  and are refused — a D21 runtime question.
+
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
 very nice sounds". It found two rules for any board program: **draw little,
@@ -163,7 +169,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **496 checks**, including a step
+`src/run.sh --module` is the whole of it: **507 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, seventeen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 26, including the

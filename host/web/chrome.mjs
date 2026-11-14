@@ -131,7 +131,13 @@ try {
   await settle();
   await sleep(300);
   ok(said.includes('change remember = 1'), 'the check ticked by a click: change remember = 1');
-  ok(said.includes('select it1'), 'and a list item chosen: select it1');
+  ok(said.includes('select it1'), 'and a row of the tree chosen: select it1');
+  // row 1 is the src folder's first file, so open docs: closed, the rows are
+  // src (open) and its five, then docs at row 6 -- 100 + 6 x 42 = 352..392
+  await click(700, 370);
+  await settle();
+  await sleep(300);
+  ok(said.includes('open   docs'), 'a tap on a folder opens it -- the program owns expansion (§5p)');
   await snap('web_check.png');
 
   // The banded rule: everything above was clipped repaints. Keep that canvas,

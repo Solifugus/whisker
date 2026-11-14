@@ -17,7 +17,7 @@ in `design.md` §8; nothing of it is built yet.
 **Status of the drawing layer.** `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o and §7 — **496 checks** plus the profile gate,
+`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p and §7 — **507 checks** plus the profile gate,
 the pixels through RV-9's own rasteriser, seventeen module builds with the
 double-link, and a person looking at the pictures. `host/linux/run.sh --test`
 adds **19** more.
@@ -70,6 +70,9 @@ row under it puts its cells there — scrolled or not.
 
 **And a memo edits many lines** (§5o): Enter, Up, Down, and a view that
 keeps the caret in sight.
+
+**And trees** (§5p): rows indented by depth, as Studio's are — the program
+keeps the tree and hands over the rows it shows.
 
 **And the P4 has a piano** (`wpiano`): two octaves to play with your
 fingers, chords and all, through its speaker.

@@ -2691,6 +2691,83 @@ building without it (a small panel is 11,272 in all, `WSK_PANEL` 9,196);
 a memo; selecting a range of text, and so the clipboard, which is also the
 host's.
 
+
+---
+
+## 5p. Iteration 16 — a tree is depths over a flat list
+
+**Written 2026-11-14, before any code**, after reading how gBASIC Studio's
+window says `tree` (Studio `94b36e3`, `lib/studio_shell_qt.bas`, the browser
+pane): *"A TREE that shows a list ... The shape comes from a DEPTH COLUMN that
+is not drawn ... over a FLAT list, which is exactly what a program owning its
+own expansion hands over."* And: *"STUDIO OWNS EXPANSION AND THE WIDGET DOES
+NOT, which is not a preference"* — gBASIC measured that a widget owning
+expansion makes the program's row indices and the widget's disagree after a
+collapse. The disclosure glyphs are characters in the row; clicking the row
+toggles it, in the program.
+
+So whisker's tree is what Studio asks of one, and no more:
+
+1. **A widget has a `depth`** — a byte, in the struct's padding, so a widget
+   is still 64. **A stack has an `indent`**: pixels a level. A widget at
+   depth *d* in a stack with an indent is laid out *d* × `indent` in from the
+   start, and narrower by as much. A stack with no indent lays out as ever.
+2. **In a table** (§5n) a row's depth indents **its first cell only**, so the
+   other columns stay under the header.
+3. **Expansion is the program's.** It hands over the visible rows; a click
+   on one is the CLICK and SELECT it already is (§5m), and the program
+   rebuilds the rows. Length is `wsk_slice` (§5e).
+
+**Found by reading, and recorded, not built**: Studio's disclosure glyphs,
+`▾` and `▸`, are not ASCII, and whisker refuses them (§2.4: `/w0` draws
+32..126). A browser host could draw them. That is D21's runtime half — a host
+that has more saying so — and wants its own design before any host is
+trusted to draw what `/w0` cannot. A whisker program writes `+` and `-`.
+
+### Done criteria
+
+1. Every earlier check and golden unchanged; a stack with no indent and
+   widgets with no depth lay out as before.
+2. A list at depths 0, 1, 2, 1, 0: every rectangle by hand.
+3. A table whose rows have depths: the first cell indented, the rest under
+   the header.
+4. A program that owns expansion: a click toggles a node, the rows are
+   rebuilt, and what is shown is what the program handed over.
+5. At the pixels, a tree a person can look at; `edit.c` gains one — a
+   folder tree — in SDL and the browser.
+
+
+### What it came to, 2026-11-14
+
+Built the same day; criteria 1–5 met. **507 checks** in `src/run.sh
+--module` (496 before): 11 in the suite. Every output of the commit before —
+31 files — byte-identical: no indent, no depth, no change.
+
+- **A list at depths 0, 1, 2, 1, 0** under an indent of 16: in by 0, 16, 32,
+  16, 0 and narrower by as much — and the control: no indent, no change.
+- **In a table, the first cell only — and found by its test**: the first
+  version indented the *row* in its body as well as the row's first cell, so
+  the cell moved twice and the header's columns, laid across the shifted
+  row, moved with it. A body that has a header now never indents its rows;
+  the check asserts the row itself stays at 0.
+- **Expansion is the program's**, tested as Studio does it: a model the test
+  owns, taps through the toolkit, SELECT notices on which the program opens
+  or closes a node and hands the rows over again. Closing `docs` hides
+  `old` and `gtk.md` with it while `old` stays open in the model — which is
+  exactly gBASIC's point: the shape is the program's, the rows are what it
+  shows.
+- **`edit.c`'s table is a file tree**: folders open and close on a tap, files
+  indented under them, the Size column still under its header. Headless
+  Chrome opened `docs`.
+
+**§7's question**: indentation is a few lines in the column layout every tier
+shares, so `WSK_MINIMAL` grew 72 bytes, to 3,792 — a C5 readout of nested
+values can use it. Default 11,472, `WSK_PANEL` 9,336.
+
+**Recorded, not built**: Studio's `▾` / `▸` are not ASCII and `/w0` cannot
+draw them; whisker refuses them by name. A browser could. That is D21's
+runtime half, wanting its own design.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this
