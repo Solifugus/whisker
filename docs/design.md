@@ -3174,6 +3174,11 @@ whisker program on the board:
    ("do not hand a whisker program a stack number from modules/pic") and the
    rule held: measure it.
 
+The run after all four, Matthew playing chords and runs: **46 notes, the
+worst 47 ms from the finger's report to its note's first sound being
+written, none over 50 ms** — against the run before's 27 of 27 late and
+5.7 s at worst. No reboot.
+
 **Hit by shape**: `hit` today tests rectangles. Testing a widget's own path —
 a circle, a sector, a room on a plan — is what opens: radial menus (better
 than drop-downs under a finger), dials and knobs turned by dragging round,
