@@ -37,7 +37,12 @@ It serves two hosts and belongs to neither:
   moved with it. What it has instead is a declarative `window` read by a
   backend, with `qt` the *first* backend (gBASIC `docs/qt_gui_design.md`).
 
-**gBASIC keeps Qt.** whisker is a candidate second backend — now in a literal
+**gBASIC keeps Qt — for now (D22).** Matthew's aim: one way to write a GUI
+in gBASIC on either backend, and perhaps one day whisker replaces Qt and a
+GUI program is one binary. Design §6.1 sets the two bars;
+`docs/gbasic-ui-proposal.md` (2026-11-14) is the proposal to gBASIC — a
+neutral `ui.` module for the 2,232 `qt.` calls, its front split from its
+backend, and verbs a backend may refuse by name. whisker is a candidate second backend — now in a literal
 sense, a second reader of the same `window` declaration — and has to earn the
 place. `docs/design.md` §6 records what would have to be true first. **Every
 whisker document written before 2026-10-22 that measures gBASIC measured its
@@ -257,7 +262,7 @@ layout is compiled in cannot change without a reflash).
 
 ## Read before working
 
-1. `docs/decisions.md` — twenty-two ratified outcomes (D0–D21), one screen. **First**, so that
+1. `docs/decisions.md` — twenty-three ratified outcomes (D0–D22), one screen. **First**, so that
    the design's §4 arguments read as history rather than as open questions.
    Then `docs/roadmap.md`, which is what is left and what would let us stop.
 2. `docs/design.md` — all of it. It is the whole project, and it has been

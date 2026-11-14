@@ -2789,6 +2789,47 @@ If those are not true, the right answer is that whisker served RV-9 and gBASIC
 kept its toolkit — GTK when this was written, Qt since 2026-10-22. That is a success, not a failure: the reason for a separate project is
 to make *not* adopting it cheap.
 
+### 6.1 Two bars now, since 2026-11-14 (D22)
+
+The bar above was for gBASIC **taking** whisker at all, and most of it is met:
+whisker runs real interfaces on the P4 that a person used (`wkeys`, `wnest`,
+`wpiano`), and the Linux host and the browser host (§5k) both exist. Matthew
+has since set a longer aim, in two steps:
+
+> *"It would be best for a gBASIC programmer to learn one way to write GUI
+> apps that works across both"* — and — *"one day, we might replace Qt with
+> whisker if it becomes good enough and there is no longer any reason for
+> Qt. One binary would be nice."*
+
+**Bar 1 — one way to write a GUI, on either backend.** Met when a gBASIC
+program written against the neutral API (`docs/gbasic-ui-proposal.md`) runs
+**unchanged** on Qt and on whisker, for the programs most people write —
+forms, tables, trees, menus, a memo — checked by running the same program
+under both and comparing what each says the window holds. Mostly gBASIC's
+work (the neutral API, and a split of its `qt` module into a front and a
+backend); whisker's part is a backend over the parts it has.
+
+**Bar 2 — no reason left for Qt.** Met when all four hold, each checkable:
+
+1. **Studio runs on whisker** in daily use — which means `source`, the code
+   editor (the one word of Studio's twenty-five still unanswered,
+   `window-gap.md` §7).
+2. **Text is complete on a desktop**: proportional fonts, Unicode (Studio's
+   own `▾`/`▸` among it), selection with the pointer, the clipboard, undo,
+   and input methods for scripts typed by composition.
+3. **A desktop's plumbing**: right-click, shortcuts, file dialogs, more than
+   one window, a draggable divider.
+4. **Accessibility is decided** — screen readers, the one place Qt's decades
+   are hardest to match: whisker grows it, or gBASIC decides in writing that
+   its GUI programs can do without it.
+
+When all four hold, switching the default backend is a small change, and a
+gBASIC GUI program is **one static binary** — whisker is C with no
+dependencies, and its desktop host needs SDL, which links statically; or no
+windowing library at all, through the browser host (§5k). Until then Qt is
+the default and whisker earns its place by the things Qt cannot do: a static
+binary, any browser, an RV-9 board.
+
 ---
 
 ## 7. Profiles — one renderer, and what a small host may leave out
