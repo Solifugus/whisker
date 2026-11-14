@@ -41,7 +41,7 @@ static const wsk_widget_t FORM[] = {
 	{ .kind = WSK_LABEL,  .id = "l2",   .text = "City", .size = 32 },
 	{ .kind = WSK_FIELD,  .id = "city", .sub = 1, .size = 48 },
 	{ .kind = WSK_LABEL,  .id = "l3",   .text = "Note", .size = 32 },
-	{ .kind = WSK_FIELD,  .id = "note", .sub = 2, .size = 48 },
+	{ .kind = WSK_MEMO,   .id = "note", .sub = 2, .size = 96 },   /* many lines (§5o) */
 	{ .kind = WSK_BUTTON, .id = "save", .text = "Save" },
 	{ .kind = WSK_CHECK,  .id = "remember", .text = "Remember me", .sub = 0, .size = 36 },
 };

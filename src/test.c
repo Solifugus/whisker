@@ -2519,6 +2519,93 @@ int main(void)
 		   "and the chosen row is drawn on the selection fill, behind its cells");
 	}
 
+	/* ---- §5o. a memo: many lines, edited ---- */
+	printf("\n-- §5o  memo\n");
+	{
+		static const wsk_widget_t FM[] = {
+			{ .kind = WSK_MEMO,  .id = "note", .sub = 0, .size = 120 },
+			{ .kind = WSK_FIELD, .id = "one",  .sub = 1, .size = 32 },
+		};
+		char mb[64] = "", fb[16] = "";
+		wsk_buf_t buf[2];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char md[4096];
+		int n, y0 = 0, y1 = 0, which = -2;
+
+		memset(buf, 0, sizeof buf);
+		buf[0].b = mb; buf[0].cap = 64;
+		buf[1].b = fb; buf[1].cap = 16;
+		wsk_init(&w, WSK_COL, 320, 300);
+		w.pad = 4; w.gap = 4; w.item = FM; w.n = 2; w.buf = buf; w.bufs = 2;
+		ok(wsk_check(&w, 0) == WSK_OK, "a memo and a field");
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+#define TYPE(T) (ev.kind = WSK_EV_TEXT, snprintf(ev.text, sizeof ev.text, "%s", (T)), \
+                 n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define KEY(K)  (ev.kind = WSK_EV_KEY, ev.key = (K), n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define SET(S, C) (snprintf(mb, sizeof mb, "%s", (S)), buf[0].len = (short)strlen(mb), \
+                   buf[0].caret = (short)(C), buf[0].top = 0)
+
+		wsk_ui_focus(&ui, "note", &y0, &y1);
+		TYPE("ab"); KEY(WSK_KEY_ENTER); TYPE("cd");
+		ok(strcmp(mb, "ab\ncd") == 0 && buf[0].caret == 5, "typing, Enter, typing: \"ab\\ncd\", the caret at 5");
+		KEY(WSK_KEY_ENTER);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_TEXT, "in a memo Enter is a line break, a TEXT notice -- not ENTER");
+		KEY(WSK_KEY_BACKSPACE);
+		KEY(WSK_KEY_UP);
+		ok(buf[0].caret == 2, "UP: from line 1 column 2 to line 0 column 2");
+		KEY(WSK_KEY_DOWN);
+		ok(buf[0].caret == 5, "DOWN: back");
+
+		SET("abcdef\nxy", 5);
+		KEY(WSK_KEY_DOWN);
+		ok(buf[0].caret == 9, "DOWN from column 5 onto a line of two: its end, not past it");
+		KEY(WSK_KEY_UP);
+		ok(buf[0].caret == 2, "and UP keeps the column it has, 2");
+		SET("abcdef\nxyz", 8);
+		KEY(WSK_KEY_HOME);
+		ok(buf[0].caret == 7, "HOME: the start of the caret's line, not of the memo");
+		KEY(WSK_KEY_END);
+		ok(buf[0].caret == 10, "END: the end of the line");
+		SET("abcdef\nxyz", 7);
+		KEY(WSK_KEY_BACKSPACE);
+		ok(strcmp(mb, "abcdefxyz") == 0 && buf[0].caret == 6, "BACKSPACE at a line's start joins it to the one above");
+
+		/* The view: 120 - 12 is 108, five lines of 20. */
+		SET("1\n2\n3\n4\n5\n6\n7\n8", 15);
+		render_into(&w, md, sizeof md, 4096);
+		ok(has(md, ">4</text>") && has(md, ">8</text>") && !has(md, ">3</text>"),
+		   "eight lines and the caret on the last: lines 4..8 shown, the caret in sight");
+		ok(buf[0].top == 0, "and drawing did not write the buffer's top -- it drew the nearest that shows the caret");
+		for (int i = 0; i < 5; i++) KEY(WSK_KEY_UP);
+		ok(buf[0].top == 2 && buf[0].caret == 5, "UP five lines, column 1 kept: the caret on line 2, and top follows it to 2");
+		KEY(WSK_KEY_DOWN);
+		ok(buf[0].top == 2, "DOWN one: the view stays -- it moves only as far as it must");
+
+		/* A tap: line 1, column 2 -- 4 + 6 + 2 x 8 across, 4 + 6 + 20 down. */
+		SET("abcdef\nxyz\nlast", 0);
+		ev.kind = WSK_EV_DOWN; ev.x = 4 + 6 + 2 * 8 + 1; ev.y = 4 + 6 + 20 + 5;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[0].caret == 7 + 2, "a tap on line 1, column 2, puts the caret there");
+		ev.kind = WSK_EV_UP;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+
+		/* What the window cannot draw. */
+		SET("tab\there", 0);
+		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 0, "a memo holding a tab is refused");
+		SET("ok\nfine", 0);
+		ok(wsk_check(&w, 0) == WSK_OK, "CONTROL: lines are fine in a memo");
+		snprintf(fb, sizeof fb, "a\nb"); buf[1].len = 3;
+		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 1, "and a line break in a one-line field is not");
+		fb[0] = '\0'; buf[1].len = 0;
+#undef TYPE
+#undef KEY
+#undef SET
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

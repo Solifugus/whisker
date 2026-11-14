@@ -2605,6 +2605,92 @@ those bytes, `talign` is the one to put behind a switch.
 **Not built**: sorting (a header click is the program's to act on), a
 draggable column edge (a host divider), cells spanning columns.
 
+
+---
+
+## 5o. Iteration 15 — a memo: many lines, edited
+
+**Written 2026-11-14, before any code.** Matthew: *"which ever order you
+feel is best"* — so `memo` before shapes: it is Studio's (7 sites,
+`window-gap.md` §7), it is §5j's machinery with lines, and it needs no board.
+
+### The rules
+
+1. **`WSK_MEMO`** is a field of many lines: the same caller-owned
+   `wsk_buf_t` (§5j), the lines separated by `\n`. A memo with no buffer is
+   read-only and shows its inline text as one line.
+2. **The view.** Lines are a font and a quarter apart. The buffer gains
+   **`top`**, the first line shown — caller memory, as the rest of the buffer
+   is — so a memo scrolls where it was left and moves only as far as it must
+   to keep the caret in sight. Drawing never writes it: a `top` that would
+   hide the caret, or run past the end, is drawn as the nearest one that
+   would not. **Long lines are not wrapped**: every line is shown from the
+   same column, chosen as a field chooses its own (§5j) so the caret's column
+   is in sight — a code editor's behaviour, and soft wrap is a design of its
+   own, left until something needs it.
+3. **Keys.** `ENTER` inserts a line break (it is not a notice in a memo);
+   `UP` and `DOWN` move a line, keeping the column where the line is long
+   enough; `HOME` and `END` go to the start and end of the caret's line; the
+   rest are §5j's. A tap puts the caret at the line and column under it.
+4. **What the window cannot draw** is still refused (§2.4): a memo's buffer
+   holds 32..126 and `\n`, and nothing else.
+5. **Rows**: an edit repaints the memo's rectangle.
+
+### Profile
+
+`WSK_NO_MEMO`, in `WSK_MINIMAL`; `WSK_PANEL` keeps it — a note on a touch
+panel is editing, not prose layout.
+
+### Done criteria
+
+1. Every earlier check and golden unchanged.
+2. Typing across lines, Enter, Up and Down keeping the column (and clamping
+   on a short line), Home and End within a line, Backspace joining two lines
+   — by scripted events, the buffer checked.
+3. The view: `top` follows the caret down and up; a stale `top` is drawn
+   as the nearest that shows the caret, and not written.
+4. A tap puts the caret at the line and column under it.
+5. A buffer holding a character the window cannot draw is refused.
+6. At the pixels: a keystroke's repaint equals a full redraw.
+7. `edit.c`'s Note becomes a memo, in SDL and in the browser.
+
+
+### What it came to, 2026-11-14
+
+Built the same day; criteria 1–7 met. **495 checks** in `src/run.sh
+--module` (472 before): 18 in the suite, 2 at the pixels, a profile control,
+a module link, and a new step that builds **every profile and switch**
+under `-Werror`. Every output of the commit before — 30 files —
+byte-identical. Host checks, web checks and browser checks pass.
+
+- **Editing many lines**, by scripted events: Enter breaks a line and is a
+  TEXT notice, not ENTER; Up and Down keep the column and clamp on a short
+  line; Home and End are the line's; Backspace at a line's start joins it to
+  the one above; a tap lands on the line and column under it.
+- **The view**: eight lines in a memo of five, the caret on the last — lines
+  4..8 drawn, and the buffer's stale `top` of 0 left as it was; five lines up
+  the toolkit writes `top` = 2 and one line down leaves it there.
+- **At the pixels** (`memo.ppm`): three lines typed, a line broken, the caret
+  moved up and a character put in — each keystroke repainted in its rows
+  equal to a full redraw. Over HTTP, two lines typed into `edit.c`'s Note come
+  back as two `<text>` lines.
+
+**Found on the way, and not the memo's**: building every switch found two
+combinations broken since earlier iterations — `-DWSK_NO_FIELD` since §5m
+(the toggle sat in the field-only block) and `-DWSK_NO_SCROLL` (a rectangle
+the compiler could not prove was set). Neither tier used either, so nothing
+had compiled them. Both fixed, and **`src/run.sh` now builds all thirteen
+profiles and switches every run**, so a combination cannot break unseen
+again.
+
+**§7's question**: the memo is **668 bytes** of the default, measured by
+building without it (a small panel is 11,272 in all, `WSK_PANEL` 9,196);
+`WSK_MINIMAL` did not move, 3,720.
+
+**Not built**: soft wrap of long lines (a design of its own); the wheel over
+a memo; selecting a range of text, and so the clipboard, which is also the
+host's.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

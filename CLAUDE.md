@@ -50,7 +50,7 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
 
 ## Status
 
-**Fourteen iterations are built, and two of them have now run on the C5.**
+**Fifteen iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -150,7 +150,14 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
   moves columns). `talign = WSK_ALIGN_START` for cell text. Selection finds
   the deepest selecting stack, so a tap on a cell chooses its row.
 
-`src/run.sh --module` is the whole of it: **472 checks**, the pixels through
+- **§5o — the memo** (2026-11-14). `WSK_MEMO`: a field of many lines in the
+  same caller-owned buffer, `\n` between lines; the buffer's `top` keeps the
+  view, moved only to keep the caret in sight (drawing never writes it).
+  Enter breaks a line, Up/Down keep the column. No soft wrap yet. 668
+  bytes; `WSK_NO_MEMO`, in `WSK_MINIMAL`, kept by `WSK_PANEL`.
+
+`src/run.sh --module` is the whole of it: **495 checks**, including a step
+that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, seventeen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 26, including the
 typing loop end to end and the real keyboard path; `--input` is the same loop with a person in it.

@@ -48,6 +48,7 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **Overlays** (§5l) | built 2026-11-12: menus over the window; band repaints under them exact; `choice`, submenus, keyboard menus still to do |
 | **Check, selection, focus** (§5m) | built 2026-11-12: `check`, a selecting stack, Tab to buttons with a ring |
 | **Table columns** (§5n) | built 2026-11-12: the header decides; rows follow it; a tap on a cell chooses its row |
+| **Memo** (§5o) | built 2026-11-14: many lines edited; every switch now built each run |
 | **Profiles** (§7, D8) | built; the C5 pays for nothing it cannot use |
 | **On the board** | `wflick` and `wcompose` run on the C5, committed in RV-9 |
 | **On a desk** | `host/linux`, typing loop closed with a mouse (D7) |

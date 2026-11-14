@@ -181,6 +181,8 @@ int wh_poll(wh_event_t *out)
 			if (k == SDLK_LEFT) key = WH_KEY_LEFT;
 			else if (k == SDLK_RIGHT) key = WH_KEY_RIGHT;
 			else if (k == SDLK_HOME) key = WH_KEY_HOME;
+			else if (k == SDLK_UP) key = WH_KEY_UP;
+			else if (k == SDLK_DOWN) key = WH_KEY_DOWN;
 			else if (k == SDLK_END) key = WH_KEY_END;
 			else if (k == SDLK_BACKSPACE) key = WH_KEY_BACKSPACE;
 			else if (k == SDLK_DELETE) key = WH_KEY_DELETE;

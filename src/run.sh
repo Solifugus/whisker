@@ -61,13 +61,36 @@ for W in wrapped text; do
 done
 # The controls. Without these, "byte for byte" is satisfied by a minimal build
 # that draws a field as a label and says nothing.
-for W in field marked scrolled nested wrapped text check; do
+for W in field marked scrolled nested wrapped text check memo; do
 	F="$(/tmp/wsk_prof_full $W)"; M="$(/tmp/wsk_prof_min $W)"
 	case "$F$M" in
 	drew*refused\ -6*) echo "ok    CONTROL: $W -- full ${F%% bytes*} bytes, minimal ${M}" ;;
 	*) echo "FAIL  CONTROL: $W -- full said '$F', minimal said '$M'"; exit 1 ;;
 	esac
 done
+
+echo
+echo "-- every switch builds, alone and in its tiers"
+# A combination nobody builds is a combination that breaks unseen: two did,
+# 2026-11-14, -DWSK_NO_FIELD and -DWSK_NO_SCROLL, each since an iteration
+# that never compiled them. So all of them, every run.
+cat > /tmp/wsk_switch.c <<'C'
+#include "whisker.h"
+#ifndef WSK_NO_INPUT
+int f(wsk_ui_t *u, wsk_event_t *e) { wsk_note_t n[2]; int a, b; return wsk_feed(u, e, n, 2, &a, &b); }
+#endif
+int g(wsk_tree_t *t, wsk_sink_t *s) { return wsk_render(t, s, 4096) + wsk_hit(t, 1, 1); }
+C
+for D in "" -DWSK_PANEL -DWSK_MINIMAL -DWSK_NO_FIELD -DWSK_NO_MARKS -DWSK_NO_SCROLL \
+         -DWSK_NO_NEST -DWSK_NO_WRAP -DWSK_NO_TEXT -DWSK_NO_OVER -DWSK_NO_CHECK \
+         -DWSK_NO_MEMO -DWSK_NO_INPUT; do
+	if ${CC:-gcc} -O1 -Wall -Wextra -Werror $D -I"$HERE" -c -o /dev/null /tmp/wsk_switch.c 2>/tmp/wsk_switch.err; then
+		:
+	else
+		echo "FAIL  whisker.h does not build with '${D:-the default}'"; head -5 /tmp/wsk_switch.err; exit 1
+	fi
+done
+echo "ok    whisker.h builds with each of the 13 profiles and switches, -Werror"
 
 echo
 echo "-- 3, 8  through RV-9's own rasteriser, to a picture"
@@ -123,6 +146,8 @@ link_check module_nest.c "module_nest.c -DWSK_NO_OVER" -DWSK_NO_OVER
 NOOVER="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_CHECK" -DWSK_NO_CHECK
 NOCHECK="$SIZE"
+link_check module_shape.c "module_shape.c -DWSK_NO_MEMO" -DWSK_NO_MEMO
+NOMEMO="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_PANEL" -DWSK_PANEL
 PANEL="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
@@ -133,8 +158,9 @@ printf "        desktop, browser   (default)       %6d bytes\n" "$FULL"
 printf "        touch panel, P4    -DWSK_PANEL     %6d\n" "$PANEL"
 printf "        readout, C5        -DWSK_MINIMAL   %6d\n" "$MIN"
 echo "      and what each part costs the default, by building without it:"
-printf "        nesting %d, wrap %d, text items %d, the check %d;\n" \
-	"$(( FULL - NONEST ))" "$(( FULL - NOWRAP ))" "$(( FULL - NOTEXT ))" "$(( FULL - NOCHECK ))"
+printf "        nesting %d, wrap %d, text items %d, the check %d, the memo %d;\n" \
+	"$(( FULL - NONEST ))" "$(( FULL - NOWRAP ))" "$(( FULL - NOTEXT ))" "$(( FULL - NOCHECK ))" \
+	"$(( FULL - NOMEMO ))"
 printf "        overlays %d to a toolkit program (module_nest.c).\n" "$(( NEST - NOOVER ))"
 echo "      A reduced build is the same renderer, not a second one (§7): what it"
 echo "      keeps it draws byte for byte, and what it lacks it refuses by name."

@@ -1325,6 +1325,62 @@ int main(void)
 		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
 	}
 
+	/*
+	 * A memo, at the pixels (design.md §5o): typing over several lines, a
+	 * line broken, the caret moved up -- each keystroke's rows repainted
+	 * alone, against a full redraw.
+	 */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_LABEL, .id = "l",  .text = "Notes", .size = 24 },
+			{ .kind = WSK_MEMO,  .id = "m",  .sub = 0, .weight = 1 },
+		};
+		/* a TEXT event holds seven characters, so longer runs go in pieces */
+		static const char *KEYS_TYPED[] = { "whisker", "\n", "has a", " memo", "\n", "now", "^", "!" };
+		static uint16_t want[PW * PH];
+		char mb[96] = "";
+		wsk_buf_t buf[1];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[2];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		uint32_t v;
+		int y0, y1, good = 1;
+
+		memset(buf, 0, sizeof buf);
+		buf[0].b = mb; buf[0].cap = 96;
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 8; w.gap = 4; w.bg = 0x10203au; w.item = F; w.n = 2; w.buf = buf; w.bufs = 1;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		s.put = to_window; s.ctx = &dev;
+
+		printf("\n  a memo (§5o)\n");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		for (int i = 0; i < 8; i++) {
+			if (KEYS_TYPED[i][0] == '\n') { ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_ENTER; }
+			else if (KEYS_TYPED[i][0] == '^') { ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_UP; }
+			else { ev.kind = WSK_EV_TEXT; snprintf(ev.text, sizeof ev.text, "%s", KEYS_TYPED[i]); }
+			wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+			v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+			svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+			s.len = 0; wsk_render_rows(&w, y0, y1, &s, 4096);
+			memcpy(want, screen, sizeof screen);
+			v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+			s.len = 0; wsk_render(&w, &s, 4096);
+			if (memcmp(screen, want, sizeof screen) != 0) { good = 0; printf("    differs after key %d\n", i); }
+		}
+		/* UP from line 2, column 3, lands after "has"; the ! goes in there */
+		ok(strcmp(mb, "whisker\nhas! a memo\nnow") == 0,
+		   "the memo holds exactly what was typed: three lines, the ! where UP left the caret");
+		ok(good, "every keystroke's rows, repainted alone, equal a full redraw");
+		shot("memo.ppm");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

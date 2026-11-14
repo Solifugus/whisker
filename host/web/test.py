@@ -98,6 +98,14 @@ try:
 
     post("D 900 200\nU 900 200")      # a click in the list, two events in one POST
     post("K 7")                       # Enter
+    # The Note memo (§5o): 278..374. A tap there, two lines, Enter between.
+    post("D 100 300\nU 100 300")
+    post("T one")
+    post("K 7")
+    post("T two")
+    m = ev.until(">two</text>")
+    ok(m is not None and ">one</text>" in m,
+       "a memo: two lines typed with Enter between come back as two lines")
     second = Events()
     replay = second.next()
     ok(replay is not None and replay.startswith("data: 0 0 "),

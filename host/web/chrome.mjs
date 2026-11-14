@@ -112,21 +112,21 @@ try {
   await snap('web_typed.png');
 
   // An overlay (§5l): Save opens a menu over the window; choose from it.
-  // Save is the form's last button, 332..396; the menu hangs below it.
-  await click(100, 360);
+  // Save is under the Note memo, 380..444; the menu hangs below it.
+  await click(100, 410);
   await settle();
   await sleep(200);
   ok(said.includes('click  save'), 'Save, clicked in the browser');
   await snap('web_menu.png');
-  await click(100, 420);              // "Save now", the menu's first item
+  await click(100, 470);              // "Save now", the menu's first item, 450..494
   await settle();
   await sleep(300);
   ok(said.includes('click  save-now') && said.includes('close  the menu'),
      'and its menu: "Save now" chosen, the menu closed');
 
-  // A check and a choice (§5m): Remember me is under Save, 402..438; the
+  // A check and a choice (§5m): Remember me is under Save, 450..486; the
   // list on the right keeps a choice.
-  await click(40, 418);
+  await click(40, 468);
   await click(700, 160);              // row 1 of the table: 56 + 40 + 4 = 100, + 40 + 2 = 142..182
   await settle();
   await sleep(300);

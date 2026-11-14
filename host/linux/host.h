@@ -43,7 +43,8 @@ enum {
 enum {
 	WH_KEY_LEFT = 1, WH_KEY_RIGHT, WH_KEY_HOME, WH_KEY_END,
 	WH_KEY_BACKSPACE, WH_KEY_DELETE, WH_KEY_ENTER, WH_KEY_TAB, WH_KEY_BACKTAB,
-	WH_KEY_ESCAPE            /* the web host sends it; SDL's Escape quits */
+	WH_KEY_ESCAPE,           /* the web host sends it; SDL's Escape quits */
+	WH_KEY_UP, WH_KEY_DOWN   /* a memo's lines (§5o) */
 };
 
 typedef struct {
