@@ -101,6 +101,8 @@
  *     -DWSK_NO_WRAP     wrapping onto new lines   -DWSK_NO_TEXT    text items
  *     -DWSK_NO_OVER     overlays (menus)          -DWSK_NO_CHECK   the checkbox
  *     -DWSK_NO_MEMO     the memo: many lines, edited
+ *     -DWSK_NO_UTF8     text beyond ASCII, for a host that can draw it (§5r)
+ *     -DWSK_NO_IMAGE    the image, for a host that can draw one (§5r)
  *     -DWSK_NO_INPUT    the toolkit: events, focus, editing
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
@@ -136,6 +138,17 @@
 #  ifndef WSK_NO_MEMO
 #    define WSK_NO_MEMO 1
 #  endif
+#  ifndef WSK_NO_UTF8
+#    define WSK_NO_UTF8 1
+#  endif
+#endif
+/* /w0 draws no image and no text beyond ASCII on either board, so neither
+   board's tier carries the code for them (§5r) */
+#if (defined(WSK_MINIMAL) || defined(WSK_PANEL)) && !defined(WSK_NO_IMAGE)
+#  define WSK_NO_IMAGE 1
+#endif
+#if defined(WSK_PANEL) && !defined(WSK_NO_UTF8)
+#  define WSK_NO_UTF8 1
 #endif
 #if defined(WSK_NO_FIELD) && !defined(WSK_NO_MEMO)
 #  define WSK_NO_MEMO 1            /* a memo is a field with lines (§5o) */
@@ -181,7 +194,8 @@
 /* Every profile declares every kind, and the values never move: a reduced
    build refuses WSK_FIELD, it does not renumber around it. A caller's panel,
    a golden and an id mean the same thing whatever this was compiled with. */
-enum { WSK_LABEL = 1, WSK_BUTTON, WSK_FIELD, WSK_STACK, WSK_TEXT, WSK_CHECK, WSK_MEMO };
+enum { WSK_LABEL = 1, WSK_BUTTON, WSK_FIELD, WSK_STACK, WSK_TEXT, WSK_CHECK, WSK_MEMO,
+       WSK_IMAGE };
 enum { WSK_COL = 1, WSK_ROW };
 
 /*
@@ -248,6 +262,18 @@ enum {
 
 /* No tree: `over` with nothing open. */
 #define WSK_NONE      (-1)
+
+/*
+ * What a host can draw beyond /w0 (design.md §5r, D21's runtime half). The
+ * program sets `root.caps` from its host; 0 -- RV-9, and every document
+ * before this -- is exactly the subset whisker always drew.
+ */
+enum {
+	WSK_CAP_UTF8    = 1,         /* text beyond ASCII */
+	WSK_CAP_IMAGE   = 2,         /* <image> */
+	WSK_CAP_CLIP    = 4,         /* <clipPath>: text slides at a scroll's edge */
+	WSK_CAP_OPACITY = 8          /* transparency: the world's fade (§5q) */
+};
 
 /* Where a stack's labels and buttons put their text (§5n): the middle of
    the widget, or its start, as a table's cells do. */
@@ -443,6 +469,9 @@ typedef struct wsk_tree {
 	unsigned char rdepth;
 	short         rindent;
 
+	/* What the host can draw beyond /w0: WSK_CAP_*, on the root (§5r). */
+	unsigned char caps;
+
 	/* Set by whisker in those copies, never by a caller: the intersection of
 	   every scrolling viewport above this stack, which cuts it (§5f rule 3). */
 	unsigned char clipped;
@@ -465,7 +494,8 @@ enum {
 	WSK_E_KIND      = -6,        /* a widget this build was compiled without */
 	WSK_E_FIT       = -7,        /* the widgets want more than the stack's area */
 	WSK_E_SCROLL    = -8,        /* a scroll offset past either end */
-	WSK_E_DEPTH     = -9         /* stacks nested past WSK_DEPTH_MAX, or in a cycle */
+	WSK_E_DEPTH     = -9,        /* stacks nested past WSK_DEPTH_MAX, or in a cycle */
+	WSK_E_HOST      = -10        /* what this host said it cannot draw (§5r) */
 };
 
 /* ------------------------------------------------------------------ */
@@ -574,6 +604,85 @@ static inline int wsk_baseline_of(int top, int font)
  * the driver outright until 2026-09-30. Bytes outside 32..126 advance a cell
  * and draw nothing. So the boundary is here (design.md §2.4).
  */
+/*
+ * Characters in the first n bytes of UTF-8: every byte that does not
+ * continue a character (§5r). For ASCII it is n, so a host that declares
+ * nothing measures exactly as before.
+ */
+static inline int wsk__chars(const char *s, int n)
+{
+#ifndef WSK_NO_UTF8
+	int c = 0;
+	for (int i = 0; i < n; i++) if (((unsigned char)s[i] & 0xC0) != 0x80) c++;
+	return c;
+#else
+	(void)s;
+	return n;
+#endif
+}
+
+/* The byte where character k starts, or n: truncation never splits one. */
+static inline int wsk__byte_of(const char *s, int n, int k)
+{
+#ifndef WSK_NO_UTF8
+	int c = 0;
+	for (int i = 0; i < n; i++)
+		if (((unsigned char)s[i] & 0xC0) != 0x80) {
+			if (c == k) return i;
+			c++;
+		}
+	return n;
+#else
+	(void)s;
+	return (k < n) ? k : n;
+#endif
+}
+
+static inline int wsk_text_ok(const char *t);
+
+#ifndef WSK_NO_IMAGE
+/* An image's URL: the string its `sub` names in the root's `str` (§5r). */
+static inline const char *wsk__href(const wsk_tree_t *t, const wsk_widget_t *w)
+{
+	if (t->str == 0 || w->sub < 0 || w->sub >= t->strs) return 0;
+	return t->str[w->sub];
+}
+#endif
+
+/*
+ * Text a host can draw: /w0's subset, or, with WSK_CAP_UTF8, well-formed
+ * UTF-8 beyond it (§5r). '<', '&' and '>' are refused either way -- the
+ * window draws them literally or not at all (§2.4) -- and so is any byte that
+ * starts no character, ends one too soon, or spells one the long way round.
+ */
+static inline int wsk__text_ok(const char *t, int caps)
+{
+#ifndef WSK_NO_UTF8
+	if (caps & WSK_CAP_UTF8) {
+		for (int i = 0; t[i] != '\0'; ) {
+			unsigned char c = (unsigned char)t[i];
+			int more = 0;
+			if (c < 0x80) {
+				if (c < 32 || c == 127 || c == '<' || c == '&' || c == '>') return 0;
+				i++;
+				continue;
+			}
+			if (c >= 0xC2 && c <= 0xDF) more = 1;
+			else if (c >= 0xE0 && c <= 0xEF) more = 2;
+			else if (c >= 0xF0 && c <= 0xF4) more = 3;
+			else return 0;
+			for (int k = 1; k <= more; k++)
+				if (((unsigned char)t[i + k] & 0xC0) != 0x80) return 0;
+			i += more + 1;
+		}
+		return 1;
+	}
+#else
+	(void)caps;
+#endif
+	return wsk_text_ok(t);
+}
+
 static inline int wsk_text_ok(const char *t)
 {
 	for (int i = 0; t[i] != '\0'; i++) {
@@ -682,7 +791,13 @@ static inline int wsk__flow(const wsk_tree_t *r, const wsk_tree_t *t, int span,
 static inline int wsk__u_along(const wsk_tree_t *r, const wsk_tree_t *t,
                                const wsk__u_t *u, int depth)
 {
-	if (u->wi >= 0) return wsk_text_w(t->font, u->len);
+	if (u->wi >= 0) {
+#ifndef WSK_NO_TEXT
+		const char *x = wsk__str_of(r, t, u->k);
+		if (x != 0) return wsk_text_w(t->font, wsk__chars(x + u->off, u->len));
+#endif
+		return wsk_text_w(t->font, u->len);
+	}
 	return wsk__meas(r, t, u->k, t->axis, depth, -1);
 }
 
@@ -722,7 +837,7 @@ static inline int wsk_scroll_max(const wsk_tree_t *t)
 static inline int wsk__check1(const wsk_tree_t *t, int *which)
 {
 	for (int i = 0; i < t->n; i++) {
-		if (!wsk_text_ok(t->item[i].text)) {
+		if (!wsk__text_ok(t->item[i].text, t->caps)) {
 			if (which != 0) *which = i;
 			return WSK_E_TEXT;
 		}
@@ -747,7 +862,7 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 				if (which != 0) *which = i;
 				return WSK_E_KIND;
 			}
-			if (!wsk_text_ok(x)) {
+			if (!wsk__text_ok(x, t->caps)) {
 				if (which != 0) *which = i;
 				return WSK_E_TEXT;
 			}
@@ -814,6 +929,31 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 		if (t->item[i].kind == WSK_MEMO) {
 			if (which != 0) *which = i;
 			return WSK_E_KIND;
+		}
+#endif
+#ifdef WSK_NO_IMAGE
+		if (t->item[i].kind == WSK_IMAGE) {
+			if (which != 0) *which = i;
+			return WSK_E_KIND;
+		}
+#else
+		/* An image: only for a host that says it can draw one (§5r), and an
+		   href that cannot end its attribute or start an element. */
+		if (t->item[i].kind == WSK_IMAGE) {
+			const char *h = wsk__href(t, &t->item[i]);
+			int good = (h != 0 && h[0] != '\0');
+			if (!(t->caps & WSK_CAP_IMAGE)) {
+				if (which != 0) *which = i;
+				return WSK_E_HOST;
+			}
+			for (int k = 0; good && h[k] != '\0'; k++) {
+				char c = h[k];
+				if (c <= 32 || c > 126 || c == '"' || c == '<' || c == '>' || c == '&') good = 0;
+			}
+			if (!good) {
+				if (which != 0) *which = i;
+				return WSK_E_TEXT;
+			}
 		}
 #endif
 #ifdef WSK_NO_MARKS
@@ -1028,6 +1168,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->indent = 0;
 	t->rdepth = 0;
 	t->rindent = 0;
+	t->caps = 0;
 	t->clipped = 0;
 	t->cx0 = t->cy0 = t->cx1 = t->cy1 = 0;
 }
@@ -1059,7 +1200,8 @@ static inline int wsk__natural(const wsk_tree_t *t, int i)
 	const wsk_widget_t *w = &t->item[i];
 	if (w->size > 0) return w->size;
 	if (t->axis == WSK_ROW) {
-		int text = wsk_text_w(t->font, wsk__len(wsk__say(t, t, i)));
+		const char *x = wsk__say(t, t, i);
+		int text = wsk_text_w(t->font, wsk__chars(x, wsk__len(x)));
 #ifndef WSK_NO_CHECK
 		if (w->kind == WSK_CHECK) text += t->font + t->font / 2;
 #endif
@@ -1132,7 +1274,8 @@ static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
 		return ext + 2 * c->pad;
 	}
 	if (axis == WSK_ROW) {
-		int text = wsk_text_w(t->font, wsk__len(wsk__say(r, t, i)));
+		const char *x = wsk__say(r, t, i);
+		int text = wsk_text_w(t->font, wsk__chars(x, wsk__len(x)));
 #ifndef WSK_NO_CHECK
 		if (w->kind == WSK_CHECK) text += t->font + t->font / 2;
 #endif
@@ -1173,7 +1316,7 @@ static inline int wsk__meas(const wsk_tree_t *r, const wsk_tree_t *t, int i,
 	(void)depth; (void)avail;
 	if (w->size > 0 && axis == t->axis) return w->size;
 	if (axis == WSK_ROW)
-		return wsk_text_w(t->font, wsk__len(wsk__say(r, t, i))) + 2 * t->pad
+		return wsk_text_w(t->font, wsk__chars(wsk__say(r, t, i), wsk__len(wsk__say(r, t, i)))) + 2 * t->pad
 #ifndef WSK_NO_CHECK
 		     + ((w->kind == WSK_CHECK) ? t->font + t->font / 2 : 0)
 #endif
@@ -1373,6 +1516,7 @@ static inline wsk_rect_t wsk__cell(const wsk_tree_t *t, int idx)
 	h.w = t->w; h.h = t->h;
 	h.nest = t->nest; h.nests = t->nests;
 	h.str = t->str; h.strs = t->strs;
+	h.caps = t->caps;
 	h.ax = t->ax; h.aw = t->aw; h.ay = t->ay; h.ah = t->ah;
 	h.ghead = 0; h.clipped = 0;
 	if (idx < h.n) hc = wsk_rect(&h, idx);
@@ -1534,6 +1678,7 @@ static inline int wsk__child(const wsk_tree_t *t, int i, wsk_tree_t *c)
 	            c->axis == WSK_ROW) ? &t->nest[t->head] : 0;
 	c->rdepth = w->depth;               /* a row's depth, for its first cell */
 	c->rindent = t->indent;
+	c->caps = t->caps;
 	r = wsk_rect(t, i);
 	c->ax = r.x; c->ay = r.y; c->aw = r.w; c->ah = r.h;
 
@@ -1690,6 +1835,7 @@ static inline int wsk__over_tree(const wsk_tree_t *t, wsk_tree_t *c)
 	c->buf = t->buf; c->bufs = t->bufs;
 	c->held = t->held; c->focus = t->focus;
 	c->state = t->state; c->states = t->states;
+	c->caps = t->caps;
 	c->ghead = 0;
 	c->ax = t->ox; c->ay = t->oy; c->aw = t->ow; c->ah = t->oh;
 	c->clipped = 0;
@@ -2333,6 +2479,11 @@ static inline void wsk__textel(wsk_sink_t *s, int start, int x, int base,
  */
 static inline int wsk__shows(const wsk_tree_t *t, int x0, int x1, int top)
 {
+#ifndef WSK_NO_SCROLL
+	/* A host that clips draws it all and lets the clip decide (§5r): a label
+	   half out of a scrolled pane slides, rather than vanishing whole. */
+	if (t->caps & WSK_CAP_CLIP) return 1;
+#endif
 	if (t->axis == WSK_COL ? !wsk__whole(t, top, top + t->font)
 	                       : !wsk__whole(t, x0, x1)) return 0;
 #ifndef WSK_NO_NEST
@@ -2352,7 +2503,7 @@ static inline int wsk__shows(const wsk_tree_t *t, int x0, int x1, int top)
 static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
                              const wsk_widget_t *w, const char *txt, wsk_rect_t r)
 {
-	int chars = wsk__len(txt);
+	int bytes = wsk__len(txt), chars = wsk__chars(txt, bytes);
 	int start = (t->talign == WSK_ALIGN_START);
 	/* All of the width: a label exactly its text's width -- every widget in
 	   a row with no padding -- draws all of it. It wanted two pixels of
@@ -2369,8 +2520,10 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
 		int tw = wsk_text_w(t->font, chars);
 		int x0 = start ? r.x + t->pad : r.x + r.w / 2 - tw / 2;
 		if (!wsk__shows(t, x0, x0 + tw, top)) return;
+		/* truncated by characters, and so never through one (§5r) */
 		wsk__textel(s, start, start ? x0 : r.x + r.w / 2,
-		            wsk_baseline_of(top, t->font), w->ink, txt, chars);
+		            wsk_baseline_of(top, t->font), w->ink, txt,
+		            wsk__byte_of(txt, bytes, chars));
 	}
 }
 
@@ -2737,6 +2890,30 @@ static inline void wsk__runs(const wsk_doc_t *d, const wsk_tree_t *t, int i,
 }
 #endif
 
+#ifndef WSK_NO_SCROLL
+/*
+ * A scrolling stack, in a host that clips (§5r): its widgets inside a <g>
+ * clipped to its area, so they are drawn whole and the clip cuts them --
+ * what /w0 cannot do, and why whisker cut by arithmetic until a host said it
+ * could. The id is the area's corner, which no two scrolling stacks share.
+ * Returns whether it opened one.
+ */
+static inline int wsk__clip_open(wsk_sink_t *s, const wsk_tree_t *t)
+{
+	wsk_rect_t a;
+	if (!(t->caps & WSK_CAP_CLIP) || t->overflow != WSK_SCROLL) return 0;
+	a.x = t->ax; a.y = t->ay; a.w = t->aw; a.h = t->ah;
+	wsk__s(s, "<clipPath id=\"wsk-c");
+	wsk__n(s, t->ax); wsk__s(s, "-"); wsk__n(s, t->ay);
+	wsk__s(s, "\">");
+	wsk__box(s, 0, a, 0);
+	wsk__s(s, "</clipPath><g clip-path=\"url(#wsk-c");
+	wsk__n(s, t->ax); wsk__s(s, "-"); wsk__n(s, t->ay);
+	wsk__s(s, ")\">");
+	return 1;
+}
+#endif
+
 #ifndef WSK_NO_NEST
 static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
                               wsk_sink_t *s);
@@ -2773,7 +2950,15 @@ static void wsk__stack(const wsk_doc_t *d, const wsk_tree_t *t, int i,
 	else
 #endif
 	if (w->fill != WSK_INHERIT) wsk__box(s, 0, v, w->fill);
+#ifndef WSK_NO_SCROLL
+	{
+		int clip = wsk__clip_open(s, &c);
+		wsk__items(d, &c, s);
+		if (clip) wsk__s(s, "</g>");
+	}
+#else
 	wsk__items(d, &c, s);
+#endif
 	if (g) wsk__s(s, "</g>");
 }
 #endif
@@ -2865,6 +3050,7 @@ static inline int wsk__look(wsk_sink_t *s, const wsk_doc_t *d, const wsk_tree_t 
 	return 1;
 }
 
+
 /*
  * One stack's widgets into a document, clipped to its rows -- and, for a
  * WSK_STACK, the tree inside it, in the rectangle it was given (§5f).
@@ -2883,6 +3069,9 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 		wsk_rect_t r = wsk_rect(t, i), v = r;
 		if (!wsk__cut(t, &v)) continue;                    /* scrolled out of view */
 		if (v.y >= d->y1 || v.y + v.h <= d->y0) continue;  /* not in these rows */
+#ifndef WSK_NO_SCROLL
+		if (t->caps & WSK_CAP_CLIP) v = r;                  /* the clip cuts it (§5r) */
+#endif
 		/* The box is drawn cut (v); everything else from the widget's own
 		   rectangle (r), whole or not at all. */
 #ifndef WSK_NO_NEST
@@ -2910,6 +3099,23 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 #endif
 #ifndef WSK_NO_CHECK
 		if (w->kind == WSK_CHECK) { wsk__check(s, t, w, r); continue; }
+#endif
+#ifndef WSK_NO_IMAGE
+		/* an image is drawn whole or not at all, as text is: cutting its
+		   rectangle would squash the picture rather than crop it -- unless
+		   the host clips, when the clip crops it (§5r) */
+		if (w->kind == WSK_IMAGE) {
+			if ((t->caps & WSK_CAP_CLIP) || (v.w == r.w && v.h == r.h)) {
+				wsk__s(s, "<image href=\"");
+				wsk__s(s, wsk__href(t, w));
+				wsk__s(s, "\" x=\""); wsk__n(s, r.x);
+				wsk__s(s, "\" y=\""); wsk__n(s, r.y);
+				wsk__s(s, "\" width=\""); wsk__n(s, r.w);
+				wsk__s(s, "\" height=\""); wsk__n(s, r.h);
+				wsk__s(s, "\"/>");
+			}
+			continue;
+		}
 #endif
 #ifndef WSK_NO_INPUT
 		if ((const void *)w == t->focus && w->kind == WSK_BUTTON &&
@@ -2987,7 +3193,15 @@ static inline int wsk_part(const wsk_doc_t *d, const wsk_tree_t *t,
 
 	nested = wsk__look(s, d, t);
 
+#ifndef WSK_NO_SCROLL
+	{
+		int clip = wsk__clip_open(s, t);
+		wsk__items(d, t, s);
+		if (clip) wsk__s(s, "</g>");
+	}
+#else
 	wsk__items(d, t, s);
+#endif
 
 	if (nested) wsk__s(s, "</g>");
 	return WSK_OK;

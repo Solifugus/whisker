@@ -55,7 +55,7 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
 
 ## Status
 
-**Sixteen iterations are built, and two of them have now run on the C5.**
+**Seventeen iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -167,6 +167,13 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
   `indent`; in a table only the first cell indents. `▾`/`▸` are not ASCII
   and are refused — a D21 runtime question.
 
+- **§5r — capabilities** (2026-11-14), D21's runtime half. A host says
+  what it draws beyond `/w0` in `root.caps` (`wh_caps()` in the host
+  contract): UTF-8 (measured in characters), `WSK_IMAGE`, clipping (a label
+  slides at a scroll's edge, D12). Needing more than the host said is
+  `WSK_E_HOST`. **caps = 0 is byte for byte what whisker always drew.**
+  SDL/RV-9 claim nothing; the browser claims UTF-8, images, clipping.
+
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
 very nice sounds". It found two rules for any board program: **draw little,
@@ -174,7 +181,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **507 checks**, including a step
+`src/run.sh --module` is the whole of it: **523 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, seventeen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 26, including the

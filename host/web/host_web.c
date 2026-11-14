@@ -53,10 +53,19 @@ static const char PAGE[] =
 "g.font='100px monospace';\n"
 "const ls=(0.5-g.measureText('M').width/100).toFixed(4);\n"
 "const STYLE='<style>text{font-family:monospace;letter-spacing:'+ls+'em}</style>';\n"
+/* an SVG drawn as an image may load nothing from outside itself, so each
+   image is fetched once, kept as a data URL, and written into the SVG */
+"const IMG={};\n"
+"function inline(svg){\n"
+"  const hrefs=[...svg.matchAll(/<image href=\"([^\"]+)\"/g)].map(m=>m[1]).filter(u=>!(u in IMG));\n"
+"  return Promise.all(hrefs.map(u=>fetch(u).then(r=>r.blob()).then(b=>new Promise(ok=>{\n"
+"    const f=new FileReader(); f.onload=()=>{IMG[u]=f.result;ok();}; f.onerror=()=>{IMG[u]='';ok();}; f.readAsDataURL(b);}))\n"
+"    .catch(()=>{IMG[u]='';}))).then(()=>svg.replace(/<image href=\"([^\"]+)\"/g,(m,u)=>'<image href=\"'+(IMG[u]||u)+'\"'));\n"
+"}\n"
 "function draw(y0,y1,w,h,svg){\n"
 "  svg=svg.replace('<svg ','<svg xmlns=\"http://www.w3.org/2000/svg\" ')\n"
 "         .replace(/^(<svg[^>]*>)/,'$1'+STYLE);\n"
-"  chain=chain.then(()=>new Promise(done=>{\n"
+"  chain=chain.then(()=>inline(svg)).then(svg=>new Promise(done=>{\n"
 "    const img=new Image();\n"
 "    img.onload=()=>{\n"
 "      if(W!==w||H!==h){c.width=W=w;c.height=H=h;}\n"
@@ -85,7 +94,7 @@ static const char PAGE[] =
 "  if(k){e.preventDefault();send('K '+k);return;}\n"
 "  if(e.key.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();send('T '+e.key);}\n"
 "});\n"
-"window.whisker={send,canvas:c,drawn:()=>drawn,idle:()=>chain};\n"
+"window.whisker={send,canvas:c,drawn:()=>drawn,idle:()=>chain,images:()=>Object.keys(IMG).filter(k=>IMG[k]).length};\n"
 "c.focus();\n"
 "</script></body></html>\n";
 
@@ -210,6 +219,34 @@ static void respond(int i)
 		memset(&e, 0, sizeof e);
 		e.kind = WH_EXPOSE;
 		push(&e);
+	} else if (strncmp(path, "/static/", 8) == 0) {
+		/* Files a page's images name (§5r): from WHISKER_STATIC, or ./static,
+		   by a plain name -- no '/', no "..", nothing above the folder. */
+		const char *name = path + 8, *dir = getenv("WHISKER_STATIC");
+		const char *type = strstr(name, ".svg") ? "image/svg+xml"
+		                 : strstr(name, ".png") ? "image/png"
+		                 : (strstr(name, ".jpg") || strstr(name, ".jpeg")) ? "image/jpeg"
+		                 : strstr(name, ".gif") ? "image/gif" : 0;
+		char file[512], h[160];
+		FILE *f = 0;
+		long len = 0;
+		if (type != 0 && name[0] != '\0' && strchr(name, '/') == 0 && strstr(name, "..") == 0) {
+			snprintf(file, sizeof file, "%s/%s", dir ? dir : "static", name);
+			f = fopen(file, "rb");
+		}
+		if (f == 0) {
+			send_str(c->fd, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+		} else {
+			char buf[4096];
+			size_t k;
+			fseek(f, 0, SEEK_END); len = ftell(f); fseek(f, 0, SEEK_SET);
+			snprintf(h, sizeof h, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n"
+			         "Content-Length: %ld\r\nConnection: close\r\n\r\n", type, len);
+			send_str(c->fd, h);
+			while ((k = fread(buf, 1, sizeof buf, f)) > 0) send_all(c->fd, buf, (int)k);
+			fclose(f);
+		}
+		drop(i);
 	} else if (strcmp(path, "/") == 0) {
 		char h[160];
 		int n = snprintf(h, sizeof h, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n"
@@ -288,6 +325,10 @@ int wh_open(int w, int h, int scale, const char *title)
 }
 
 void wh_clip(int y0, int y1) { S.y0 = y0; S.y1 = y1; }
+
+/* A browser draws UTF-8, images and clip paths (§5r). Not opacity yet: the
+   page composites by rows onto a canvas, and nothing whisker draws uses it. */
+int wh_caps(void) { return WH_CAP_UTF8 | WH_CAP_IMAGE | WH_CAP_CLIP; }
 
 /* Collect a document; at "</svg>" send it, with its rows, to every page. */
 void wh_write(const void *bytes, int n)

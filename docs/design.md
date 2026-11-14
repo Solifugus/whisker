@@ -2869,6 +2869,100 @@ repaints its old rows and its new; a pan or a zoom repaints the view.
 8. A demo: a small toroidal game on the P4, and a conference floor in the
    browser — avatars walking, speech above them fading with distance.
 
+
+---
+
+## 5r. Iteration 17 — a host that has more says so (D21's runtime half)
+
+**Written 2026-11-14, before any code**, Matthew having said go and gone out.
+D21 put whisker's tiers in the build; this is the same principle at run
+time. Everything whisker has drawn until now is what `/w0` can draw: ASCII,
+one monospace face, no image, no clip, no opacity. Three iterations found the
+cost of that being the only answer — Studio's `▾`/`▸` refused (§5p), a label
+popping rather than sliding at a scroll's edge (D12), fade without opacity
+(§5q) — and the browser host (§5k) can do all of it.
+
+### The rule
+
+**A host declares what it can draw beyond `/w0`; whisker uses no more than
+that; and a tree that needs what its host lacks is refused, by name.** The
+declaration is a set of bits on the root — `root.caps` — that a program fills
+from its host (`wh_caps()` in the host contract; 0 on RV-9, whose modules
+need not say anything). **With `caps` = 0 every document is byte for byte what
+it was**, which is the first done criterion and the reason this is safe.
+
+| bit | what the host can do | what whisker does with it |
+|---|---|---|
+| `WSK_CAP_UTF8` | draw text beyond ASCII | accepts UTF-8 in labels, buttons and text items; measures a character, not a byte |
+| `WSK_CAP_IMAGE` | draw `<image>` | draws `WSK_IMAGE`, a picture from a URL; without the bit a tree with one is refused, **`WSK_E_HOST`** |
+| `WSK_CAP_CLIP` | clip to a rectangle | a scrolling stack's content is clipped rather than cut: a label half out of view **slides** (D12's open question) |
+| `WSK_CAP_OPACITY` | draw transparency | declared now; the world's fade will use it (§5q) |
+
+### What is not changed, on purpose
+
+- **Fields and memos stay ASCII.** Editing UTF-8 — a caret that steps over a
+  character of several bytes, input that composes — is its own work, and a
+  field that half-handles it is worse than one that refuses.
+- **Monospace is still the measure.** A character is half its font size wide,
+  whatever script it is in; a host with proportional fonts is the next step
+  of this rule, not this one.
+- **No substitution.** A host without `WSK_CAP_UTF8` is not sent `?` for `é`:
+  the tree is refused (`WSK_E_TEXT`), as it always was.
+
+### Done criteria
+
+1. With `caps` = 0, every earlier output byte-identical.
+2. UTF-8: accepted with the bit and refused without; widths counted in
+   characters — `"▾ src"` is five wide, not seven; truncation never splits a
+   character.
+3. Images: drawn with the bit, refused by name without; an href that would
+   break the document (`"`, `<`, `>`) refused.
+4. Clipping: a scrolled pane with the bit draws a `<clipPath>` and its label
+   half in view, and without the bit exactly what it did.
+5. Hosts: SDL and RV-9 declare nothing; the browser host declares UTF-8,
+   images and clipping, and in headless Chrome Studio's arrows draw, an image
+   draws, and the canvas still equals a full redraw.
+6. Profile and cost, by measurement.
+
+
+### What it came to, 2026-11-14 (evening)
+
+Built the same evening; criteria 1–6 met. **523 checks** in `src/run.sh
+--module` (507 before): 18 in the suite; the every-switch build now covers
+**15** profiles and switches. Every output of the commit before — 31 files —
+byte-identical, which is criterion 1 and the point: a host that declares
+nothing gets exactly what whisker always drew.
+
+- **UTF-8**: refused without the bit, as ever, and never substituted;
+  accepted with it; **measured in characters** (`▾ src` is 5 wide, not 7
+  bytes); truncated to whole characters (three Greek letters are six bytes,
+  never five); and malformed UTF-8 — a stray continuation byte, an overlong
+  spelling, a character cut short — refused even by a host that draws UTF-8.
+- **Images**: `WSK_IMAGE`, its URL by index in `str`; refused **by name,
+  `WSK_E_HOST`**, for a host that has not said it can draw one; an href that
+  would end its attribute refused. Drawn whole or not at all unless the host
+  clips — a cut rectangle would squash a picture, not crop it.
+- **Clipping**: a scrolling stack's widgets inside a `<g>` clipped to its
+  area, drawn whole, so a half-visible label **slides** — D12's open question,
+  answered for a host that can. The control: without the bit, the same pane
+  is cut by arithmetic exactly as before. `hit` still cuts by arithmetic.
+- **The hosts**: `wh_caps()` joins the contract. SDL — RV-9's rasteriser —
+  says nothing; the browser says UTF-8, images and clipping, and serves
+  `static/` (nothing above it). An SVG drawn as an image may load nothing
+  from outside itself, so **the page fetches each image once and inlines
+  it**. `edit.c` asks its host and uses what it has: Studio's own `▾`/`▸` in
+  the tree and a logo in the browser, `+`/`-` and no logo under SDL — the
+  same program, more where there is more (D21).
+
+**§7's question**: the default is **12,576** for a small panel (11,472
+before). `WSK_PANEL` leaves out images and UTF-8 — the P4's own screen draws
+neither — and is **9,784**, the rest being the clip, which costs nothing until
+a host claims it. `WSK_MINIMAL` **3,784**, eight bytes *less*.
+
+**Not done**: opacity has its bit and no user until the world (§5q);
+proportional fonts are the next step of the same rule; fields and memos stay
+ASCII.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

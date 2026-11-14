@@ -249,6 +249,10 @@ int wh_poll(wh_event_t *out)
 
 void wh_wait(int ms) { SDL_WaitEventTimeout(NULL, ms); }
 
+/* RV-9's own rasteriser draws the pixels here, so this host can draw exactly
+   what /w0 can, and says nothing more (§5r). */
+int wh_caps(void) { return 0; }
+
 void wh_close(void)
 {
 	if (!S.open) return;

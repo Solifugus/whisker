@@ -55,6 +55,12 @@ typedef struct {
 	char text[8];            /* WH_TEXT */
 } wh_event_t;
 
+/* What this host can draw beyond /w0, as whisker's WSK_CAP_* bits (§5r): a
+   program puts it in its root's `caps`. The host says; whisker never guesses.
+   The same numbers as whisker's, so the host need not include whisker. */
+enum { WH_CAP_UTF8 = 1, WH_CAP_IMAGE = 2, WH_CAP_CLIP = 4, WH_CAP_OPACITY = 8 };
+int  wh_caps(void);
+
 /* Open a window of this many device pixels, shown at `scale` times size.
    Returns 0, or -1 with a reason on stderr. Like opening /w0. */
 int  wh_open(int w, int h, int scale, const char *title);

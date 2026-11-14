@@ -84,6 +84,24 @@ try:
        "a page that subscribes is sent the whole picture first: rows 0..0 (all), 1024x600")
     ok(first is not None and ">whisker -- type into a field</text>" in first,
        "and it is edit.c's window, drawn by whisker, unchanged")
+    # §5r: this host said it draws UTF-8, images and clip paths, and the
+    # program used all three
+    ok(first is not None and "\u25be src" in first,
+       "a host that draws UTF-8 is sent Studio's own arrow: \u25be src")
+    ok(first is not None and '<image href="/static/logo.svg"' in first,
+       "and an image, for a host that draws images")
+    ok(first is not None and 'clip-path="url(#wsk-c' in first,
+       "and the scrolling tree clipped, for a host that clips")
+    c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=5)
+    c.request("GET", "/static/logo.svg")
+    r = c.getresponse()
+    body = r.read()
+    ok(r.status == 200 and r.getheader("Content-Type") == "image/svg+xml" and b"<svg" in body,
+       "the host serves the image from its static folder")
+    c.request("GET", "/static/../host_web.c")
+    r = c.getresponse(); r.read()
+    ok(r.status == 404, "CONTROL: and nothing above that folder")
+    c.close()
 
     ok(post("T hi") == 204, "a typed event is accepted")
     m = ev.until(">hi</text>")

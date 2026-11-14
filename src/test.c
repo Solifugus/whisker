@@ -2737,6 +2737,107 @@ int main(void)
 #undef TAPROW
 	}
 
+	/* ---- §5r. a host that has more says so ---- */
+	printf("\n-- §5r  capabilities\n");
+	{
+		static const wsk_widget_t U[] = {
+			{ .kind = WSK_LABEL, .id = "u0", .text = "\xe2\x96\xbe src" },        /* ▾ src */
+			{ .kind = WSK_LABEL, .id = "u1", .text = "caf\xc3\xa9" },             /* café */
+		};
+		static const wsk_widget_t G[] = {
+			{ .kind = WSK_LABEL, .id = "g0", .text = "\xce\xb1\xce\xb2\xce\xb3\xce\xb4\xce\xb5", .size = 24 },
+		};
+		wsk_tree_t t;
+		char cd[2048];
+		int which = -2;
+
+		wsk_init(&t, WSK_ROW, 320, 172);
+		t.pad = 0; t.gap = 0; t.item = U; t.n = 2;
+		ok(wsk_check(&t, &which) == WSK_E_TEXT && which == 0,
+		   "without WSK_CAP_UTF8, \"\\u25be src\" is refused, as it always was -- never a ? for it");
+		t.caps = WSK_CAP_UTF8;
+		ok(wsk_check(&t, 0) == WSK_OK, "with it, accepted");
+		ok(wsk_rect(&t, 0).w == 40 && wsk_rect(&t, 1).w == 32,
+		   "measured in characters: \"\\u25be src\" is 5 wide (40), not 7 bytes; \"caf\\u00e9\" 4 (32)");
+		render_into(&t, cd, sizeof cd, 4096);
+		ok(has(cd, ">\xe2\x96\xbe src</text>") && has(cd, ">caf\xc3\xa9</text>"), "and drawn as written");
+
+		/* truncation never splits a character: five Greek letters, 10 bytes,
+		   in a column 3 cells wide */
+		wsk_init(&t, WSK_COL, 24, 172);
+		t.pad = 0; t.caps = WSK_CAP_UTF8; t.item = G; t.n = 1;
+		render_into(&t, cd, sizeof cd, 4096);
+		ok(has(cd, ">\xce\xb1\xce\xb2\xce\xb3</text>"),
+		   "truncated to the three characters that fit -- six bytes, never five");
+
+		/* malformed UTF-8 is refused even by a host that draws UTF-8 */
+		{
+			wsk_widget_t bad[1];
+			wsk_clone(bad, G, 1);
+			bad[0].text[0] = (char)0x80; bad[0].text[1] = 'x'; bad[0].text[2] = '\0';
+			t.item = bad;
+			ok(wsk_check(&t, 0) == WSK_E_TEXT, "a byte that starts no character is refused");
+			bad[0].text[0] = (char)0xC0; bad[0].text[1] = (char)0x80; bad[0].text[2] = '\0';
+			ok(wsk_check(&t, 0) == WSK_E_TEXT, "and a character spelled the long way round");
+			bad[0].text[0] = (char)0xE2; bad[0].text[1] = (char)0x96; bad[0].text[2] = '\0';
+			ok(wsk_check(&t, 0) == WSK_E_TEXT, "and one that ends too soon");
+		}
+	}
+	{
+		/* Images. */
+		static const wsk_widget_t I[] = {
+			{ .kind = WSK_LABEL, .id = "cap", .text = "logo", .size = 24 },
+			{ .kind = WSK_IMAGE, .id = "pic", .sub = 0, .size = 64 },
+		};
+		const char *strs[1];
+		wsk_tree_t t;
+		char id[2048];
+		int which = -2;
+
+		strs[0] = "/static/logo.svg";
+		wsk_init(&t, WSK_COL, 320, 172);
+		t.pad = 0; t.gap = 0; t.item = I; t.n = 2; t.str = strs; t.strs = 1;
+		ok(wsk_check(&t, &which) == WSK_E_HOST && which == 1,
+		   "an image for a host that has not said it can draw one: refused, WSK_E_HOST, naming it");
+		t.caps = WSK_CAP_IMAGE;
+		ok(wsk_check(&t, 0) == WSK_OK, "with WSK_CAP_IMAGE, accepted");
+		render_into(&t, id, sizeof id, 4096);
+		ok(has(id, "<image href=\"/static/logo.svg\" x=\"0\" y=\"24\" width=\"320\" height=\"64\"/>"),
+		   "and drawn: an <image> in its widget's rectangle");
+		strs[0] = "a\"onload=\"x";
+		ok(wsk_check(&t, &which) == WSK_E_TEXT && which == 1,
+		   "an href that would end its attribute is refused");
+		strs[0] = "/static/logo.svg";
+	}
+	{
+		/* Clipping: a scrolled pane, its first row half out of view. */
+		static wsk_widget_t rows[6];
+		wsk_tree_t p;
+		char cd[4096];
+		for (int i = 0; i < 6; i++) {
+			memset(&rows[i], 0, sizeof rows[i]);
+			rows[i].kind = WSK_BUTTON; rows[i].size = 30;
+			snprintf(rows[i].id, WSK_ID_MAX, "c%d", i);
+			snprintf(rows[i].text, WSK_TEXT_MAX, "Row %d", i);
+		}
+		wsk_init(&p, WSK_COL, 320, 172);
+		p.pad = 0; p.gap = 0; p.ids = 1; p.item = rows; p.n = 6;
+		wsk_area(&p, 0, 40, 320, 100);
+		p.overflow = WSK_SCROLL; p.scroll = 15;
+		render_into(&p, cd, sizeof cd, 4096);
+		ok(!has(cd, "clipPath") && has(cd, "<rect id=\"c0\" y=\"40\" width=\"320\" height=\"15\"") &&
+		   !has(cd, ">Row 0</text>"),
+		   "CONTROL: without WSK_CAP_CLIP, the half row is cut by arithmetic and its text not drawn (D12)");
+		p.caps = WSK_CAP_CLIP;
+		render_into(&p, cd, sizeof cd, 4096);
+		ok(has(cd, "<clipPath id=\"wsk-c0-40\">") && has(cd, "clip-path=\"url(#wsk-c0-40)\""),
+		   "with it, the pane's widgets are inside a <g> clipped to the pane");
+		ok(has(cd, "<rect id=\"c0\" y=\"25\" width=\"320\" height=\"30\"") && has(cd, ">Row 0</text>"),
+		   "and the half row is drawn whole -- its box and its label -- and the clip cuts it: it slides");
+		ok(wsk_hit(&p, 10, 30) == WSK_E_NOTFOUND && wsk_hit(&p, 10, 45) == 0,
+		   "hit still cuts by arithmetic: above the pane is nothing, inside it row 0");
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

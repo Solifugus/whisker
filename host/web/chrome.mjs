@@ -100,6 +100,7 @@ try {
     g.font='100px monospace'; return (0.5-g.measureText('M').width/100).toFixed(4);})()`);
   console.log(`      the page set letter-spacing ${ls}em so a character is half its size wide`);
   await snap('web_first.png');
+  ok(await js('whisker.images()') >= 1, 'the page fetched the logo once and inlined it into the SVG (§5r)');
 
   await type('Hello web');            // edit.c focuses the name field itself
   await click(100, 210);              // the city field: 48 + 8 + 32 + 6 + 48 + 6 + 32 + 6 = 186..234

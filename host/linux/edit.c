@@ -44,6 +44,7 @@ static const wsk_widget_t FORM[] = {
 	{ .kind = WSK_MEMO,   .id = "note", .sub = 2, .size = 96 },   /* many lines (§5o) */
 	{ .kind = WSK_BUTTON, .id = "save", .text = "Save" },
 	{ .kind = WSK_CHECK,  .id = "remember", .text = "Remember me", .sub = 0, .size = 36 },
+	{ .kind = WSK_IMAGE,  .id = "logo", .sub = 1, .size = 56 },   /* only where a host can (§5r) */
 };
 
 static const wsk_widget_t SAVEMENU[] = {
@@ -63,6 +64,7 @@ static const wsk_widget_t HEAD[] = {
 	{ .kind = WSK_BUTTON, .id = "h-size", .text = "Size", .size = 90,  .fill = 0x1c3550u },
 };
 static wsk_widget_t items[30], cells[30][2];
+static int caps;                        /* what the host said it can draw (§5r) */
 
 /* The table is a FILE TREE (§5p), and its expansion is this program's, as
    Studio's is: the model below is ours, and what whisker is handed is the
@@ -104,8 +106,12 @@ static int tree_rows(void)
 		hide = 255;
 		items[n].depth = t->depth;
 		items[n].fill = (n % 2) ? 0x1a3048u : 0x15283du;
+		/* Studio's own arrows where the host can draw them (§5r), and +/-
+		   where it cannot -- the window draws 32..126 */
 		snprintf(cells[n][0].text, WSK_TEXT_MAX, "%s%s",
-		         t->kids ? (t->open ? "- " : "+ ") : "  ", t->name);
+		         !t->kids ? "  "
+		         : (caps & WH_CAP_UTF8) ? (t->open ? "\xe2\x96\xbe " : "\xe2\x96\xb8 ")
+		         : (t->open ? "- " : "+ "), t->name);
 		snprintf(cells[n][1].text, WSK_TEXT_MAX, "%s", t->size);
 		rownode[n++] = i;
 		if (t->kids && !t->open) hide = t->depth;
@@ -114,7 +120,8 @@ static int tree_rows(void)
 }
 static char name[40], city[40], note[80];
 static unsigned char state[1];          /* Remember me, ticked or not (§5m) */
-static const char *strs[1] = { "Tab between fields, Enter prints a field, Esc quits" };
+static const char *strs[2] = { "Tab between fields, Enter prints a field, Esc quits",
+                               "/static/logo.svg" };
 static wsk_buf_t buf[3];
 static wsk_tree_t win, nest[6 + 30];
 
@@ -145,17 +152,20 @@ int main(int argc, char **argv)
 	buf[1].b = city; buf[1].cap = sizeof city;
 	buf[2].b = note; buf[2].cap = sizeof note;
 
+	caps = wh_caps();                       /* ask the host first (§5r) */
 	wsk_init(&win, WSK_COL, w, h);
 	win.pad = 0; win.gap = 0; win.font = 20; win.ids = 1;
 	win.item = WIN; win.n = 3;
 	win.nest = nest; win.nests = 6 + 30;
 	win.buf = buf; win.bufs = 3;
-	win.str = strs; win.strs = 1;
+	win.str = strs; win.strs = 2;
+	win.caps = (unsigned char)caps;
 	win.state = state; win.states = 1;
 	wsk_nest_init(&nest[0], &win, WSK_ROW);
 	nest[0].pad = 8; nest[0].gap = 16; nest[0].item = BODY; nest[0].n = 2;
 	wsk_nest_init(&nest[1], &win, WSK_COL);
-	nest[1].pad = 0; nest[1].gap = 6; nest[1].item = FORM; nest[1].n = 8;
+	nest[1].pad = 0; nest[1].gap = 6; nest[1].item = FORM;
+	nest[1].n = (caps & WH_CAP_IMAGE) ? 9 : 8;  /* the logo where it can be drawn */
 	wsk_nest_init(&nest[2], &win, WSK_COL);
 	nest[2].pad = 0; nest[2].gap = 4; nest[2].item = LIST; nest[2].n = 2;
 	wsk_nest_init(&nest[4], &win, WSK_ROW);     /* the header */
