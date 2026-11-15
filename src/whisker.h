@@ -325,6 +325,8 @@ typedef struct {
 	short  span;                 /* the selection: caret to caret + span,
 	                                either way; 0, none (§5s). A program that
 	                                writes the text sets it back to 0. */
+	unsigned char wrap;          /* a memo: 1 wraps long lines at its width,
+	                                0 slides sideways to the caret (§5u) */
 } wsk_buf_t;
 
 typedef struct wsk_tree {
@@ -2761,28 +2763,63 @@ static inline int wsk__vis(const wsk_tree_t *t, wsk_rect_t r)
 	return (v < 1) ? 1 : v;
 }
 
-/* The line and column at offset `at`, and how many lines there are. */
-static inline void wsk__where(const char *b, int len, int at, int *line, int *col,
-                              int *lines)
+/*
+ * The characters a memo's row holds: `room` for a memo that wraps (§5u),
+ * and for one that does not, so many that a row is a whole line as typed.
+ */
+#define WSK_NOWRAP 32767
+static inline int wsk__mroom(const wsk_tree_t *t, wsk_rect_t r, const wsk_buf_t *b)
 {
-	int l = 0, c = 0;
-	for (int i = 0; i < len; i++) {
-		if (i == at) { *line = l; *col = c; }
-		if (b[i] == '\n') { l++; c = 0; } else c++;
-	}
-	if (at >= len) { *line = l; *col = c; }
-	*lines = l + 1;
+	int room = (r.w - 2 * WSK_FIELD_PAD - WSK_CARET_W) / wsk_advance(t->font);
+	if (b == 0 || !b->wrap) return WSK_NOWRAP;
+	return (room < 1) ? 1 : room;
 }
 
-/* Where line `k` starts, and (in *end) where it stops, its \n excluded. */
-static inline int wsk__line(const char *b, int len, int k, int *end)
+/*
+ * The row that starts at `at`: where it ends (*end -- a line break, or the
+ * space it broke at, is not in it) and where the next starts, len + 1 after
+ * the last. A line longer than `room` breaks after its last space that
+ * fits, or, with none, at the room itself (§5u rule 2).
+ */
+static inline int wsk__vrow(const char *b, int len, int at, int room, int *end)
 {
-	int i = 0, l = 0, s;
-	while (i < len && l < k) { if (b[i] == '\n') l++; i++; }
-	s = i;
-	while (i < len && b[i] != '\n') i++;
-	*end = i;
-	return s;
+	int e = at;
+	while (e < len && b[e] != '\n') e++;
+	if (e - at > room) {
+		int sp = at + room;              /* a space here may still break */
+		while (sp > at && b[sp] != ' ') sp--;
+		if (sp > at) { *end = sp; return sp + 1; }
+		*end = at + room;
+		return at + room;
+	}
+	*end = e;
+	return (e < len) ? e + 1 : len + 1;
+}
+
+/* The row and column at offset `at`, and how many rows there are. */
+static inline void wsk__where(const char *b, int len, int at, int room,
+                              int *line, int *col, int *lines)
+{
+	int k = 0, st = 0, end, next, found = 0;
+	for (;;) {
+		next = wsk__vrow(b, len, st, room, &end);
+		if (!found && (at < next || next > len)) { *line = k; *col = at - st; found = 1; }
+		if (next > len) break;
+		st = next;
+		k++;
+	}
+	*lines = k + 1;
+}
+
+/* Where row `k` starts, and (in *end) where it stops. */
+static inline int wsk__line(const char *b, int len, int k, int room, int *end)
+{
+	int st = 0, next;
+	for (int i = 0; ; i++) {
+		next = wsk__vrow(b, len, st, room, end);
+		if (i == k || next > len) return st;
+		st = next;
+	}
 }
 
 /*
@@ -2826,12 +2863,13 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 	wsk_buf_t none;
 
 	if (room < 1) room = 1;
-	wsk__where(txt, len, caret, &line, &col, &lines);
+	int wr = wsk__mroom(t, r, b);
+	wsk__where(txt, len, caret, wr, &line, &col, &lines);
 	none.top = 0;
 	top = wsk__top((b != 0) ? b : &none, vis, line, lines);
 	left = wsk__left(t, r, col);
 	for (int k = top; k < top + vis && k < lines; k++) {
-		int end, at = wsk__line(txt, len, k, &end), y = r.y + WSK_FIELD_PAD + (k - top) * pitch;
+		int end, at = wsk__line(txt, len, k, wr, &end), y = r.y + WSK_FIELD_PAD + (k - top) * pitch;
 		int from = at + left, n = end - from;
 		if (!wsk__shows(t, r.x, r.x + r.w, y)) continue;
 		if (n > room) n = room;
@@ -3857,13 +3895,14 @@ static inline int wsk__char_at(const wsk_tree_t *lay, int k, wsk_buf_t *b,
 	if (lay->item[k].kind == WSK_MEMO) {
 		/* the line under the finger, then the column on it */
 		int line = 0, col = 0, lines = 1, top, left, at, end, vis = wsk__vis(lay, whole);
-		wsk__where(b->b, b->len, b->caret, &line, &col, &lines);
+		int wr = wsk__mroom(lay, whole, b);
+		wsk__where(b->b, b->len, b->caret, wr, &line, &col, &lines);
 		top = wsk__top(b, vis, line, lines);
 		left = wsk__left(lay, whole, col);
 		line = top + (y - (whole.y + WSK_FIELD_PAD)) / wsk__pitch(lay);
 		if (line >= lines) line = lines - 1;
 		if (line < 0) line = 0;
-		at = wsk__line(b->b, b->len, line, &end);
+		at = wsk__line(b->b, b->len, line, wr, &end);
 		c = left + (x - (whole.x + WSK_FIELD_PAD) + adv / 2) / adv;
 		if (c < 0) c = 0;
 		c = (at + c > end) ? end : at + c;
@@ -3917,7 +3956,8 @@ static inline void wsk__follow(wsk_ui_t *ui)
 	wsk_buf_t *b = ui->focus_b;
 	int line = 0, col = 0, lines = 1;
 	if (ui->focus_in->item[ui->focus_item].kind != WSK_MEMO) return;
-	wsk__where(b->b, b->len, b->caret, &line, &col, &lines);
+	wsk__where(b->b, b->len, b->caret, wsk__mroom(ui->focus_in, ui->focus_r, b),
+	           &line, &col, &lines);
 	b->top = (short)wsk__top(b, wsk__vis(ui->focus_in, ui->focus_r), line, lines);
 }
 #endif
@@ -4421,10 +4461,11 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		} else if (memo && (key == WSK_KEY_UP || key == WSK_KEY_DOWN ||
 		                    key == WSK_KEY_HOME || key == WSK_KEY_END)) {
 			int line = 0, col = 0, lines = 1, at, end, to = b->caret;
-			wsk__where(b->b, b->len, b->caret, &line, &col, &lines);
+			int wr = wsk__mroom(ui->focus_in, ui->focus_r, b);
+			wsk__where(b->b, b->len, b->caret, wr, &line, &col, &lines);
 			if (key == WSK_KEY_UP && line > 0) line--;
 			else if (key == WSK_KEY_DOWN && line < lines - 1) line++;
-			at = wsk__line(b->b, b->len, line, &end);
+			at = wsk__line(b->b, b->len, line, wr, &end);
 			if (key == WSK_KEY_HOME) to = at;
 			else if (key == WSK_KEY_END) to = end;
 			else to = (at + col > end) ? end : at + col;

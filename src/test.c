@@ -3124,6 +3124,100 @@ int main(void)
 		ok(wsk_check(&t, &which) == WSK_E_KIND && which == 0, "a tree's mark on a field is refused, by name");
 	}
 
+	/* ---- §5u. a memo that wraps ---- */
+	printf("\n-- §5u  wrap in a memo\n");
+	{
+		static const wsk_widget_t FM[] = {
+			{ .kind = WSK_MEMO, .id = "m", .sub = 0, .size = 120 },
+		};
+		char mb[64] = "";
+		wsk_buf_t buf[1];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char md[4096];
+		int n, y0 = 0, y1 = 0;
+		const char *SEL = "fill=\"#b06a2a\"";
+
+		/* 120 wide: the memo is 112, (112 - 12 - 2) / 8 = 12 characters a row;
+		   (120 - 12) / 20 = 5 rows show, from y 10, 20 apart */
+		memset(buf, 0, sizeof buf);
+		buf[0].b = mb; buf[0].cap = 64;
+		wsk_init(&w, WSK_COL, 120, 200);
+		w.pad = 4; w.gap = 4; w.item = FM; w.n = 1; w.buf = buf; w.bufs = 1;
+		wsk_ui_init(&ui, &w);
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		memset(&ev, 0, sizeof ev);
+#define TYPE(T) (ev.kind = WSK_EV_TEXT, snprintf(ev.text, sizeof ev.text, "%s", (T)), \
+                 n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define KEY(K)  (ev.kind = WSK_EV_KEY, ev.key = (unsigned short)(K), n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define SET(S, C) (snprintf(mb, sizeof mb, "%s", (S)), buf[0].len = (short)strlen(mb), \
+                   buf[0].caret = (short)(C), buf[0].top = 0, buf[0].span = 0)
+
+		SET("the quick brown fox jumps", 25);
+		render_into(&w, md, sizeof md, 4096);
+		ok(!has(md, ">brown fox</text>"), "CONTROL: unwrapped, a long line is one line, as in §5o");
+		buf[0].wrap = 1;
+		render_into(&w, md, sizeof md, 4096);
+		ok(has(md, ">the quick</text>") && has(md, ">brown fox</text>") && has(md, ">jumps</text>"),
+		   "wrapped: three rows, each broken at its last space that fits -- and the space not drawn");
+		SET("abcdefghijklmnopq", 0);
+		render_into(&w, md, sizeof md, 4096);
+		ok(has(md, ">abcdefghijkl</text>") && has(md, ">mnopq</text>"),
+		   "a word longer than the row breaks where the row ends");
+		SET("abcdefghijkl", 0);
+		render_into(&w, md, sizeof md, 4096);
+		ok(has(md, ">abcdefghijkl</text>"), "and a line that fits exactly is not broken");
+		SET("ab\ncd", 0);
+		render_into(&w, md, sizeof md, 4096);
+		ok(has(md, ">ab</text>") && has(md, ">cd</text>"), "a line break is still a line");
+
+		/* the caret moves on rows */
+		SET("the quick brown fox jumps", 25);
+		KEY(WSK_KEY_UP);
+		ok(buf[0].caret == 15, "UP from the end of row 2, column 5: row 1 column 5, offset 15");
+		KEY(WSK_KEY_UP);
+		ok(buf[0].caret == 5, "UP again: row 0 column 5");
+		KEY(WSK_KEY_END);
+		ok(buf[0].caret == 9, "END: the row's end, before the space it broke at -- not the line's");
+		KEY(WSK_KEY_HOME);
+		ok(buf[0].caret == 0, "HOME: the row's start");
+		buf[0].caret = 9;
+		KEY(WSK_KEY_DOWN);
+		ok(buf[0].caret == 19, "DOWN from column 9: \"brown fox\" ends at 19");
+		buf[0].caret = 10;
+		render_into(&w, md, sizeof md, 4096);
+		ok(has(md, "<rect x=\"10\" y=\"32\" width=\"2\""),
+		   "a caret at a soft break is at the next row's start: x 10, row 1");
+		ev.kind = WSK_EV_DOWN; ev.x = 10 + 2 * 8 + 1; ev.y = 4 + 6 + 40 + 5;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[0].caret == 22, "a tap on row 2, column 2: \"jumps\" from 20, so 22");
+
+		/* a selection across a soft break: a box on each row */
+		buf[0].caret = 5; buf[0].span = 0;
+		KEY(WSK_KEY_DOWN | WSK_MOD_SHIFT);
+		render_into(&w, md, sizeof md, 4096);
+		ok(buf[0].caret == 15 && count(md, SEL) == 2 &&
+		   has(md, "<rect x=\"50\" y=\"10\" width=\"32\" height=\"16\" fill=\"#b06a2a\"/>") &&
+		   has(md, "<rect x=\"10\" y=\"30\" width=\"40\" height=\"16\" fill=\"#b06a2a\"/>"),
+		   "Shift-Down from 5 to 15: \"uick\" on row 0, \"brown\" on row 1");
+
+		/* the view counts rows: twelve words of four, two a row, six rows */
+		SET("", 0);
+		for (int i = 0; i < 12; i++) TYPE("abcd ");
+		render_into(&w, md, sizeof md, 4096);
+		ok(strlen(mb) == 60 && buf[0].top == 1 && count(md, ">abcd abcd</text>") == 4 &&
+		   count(md, ">abcd abcd </text>") == 1,
+		   "typed past the fifth row: top follows to row 1, and rows 1..5 show");
+		(void)n;
+#undef TYPE
+#undef KEY
+#undef SET
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

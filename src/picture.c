@@ -1521,6 +1521,58 @@ int main(void)
 		shot("tree_arrows.ppm");
 	}
 
+	/*
+	 * A memo that wraps, at the pixels (design.md §5u): a sentence typed in
+	 * pieces, wrapping as it goes, each keystroke's rows repainted alone
+	 * against a full redraw.
+	 */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_LABEL, .id = "l", .text = "Notes, wrapped", .size = 24 },
+			{ .kind = WSK_MEMO,  .id = "m", .sub = 0, .weight = 1 },
+		};
+		static const char *PIECES[] = { "whisker", " now ", "wraps a", " memo ", "at its", " width,",
+		                                " never ", "inside", " a word", " unless", " it has", " to." };
+		static uint16_t want[PW * PH];
+		char mb[128] = "";
+		wsk_buf_t buf[1];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[2];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		uint32_t v;
+		int y0, y1, good = 1;
+
+		memset(buf, 0, sizeof buf);
+		buf[0].b = mb; buf[0].cap = 128; buf[0].wrap = 1;
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 8; w.gap = 4; w.bg = 0x10203au; w.item = F; w.n = 2; w.buf = buf; w.bufs = 1;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		s.put = to_window; s.ctx = &dev;
+
+		printf("\n  a memo that wraps (§5u)\n");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		for (int i = 0; i < 12; i++) {
+			ev.kind = WSK_EV_TEXT; snprintf(ev.text, sizeof ev.text, "%s", PIECES[i]);
+			wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+			v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+			svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+			s.len = 0; wsk_render_rows(&w, y0, y1, &s, 4096);
+			memcpy(want, screen, sizeof screen);
+			v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+			s.len = 0; wsk_render(&w, &s, 4096);
+			if (memcmp(screen, want, sizeof screen) != 0) { good = 0; printf("    differs after piece %d\n", i); }
+		}
+		ok(strcmp(mb, "whisker now wraps a memo at its width, never inside a word unless it has to.") == 0,
+		   "the memo holds what was typed, and no line break: wrapping is drawing");
+		ok(good, "every keystroke's rows, repainted alone, equal a full redraw");
+		shot("memo_wrap.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

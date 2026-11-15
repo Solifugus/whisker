@@ -132,7 +132,7 @@ static int tree_rows(void)
 	}
 	return n;
 }
-static char name[40], city[40], note[80];
+static char name[40], city[40], note[400];
 static unsigned char state[1];          /* Remember me, ticked or not (§5m) */
 static const char *strs[2] = { "Tab between fields, Enter prints a field, right-click a field for Copy and Paste",
                                "/static/logo.svg" };
@@ -259,6 +259,7 @@ int main(int argc, char **argv)
 	buf[0].b = name; buf[0].cap = sizeof name;
 	buf[1].b = city; buf[1].cap = sizeof city;
 	buf[2].b = note; buf[2].cap = sizeof note;
+	buf[2].wrap = 1;                        /* a note wraps (§5u) */
 
 	caps = wh_caps();                       /* ask the host first (§5r) */
 	if (caps & WH_CAP_UTF8) strs[0] = HELP_UTF8;

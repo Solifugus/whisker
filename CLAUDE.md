@@ -55,7 +55,7 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
 
 ## Status
 
-**Nineteen iterations are built, and two of them have now run on the C5.**
+**Twenty iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -158,7 +158,7 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
 - **§5o — the memo** (2026-11-14). `WSK_MEMO`: a field of many lines in the
   same caller-owned buffer, `\n` between lines; the buffer's `top` keeps the
   view, moved only to keep the caret in sight (drawing never writes it).
-  Enter breaks a line, Up/Down keep the column. No soft wrap yet. 668
+  Enter breaks a line, Up/Down keep the column. Soft wrap since §5u. 668
   bytes; `WSK_NO_MEMO`, in `WSK_MINIMAL`, kept by `WSK_PANEL`.
 
 - **§5p — trees** (2026-11-14), as Studio's `window` says them: a **flat
@@ -192,6 +192,11 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
   purpose its only one**. Every host draws it, so the SDL window and the P4
   show ▸/▾ where they used to need `+`/`-`. Refused under `WSK_NO_MARKS`.
 
+- **§5u — a memo that wraps** (2026-11-14). `wsk_buf_t.wrap`: soft breaks
+  at the last space that fits, a long word cut at the width; the caret, the
+  view and selection move on rows. Off by default (`source` must not wrap),
+  and an unwrapped memo runs the same code with a room of 32,767. +108 bytes.
+
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
 very nice sounds". It found two rules for any board program: **draw little,
@@ -199,7 +204,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **594 checks**, including a step
+`src/run.sh --module` is the whole of it: **610 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 39, including the

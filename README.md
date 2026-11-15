@@ -17,7 +17,7 @@ in `design.md` §8, and built since, iteration by iteration (§5i onward).
 **Status of the drawing layer.** `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p, §5r, §5s, §5t and §7 — **594 checks** plus the profile gate,
+`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p, §5r, §5s, §5t, §5u and §7 — **610 checks** plus the profile gate,
 the pixels through RV-9's own rasteriser, eighteen module builds with the
 double-link, and a person looking at the pictures. `host/linux/run.sh --test`
 adds **39** more, and `host/web/run.sh --test` 28 over HTTP and 18 in
@@ -70,7 +70,7 @@ keeps a choice, and Tab that reaches buttons as well as fields.
 row under it puts its cells there — scrolled or not.
 
 **And a memo edits many lines** (§5o): Enter, Up, Down, and a view that
-keeps the caret in sight.
+keeps the caret in sight — and wraps long lines at its width if asked (§5u).
 
 **And a host that has more says so** (§5r): a browser is told it may draw
 Unicode, images and clipped panes, and does; RV-9's screen, which cannot, is

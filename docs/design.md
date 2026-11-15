@@ -3216,6 +3216,73 @@ triangle ought to cost, and not yet broken down by where it goes.
 
 ---
 
+## 5u. Iteration 20 — a memo that wraps
+
+**Written 2026-11-14, before any code**, Matthew having said *"drive on"*.
+§5o's memo shows a long line by scrolling sideways, which is right for code
+and wrong for a note: Studio's notes, a chat line, a comment box all wrap.
+So both, chosen per memo.
+
+### The rules
+
+1. **Chosen per memo, in its buffer**: `wsk_buf_t.wrap`, beside `top`, the
+   view's other state. 0 — every buffer so far — is §5o exactly: lines as
+   typed, the view sliding sideways to the caret. 1 wraps. Not the default,
+   because `source` (the code editor, still to come) must not wrap.
+2. **Soft, at a space.** A line longer than the memo's width breaks after
+   its last space that fits; the space is not drawn at the row's end. A
+   word longer than the whole width breaks where the width ends. Nothing is
+   inserted into the text: wrapping is drawing, and the buffer holds what
+   was typed.
+3. **Rows are what the caret moves on.** Up and Down keep the column across
+   the rows of a wrapped line, Home and End are the row's ends, a tap lands
+   on the row under it, and `top` counts rows — as every editor that wraps
+   behaves.
+4. **One implementation.** A row is found by one function given a room in
+   characters; a room of 32,767 *is* a logical line, so the unwrapped memo
+   runs the same code and draws byte for byte what it did.
+
+### Done criteria
+
+1. Every earlier output byte-identical.
+2. Breaks: at the last space that fits, the space undrawn; a long word cut at
+   the width; a line that fits exactly not broken; `\n` still a line.
+3. Caret: Up/Down across rows keeping the column; Home/End a row's ends; the
+   caret after a soft break at the next row's start; a tap on a row.
+4. View: `top` in rows, following the caret as it types past the bottom.
+5. Selection across rows; repaints equal a full redraw at the pixels; a
+   person looks.
+6. `edit.c`'s Note wraps; cost measured.
+
+### What it came to, 2026-11-14 (later still)
+
+Built the same night; criteria 1–6 met. **610 checks** (594 before): 14 in
+the suite, 2 at the pixels. Every output of the commit before — 34 files —
+byte-identical: the unwrapped memo now runs the wrapping code with a room of
+32,767 and draws what it drew, which is rule 4 shown rather than claimed.
+
+- **Breaks**: "the quick brown fox jumps" in a row of 12 is *the quick* /
+  *brown fox* / *jumps*, the spaces undrawn; a 17-letter word is cut at 12;
+  a line of exactly 12 is not broken; `\n` is still a line.
+- **The caret on rows**: Up and Down keep the column across a wrapped line;
+  End is the row's end, before the space it broke at; a caret at a soft break
+  draws at the next row's start; a tap lands on its row.
+- **The view in rows**: twelve words typed into five visible rows of two
+  words each scroll the view to row 1, and rows 1–5 are what draws.
+- **At the pixels** a sentence typed in twelve pieces wraps as it goes,
+  every keystroke's rows repainted alone equal to a full redraw, and the
+  buffer holds the sentence with no line break in it — wrapping is drawing.
+- **`edit.c`**'s Note wraps (and holds 400 bytes now, not 80).
+
+**§7's question**: **+108** bytes in the default (13,200), **+104** in
+`WSK_PANEL` (10,224), `WSK_MINIMAL` unchanged — it has no memo.
+
+**Not done**: End on a row broken mid-word (no space) puts the caret at the
+next row's start, where it draws — the one place a caret's offset has two
+positions on screen, and the simple choice was taken.
+
+---
+
 ## 6. What would have to be true before gBASIC took this
 
 Recorded so that the bar is set now, while nothing is invested, rather than
