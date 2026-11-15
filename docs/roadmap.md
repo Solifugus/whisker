@@ -50,7 +50,7 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **Table columns** (§5n) | built 2026-11-12: the header decides; rows follow it; a tap on a cell chooses its row |
 | **Memo** (§5o) | built 2026-11-14: many lines edited; every switch now built each run |
 | **Trees** (§5p) | built 2026-11-14: depths over a flat list, the program owns expansion, as Studio's `window` does |
-| **World** (§5q) | designed 2026-11-14; **step 1 built 2026-11-15**: placed items (32-bit), view and zoom, open and bounded, clipped both ways, per-item scale, hit topmost first, `wsk_world_at`. Step 2 (torus, posters, fade) and step 3 (pan/zoom, demos) to come |
+| **World** (§5q) | designed 2026-11-14; **step 1 built 2026-11-15**: placed items (32-bit), view and zoom, open and bounded, clipped both ways, per-item scale, hit topmost first, `wsk_world_at`. Step 2 the same night: the torus and fade. Posters (step 2b, a scale through layout — for Matthew to approve) and step 3 (pan/zoom, demos) to come |
 | **Capabilities** (§5r) | built 2026-11-14: a host declares UTF-8, images, clipping; caps 0 byte-identical; the browser draws Studio's arrows and images |
 | **Menu keys** (§5y) | built 2026-11-15: Up/Down/Home/End/Enter walk and choose in an open overlay, drawn as the focus ring; scrolling menus follow; `WSK_NO_MENUKEYS`, out of `WSK_PANEL` |
 | **Dividers** (§5x) | built 2026-11-15: `WSK_DIVIDER` and the caller's `sizes`; a drag moves the boundary, clamped; `code.c`'s output pane; `WSK_NO_SPLIT`, out of both board tiers |

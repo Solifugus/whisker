@@ -302,8 +302,9 @@ enum {
 	WSK_WORLD                    /* placed, not stacked: a view onto a space (§5q) */
 };
 
-/* A world's space (§5q rule 4): no edges, or a size its view stays inside. */
-enum { WSK_OPEN = 0, WSK_BOUNDED };
+/* A world's space (§5q rule 4): no edges, a size its view stays inside, or
+   a size that wraps both ways. */
+enum { WSK_OPEN = 0, WSK_BOUNDED, WSK_TORUS };
 
 /*
  * Where a world's item is (§5q rule 2): the caller's, beside the tree, one
@@ -647,6 +648,8 @@ typedef struct wsk_tree {
 	short         zoom;
 	unsigned char wspace;
 	unsigned char wone;
+	unsigned char wfade;         /* whisker's, in those copies: the item's fade */
+	int           wdx, wdy;      /* and which copy of a torus's item: 0 or -ww, -wh */
 #endif
 
 	/* Set by whisker in those copies, never by a caller: the intersection of
@@ -1343,7 +1346,8 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 	   rather than clamped as a scroll past its end is. Nothing has to fit:
 	   overlapping and running off the view is what a world is for. */
 	if (t->overflow == WSK_WORLD) {
-		if (t->place == 0 || t->zoom <= 0 || t->wspace > WSK_BOUNDED) {
+		if (t->place == 0 || t->zoom <= 0 || t->wspace > WSK_TORUS ||
+		    (t->wspace == WSK_TORUS && (t->ww <= 0 || t->wh <= 0))) {
 			if (which != 0) *which = -1;
 			return WSK_E_KIND;
 		}
@@ -1359,6 +1363,13 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 		     t->vy + t->ah * 256 / t->zoom > t->wh)) {
 			if (which != 0) *which = -1;
 			return WSK_E_SCROLL;
+		}
+		/* a torus's view may be anywhere, but no bigger than the world:
+		   seeing an item twice side by side is two worlds (rule 4) */
+		if (t->wspace == WSK_TORUS &&
+		    (t->aw * 256 / t->zoom > t->ww || t->ah * 256 / t->zoom > t->wh)) {
+			if (which != 0) *which = -1;
+			return WSK_E_FIT;
 		}
 		return WSK_OK;
 	}
@@ -1532,6 +1543,8 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->zoom = 256;
 	t->wspace = WSK_OPEN;
 	t->wone = 0;
+	t->wfade = 0;
+	t->wdx = t->wdy = 0;
 #endif
 	t->clipped = 0;
 	t->cx0 = t->cy0 = t->cx1 = t->cy1 = 0;
@@ -1928,12 +1941,31 @@ static inline wsk_rect_t wsk__cell(const wsk_tree_t *t, int idx)
  * too far off to be a coordinate is put wholly outside the area, where a cut
  * drops it -- nothing far away may wrap a short onto the screen (§5e).
  */
-static inline wsk_rect_t wsk__wrect(const wsk_tree_t *t, int i)
+/* A coordinate into [0, n): 32-bit, since a module has no 64-bit modulo. */
+static inline int wsk__wrap(int v, int n)
+{
+	v %= n;
+	return (v < 0) ? v + n : v;
+}
+
+static inline wsk_rect_t wsk__wrect_at(const wsk_tree_t *t, int i, int ox, int oy)
 {
 	const wsk_place_t *p = &t->place[i];
 	long long z = t->zoom, zs = (long long)t->zoom * p->scale;
-	long long x = t->ax + ((((long long)p->x - t->vx) * z) >> 8);
-	long long y = t->ay + ((((long long)p->y - t->vy) * z) >> 8);
+	long long dx = (long long)p->x - t->vx, dy = (long long)p->y - t->vy;
+	long long x, y;
+	if (t->wspace == WSK_TORUS) {
+		/* the offset from the view, wrapped into the world (step 2 rule 1),
+		   then the copy asked for: 0, or one world back */
+		dx = wsk__wrap(p->x, t->ww) - wsk__wrap(t->vx, t->ww);
+		dy = wsk__wrap(p->y, t->wh) - wsk__wrap(t->vy, t->wh);
+		if (dx < 0) dx += t->ww;
+		if (dy < 0) dy += t->wh;
+		dx += ox;
+		dy += oy;
+	}
+	x = t->ax + ((dx * z) >> 8);
+	y = t->ay + ((dy * z) >> 8);
 	long long w = ((long long)p->w * zs) >> 16, h = ((long long)p->h * zs) >> 16;
 	wsk_rect_t r;
 	if (w > 16000) w = 16000;
@@ -1945,6 +1977,46 @@ static inline wsk_rect_t wsk__wrect(const wsk_tree_t *t, int i)
 	r.x = (short)x; r.y = (short)y; r.w = (short)w; r.h = (short)h;
 	return r;
 }
+
+static inline wsk_rect_t wsk__wrect(const wsk_tree_t *t, int i)
+{
+	return wsk__wrect_at(t, i, t->wdx, t->wdy);
+}
+
+static inline int wsk__cut(const wsk_tree_t *t, wsk_rect_t *r);
+
+/*
+ * Whether a point is on item i of a world -- on any of its copies, for a
+ * torus, each cut by the view (step 2 rule 2).
+ */
+static inline int wsk__whit(const wsk_tree_t *t, int i, int x, int y)
+{
+	for (int k = 0; k < ((t->wspace == WSK_TORUS) ? 4 : 1); k++) {
+		wsk_rect_t r = wsk__wrect_at(t, i, (k & 1) ? -t->ww : 0, (k & 2) ? -t->wh : 0);
+		if (!wsk__cut(t, &r)) continue;
+		if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return 1;
+	}
+	return 0;
+}
+
+/*
+ * A colour faded toward the world's background (step 2, §5q rule 6): /w0
+ * has no opacity, so fading is a colour. 0 leaves it exactly; 255 is the
+ * background. No division: the fraction is taken out of 256.
+ */
+static inline unsigned int wsk__fade(const wsk_tree_t *t, unsigned int c)
+{
+	unsigned int out = 0;
+	int a = t->wfade + (t->wfade >> 7);
+	if (t->wfade == 0 || c == WSK_INHERIT) return c;
+	for (int sh = 0; sh < 24; sh += 8) {
+		int x = (int)((c >> sh) & 0xFF), b = (int)((t->bg >> sh) & 0xFF);
+		out |= (unsigned int)(((x * (256 - a) + b * a) >> 8) & 0xFF) << sh;
+	}
+	return out;
+}
+#else
+#define wsk__fade(t, c) (c)
 #endif
 
 /* A widget's weight -- none once the caller has sized it (§5x rule 1). */
@@ -2507,7 +2579,11 @@ static inline int wsk_hit(const wsk_tree_t *t, int x, int y)
 	for (int j = 0; j < t->n; j++) {
 		int i = j;
 #ifndef WSK_NO_WORLD
-		if (t->overflow == WSK_WORLD) i = t->n - 1 - j;  /* the topmost first (§5q) */
+		if (t->overflow == WSK_WORLD) {               /* the topmost first (§5q) */
+			i = t->n - 1 - j;
+			if (wsk__whit(t, i, x, y)) return i;
+			continue;
+		}
 #endif
 		wsk_rect_t r = wsk_rect(t, i);
 		/* cut first: a widget scrolled off still has a rectangle, and it
@@ -2560,7 +2636,13 @@ static inline int wsk__hit_at(const wsk_tree_t *t, const wsk_tree_t *orig,
 	for (int j = 0; j < t->n; j++) {
 		int i = j;
 #ifndef WSK_NO_WORLD
-		if (t->overflow == WSK_WORLD) i = t->n - 1 - j;  /* the topmost first (§5q) */
+		if (t->overflow == WSK_WORLD) {               /* the topmost first (§5q) */
+			i = t->n - 1 - j;
+			if (!wsk__whit(t, i, x, y)) continue;
+			if (in != 0) *in = orig;
+			if (at != 0) wsk__tcopy(at, t);
+			return i;
+		}
 #endif
 		wsk_rect_t r = wsk_rect(t, i);
 		if (!wsk__cut(t, &r)) continue;
@@ -2642,6 +2724,10 @@ static inline int wsk_world_at(const wsk_tree_t *t, int x, int y, int *wx, int *
 		return WSK_E_NOTFOUND;
 	*wx = t->vx + (x - t->ax) * 256 / t->zoom;
 	*wy = t->vy + (y - t->ay) * 256 / t->zoom;
+	if (t->wspace == WSK_TORUS) {               /* step 2 rule 3 */
+		*wx = wsk__wrap(*wx, t->ww);
+		*wy = wsk__wrap(*wy, t->wh);
+	}
 	return WSK_OK;
 }
 #endif
@@ -2864,7 +2950,7 @@ static inline void wsk__rect(wsk_sink_t *s, const wsk_tree_t *t,
                              const wsk_widget_t *w, wsk_rect_t r)
 {
 	wsk__box(s, (w != 0 && t->ids) ? w->id : 0, r,
-	         (w->fill != WSK_INHERIT) ? w->fill
+	         (w->fill != WSK_INHERIT) ? wsk__fade(t, w->fill)
 #ifndef WSK_NO_SPLIT
 	         : (w->kind == WSK_DIVIDER) ? t->trough
 #endif
@@ -3056,15 +3142,15 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
 		if (!wsk__shows(t, x0, x0 + g + tw, top)) return;
 #ifndef WSK_NO_MARKS
 		if (g > 0) {
-			wsk__arrow(s, t, w->mark, w->ink, x0, top);
-			wsk__textel(s, 1, x0 + g, wsk_baseline_of(top, t->font), w->ink, txt,
+			wsk__arrow(s, t, w->mark, wsk__fade(t, w->ink), x0, top);
+			wsk__textel(s, 1, x0 + g, wsk_baseline_of(top, t->font), wsk__fade(t, w->ink), txt,
 			            wsk__byte_of(txt, bytes, chars));
 			return;
 		}
 #endif
 		/* truncated by characters, and so never through one (§5r) */
 		wsk__textel(s, start, start ? x0 : r.x + r.w / 2,
-		            wsk_baseline_of(top, t->font), w->ink, txt,
+		            wsk_baseline_of(top, t->font), wsk__fade(t, w->ink), txt,
 		            wsk__byte_of(txt, bytes, chars));
 	}
 }
@@ -3844,8 +3930,12 @@ __attribute__((noinline, unused))
 static void wsk__world(const wsk_doc_t *d, const wsk_tree_t *t, wsk_sink_t *s)
 {
 	wsk_tree_t c;
-	for (int i = 0; i < t->n; i++) {
-		wsk_rect_t v = wsk__wrect(t, i);
+	for (int i = 0; i < t->n; i++)
+	/* a torus's item across a seam is drawn again a world back, each way
+	   (step 2 rule 2); anything else once */
+	for (int k = 0; k < ((t->wspace == WSK_TORUS) ? 4 : 1); k++) {
+		int ox = (k & 1) ? -t->ww : 0, oy = (k & 2) ? -t->wh : 0;
+		wsk_rect_t v = wsk__wrect_at(t, i, ox, oy);
 		long long zs = (long long)t->zoom * t->place[i].scale;
 		int g;
 		if (!wsk__cut(t, &v) || v.y >= d->y1 || v.y + v.h <= d->y0) continue;
@@ -3854,12 +3944,20 @@ static void wsk__world(const wsk_doc_t *d, const wsk_tree_t *t, wsk_sink_t *s)
 		c.place = &t->place[i];
 		c.n = 1;
 		c.wone = 1;
+		c.wdx = ox; c.wdy = oy;
 #ifndef WSK_NO_INPUT
 		c.sel = (t->sel == i) ? 0 : WSK_NONE;
 #endif
 		c.font = (short)((t->font * zs) >> 16);
 		c.pad = (short)((t->pad * zs) >> 16);
 		if (c.font < 1) continue;                       /* too small to draw */
+		/* faded toward the background: the copy's own colours here, a
+		   widget's own where they are drawn (step 2) */
+		c.wfade = t->place[i].fade;
+		c.ink = wsk__fade(&c, t->ink);
+		c.accent = wsk__fade(&c, t->accent);
+		c.trough = wsk__fade(&c, t->trough);
+		c.selfill = wsk__fade(&c, t->selfill);
 		g = wsk__look(s, d, &c);
 		wsk__items(d, &c, s);
 		if (g) wsk__s(s, "</g>");

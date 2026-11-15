@@ -1811,6 +1811,52 @@ int main(void)
 		shot("world.ppm");
 	}
 
+	/*
+	 * Step 2 at the pixels: a torus 360 wide viewed 320 wide from 30, an item
+	 * 60 wide at 340 -- 310 from the view's edge, so it runs past the world's
+	 * end and is seen at both edges of the view, 10 px each (an item shows
+	 * twice only when wider than the 40 the world has over the view). And
+	 * the same fill at fade 0 and 128.
+	 */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_BUTTON, .id = "seam", .text = "", .fill = 0x2a8a4au },
+			{ .kind = WSK_BUTTON, .id = "f0",   .text = "", .fill = 0xc08040u },
+			{ .kind = WSK_BUTTON, .id = "f1",   .text = "", .fill = 0xc08040u },
+		};
+		wsk_place_t pl[3] = {
+			{ .x = 340, .y = 20,  .w = 60, .h = 40, .scale = 256 },
+			{ .x = 130, .y = 100, .w = 60, .h = 40, .scale = 256 },          /* at 100, from 30 */
+			{ .x = 210, .y = 100, .w = 60, .h = 40, .scale = 256, .fade = 128 },
+		};
+		wsk_tree_t w;
+		wsk_sink_t s;
+		uint32_t v;
+		int lo, hi;
+		wsk_rect_t left = { 0, 20, 10, 40 }, right = { 310, 20, 10, 40 }, mid = { 10, 20, 300, 40 };
+		wsk_rect_t f0 = { 100, 100, 60, 40 }, f1 = { 180, 100, 60, 40 };
+		unsigned int half = 0;
+
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.bg = 0x10203au; w.item = F; w.n = 3; w.overflow = WSK_WORLD; w.place = pl;
+		w.wspace = WSK_TORUS; w.ww = 360; w.wh = 400; w.vx = 30;
+		s.put = to_window; s.ctx = &dev;
+		printf("\n  a torus, and fade (§5q step 2)\n");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		ok(span(right, pix565(0x2a8a4au), &lo, &hi) == 10 * 40 && span(left, pix565(0x2a8a4au), &lo, &hi) == 10 * 40 &&
+		   span(mid, pix565(0x2a8a4au), &lo, &hi) == 0,
+		   "an item across the seam: 10 px at the view's right edge and 10 at its left, every pixel; nothing between");
+		for (int sh = 0; sh < 24; sh += 8) {     /* the blend, as whisker does it */
+			int c = (0xc08040 >> sh) & 0xFF, b = (0x10203a >> sh) & 0xFF;
+			half |= (unsigned int)((c * 127 + b * 129) >> 8) << sh;
+		}
+		ok(span(f0, pix565(0xc08040u), &lo, &hi) == 60 * 40 && span(f1, pix565(half), &lo, &hi) == 60 * 40 &&
+		   span(f1, pix565(0xc08040u), &lo, &hi) == 0,
+		   "fade 0 draws the fill; fade 128 draws, every pixel, the colour halfway to the background");
+		shot("world_torus.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

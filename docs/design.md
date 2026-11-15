@@ -2950,6 +2950,80 @@ reduced build owes (§7).
 and font scaled as one — refused until then), and fade. **Step 3**: the
 toolkit's pan and zoom, and the demos.
 
+### Step 2, written before its code (2026-11-15): the torus and fade — and why not posters yet
+
+**Posters are not in this step, and the reason is the code, not the
+time.** Scaling a stack inside a world means every measurement of it —
+a widget's `size`, a stack's `pad` and `gap`, a text's width, a button's
+default 64 rows, a wrap's lines — multiplied by one factor at every depth.
+Those measurements read the caller's nested trees directly (`wsk__nat_on`
+measures `nest[sub]`, not a copy), so the factor has to be threaded through
+the measuring functions themselves: a change to the core of layout, every
+profile's, which deserves Matthew's eye before it is made rather than after.
+**Proposed for step 2b**: the factor on the tree that carries `nest` (the
+`r` every measurement already takes), applied where each measurement
+returns, 256 for every tree that is not inside a world — so the arithmetic
+is one multiply-and-shift that 1:1 leaves byte-identical.
+
+**The torus** (§5q rule 4): `wspace = WSK_TORUS`, with `ww` and `wh`.
+
+1. An item's place is taken modulo the world from the view: its offset
+   from `vx` wrapped into `[0, ww)`, likewise down. That is its rectangle —
+   `wsk_rect` answers one.
+2. **An item across the seam is drawn twice** — also at its offset less
+   `ww` — and at a corner four times; each copy is cut by the view as any
+   item is. Hit tries every copy, topmost item first.
+3. `wsk_world_at` wraps too: its answer is in `[0, ww) x [0, wh)`.
+4. The view may be anywhere (it wraps), but **not larger than the world**
+   — a view seeing an item twice side by side is two worlds — so a view
+   wider or taller than the world is refused, `WSK_E_FIT`.
+
+**Fade** (§5q rule 6): `place.fade`, 0..255, blends an item's colours
+toward the world's background by that fraction — its fill and ink, and the
+inherited ones (the window's ink, accent and trough) — because `/w0` has
+no opacity. 0 changes nothing, byte for byte; 255 is the background. A
+field's caret and selection inside a faded item are not faded (named).
+
+Done when: wrapping both ways, a straddler drawn twice and four times and
+hit on each copy, `wsk_world_at` wrapping, the view-size refusal; fade at
+0 byte-identical, at 128 halfway — by the bytes and at the pixels.
+
+### What step 2 came to, 2026-11-15
+
+**840 checks** (823 before): 15 in the suite, 2 at the pixels. Every
+earlier output — 40 files — byte-identical.
+
+- **One thing the picture taught, about tori and not about code**: offsets
+  are taken from the view, so an item is seen at both edges of a view only
+  when it is **wider than what the world has over the view** (`ww` less the
+  view's width). The first picture's check expected an item at a 360-wide
+  world's seam to show at both edges of a 320-wide view at 0 — it cannot;
+  the picture showed one piece, correctly, and the check was rewritten to a
+  view where it must show twice (10 px at each edge, every pixel).
+- In the suite: an item wrapped from the view's far side to a copy cut at
+  the left edge, and hit there; seen from the other side of the seam,
+  whole; at a corner, a copy a world back both ways; in a world barely
+  bigger than its view, an item across both seams drawn **four times** and
+  hit on each (the middle, bare, the control); `wsk_world_at` wrapping
+  450 to 50; a view at -1000 accepted, and one zoomed out to see more than
+  the world refused (`WSK_E_FIT`).
+- **Fade by the bytes**: at 0 the fill exactly; at 128 each channel
+  `(c x 127 + bg x 129) >> 8` — `#808080` over `#102030` is `#474f57`, and
+  the inherited white text `#868e96`; at 255 the background. My first
+  expectations were hand arithmetic, and wrong; the printed document was
+  right to the bit, and the checks now say how it is computed.
+- **At the pixels**: the faded fill, every pixel, the blended colour in
+  RGB565; the seam's two 10-px pieces, every pixel, and nothing between.
+
+**§7's question**: the world is now **1,848 bytes** in the default (17,080
+for a small panel: the torus and fade +692 — fade is asked by every box and
+label, a branch on a byte that is 0 outside a world); the board tiers
+unchanged.
+
+**Left, named**: posters (step 2b, above — a scale through layout, for
+Matthew's eye first), and the toolkit's pan and zoom with the demos
+(step 3).
+
 
 ---
 

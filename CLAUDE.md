@@ -243,6 +243,13 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   first**; `wsk_world_at`. Torus, posters (stacks inside — refused for now)
   and fade are step 2; pan/zoom and demos step 3. 1,156 bytes, default
   only; `WSK_NO_NEST` implies `WSK_NO_WORLD`.
+- **§5q step 2** (2026-11-15): **the torus** (`WSK_TORUS`: offsets wrapped
+  from the view, an item past the seam drawn again a world back — up to
+  four times — and hit on every copy; a view bigger than the world refused)
+  and **fade** (`place.fade` blends an item's colours toward the world's
+  background; 0 byte-identical). **Posters** (stacks inside a world) wait
+  on step 2b: a scale threaded through layout's measurements, written up in
+  design §5q for Matthew to approve first.
 
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
@@ -251,7 +258,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **823 checks**, including a step
+`src/run.sh --module` is the whole of it: **840 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 41, including the

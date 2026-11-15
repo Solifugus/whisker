@@ -4301,6 +4301,97 @@ int main(void)
 		   "a click where Ann and Bo overlap: CLICK on Bo, the one on top");
 	}
 
+	/* ---- §5q step 2. the torus, and fade ---- */
+	printf("\n-- §5q  a world, step 2: the torus and fade\n");
+	{
+		static const wsk_widget_t WT[] = {
+			{ .kind = WSK_BUTTON, .id = "s", .text = "S", .fill = 0x405060u },
+		};
+		static const wsk_widget_t WF[] = {
+			{ .kind = WSK_BUTTON, .id = "f0", .text = "near", .fill = 0x808080u },
+			{ .kind = WSK_BUTTON, .id = "f1", .text = "far",  .fill = 0x808080u },
+		};
+		wsk_place_t pl[2] = {
+			{ .x = 380, .y = 50, .w = 40, .h = 30, .scale = 256 },    /* across the x seam at 400 */
+		};
+		wsk_tree_t w;
+		char td[4096];
+		int which = -2, wx, wy;
+
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.ids = 1; w.item = WT; w.n = 1; w.overflow = WSK_WORLD; w.place = pl;
+		w.wspace = WSK_TORUS; w.ww = 400; w.wh = 300;
+		ok(wsk_check(&w, 0) == WSK_OK, "a torus 400 x 300, viewed 320 x 200 from 0,0");
+		w.vx = 100;
+		/* from the view at 100, the item at 380 is 280 along, and runs to
+		   420: past the seam, so a copy at 280 - 400 = -120 runs to -80 --
+		   off this view; but from 300 the item is at 80 and its copy at -320 */
+		ok(rect_is(wsk_rect(&w, 0), 280, 50, 40, 30), "the item at 380, from a view at 100: 280");
+		w.vx = 390;
+		/* 380 - 390 wraps to 390: drawn at 390 (off the right) and a world
+		   back at -10, straddling the left edge */
+		render_into(&w, td, sizeof td, 4096);
+		ok(count(td, "id=\"s\"") == 1 && has(td, "<rect id=\"s\" y=\"50\" width=\"30\" height=\"30\""),
+		   "from a view at 390 it wraps: its copy a world back, at -10, cut to 0..30 -- the seam crossed");
+		ok(strcmp(wsk_hit_id(&w, 10, 60), "s") == 0, "and hit there, on the copy");
+		w.vx = 370;
+		ok(wsk_hit_id(&w, 12, 60) != 0 && wsk_hit_id(&w, 48, 60) != 0 && wsk_hit_id(&w, 5, 60) == 0,
+		   "from 370: the item at 10..50, whole, hit at both ends and not at 5 -- the seam seen from the other side");
+		pl[0].x = 390; pl[0].y = 290; w.vx = 0; w.vy = 0;
+		render_into(&w, td, sizeof td, 4096);
+		ok(count(td, "id=\"s\"") == 1 && has(td, "<rect id=\"s\" width=\"30\" height=\"20\""),
+		   "an item at a corner, 390,290: its copy a world back both ways, at 0,0, cut to 30 x 20");
+		{
+			static const wsk_widget_t W4[] = {
+				{ .kind = WSK_BUTTON, .id = "s", .text = "S", .fill = 0x405060u },
+			};
+			wsk_place_t p4[1] = { { .x = 300, .y = 180, .w = 40, .h = 40, .scale = 256 } };
+			wsk_tree_t q;
+			wsk_init(&q, WSK_COL, 320, 200);
+			q.ids = 1; q.item = W4; q.n = 1; q.overflow = WSK_WORLD; q.place = p4;
+			q.wspace = WSK_TORUS; q.ww = 330; q.wh = 210; q.vx = 0; q.vy = 0;
+			render_into(&q, td, sizeof td, 4096);
+			ok(count(td, "id=\"s\"") == 4,
+			   "in a world barely bigger than its view, an item across both seams is drawn four times");
+			ok(wsk_hit_id(&q, 2, 2) != 0 && wsk_hit_id(&q, 310, 190) != 0 && wsk_hit_id(&q, 2, 190) != 0 &&
+			   wsk_hit_id(&q, 310, 2) != 0 && wsk_hit_id(&q, 100, 100) == 0,
+			   "and each of the four is hit; the middle, the control, is bare floor");
+		}
+		w.vx = 350; w.vy = 0;
+		ok(wsk_world_at(&w, 100, 10, &wx, &wy) == WSK_OK && wx == 50 && wy == 10,
+		   "wsk_world_at wraps: 350 + 100 is 450, which is 50 in a world of 400");
+		w.vx = -1000;
+		ok(wsk_check(&w, 0) == WSK_OK, "the view may be anywhere, even -1000: it wraps");
+		w.zoom = 128;
+		ok(wsk_check(&w, &which) == WSK_E_FIT && which == -1,
+		   "but zoomed out to see 640 x 400 of a 400 x 300 world: refused, WSK_E_FIT");
+		w.zoom = 256;
+
+		/* fade */
+		{
+			wsk_place_t pf[2] = {
+				{ .x = 10,  .y = 10, .w = 100, .h = 30, .scale = 256, .fade = 0 },
+				{ .x = 150, .y = 10, .w = 100, .h = 30, .scale = 256, .fade = 128 },
+			};
+			wsk_tree_t f;
+			wsk_init(&f, WSK_COL, 320, 200);
+			f.ids = 1; f.item = WF; f.n = 2; f.overflow = WSK_WORLD; f.place = pf;
+			f.bg = 0x000000u + 0x102030u; f.ink = 0xffffffu;
+			render_into(&f, td, sizeof td, 4096);
+			ok(has(td, "id=\"f0\" x=\"10\" y=\"10\" width=\"100\" height=\"30\" fill=\"#808080\""),
+			   "fade 0: the fill exactly as given");
+			/* 128 is a = 129 of 256: each channel (c x 127 + bg x 129) >> 8 */
+			ok(has(td, "id=\"f1\" x=\"150\" y=\"10\" width=\"100\" height=\"30\" fill=\"#474f57\""),
+			   "fade 128: halfway to the background -- 80,80,80 toward 10,20,30 is 47,4f,57");
+			ok(has(td, "<g font-size=\"16\" fill=\"#868e96\"><rect id=\"f1\""),
+			   "and its text, inheriting the window's white, half faded too: ff,ff,ff to 86,8e,96");
+			pf[1].fade = 255;
+			render_into(&f, td, sizeof td, 4096);
+			ok(has(td, "id=\"f1\" x=\"150\" y=\"10\" width=\"100\" height=\"30\" fill=\"#102030\""),
+			   "fade 255: the background itself");
+		}
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;
