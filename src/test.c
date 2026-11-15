@@ -4392,6 +4392,105 @@ int main(void)
 		}
 	}
 
+	/* ---- §5q step 3. pan and zoom ---- */
+	printf("\n-- §5q  a world, step 3: pan and zoom\n");
+	{
+		static const wsk_widget_t WP[] = {
+			{ .kind = WSK_BUTTON, .id = "p", .text = "Pat" },
+		};
+		wsk_place_t pl[1] = { { .x = 100, .y = 100, .w = 60, .h = 30, .scale = 256 } };
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int n, y0, y1, wx, wy, wx2, wy2;
+
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.ids = 1; w.item = WP; w.n = 1; w.overflow = WSK_WORLD; w.place = pl;
+		w.wspace = WSK_BOUNDED; w.ww = 1000; w.wh = 800; w.vx = 200; w.vy = 200;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+#define EV(K, X, Y) (ev.kind = (K), ev.x = (short)(X), ev.y = (short)(Y), n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+
+		EV(WSK_EV_DOWN, 150, 100);
+		EV(WSK_EV_MOVE, 160, 100);
+		ok(n == 0 && w.vx == 200, "a press on bare floor, moved 10 -- inside the slop: the view stays");
+		EV(WSK_EV_MOVE, 110, 70);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_VIEW && nt[0].in == &w && nt[0].value == 256 &&
+		   w.vx == 240 && w.vy == 230 && y0 == 0 && y1 == 200,
+		   "dragged 40 left and 30 up: VIEW, and the view 40 right and 30 down -- the floor follows the pointer");
+		EV(WSK_EV_MOVE, 2000, 100);
+		ok(w.vx == 0, "dragged far right: the bounded view stops at the world's left edge, 0 -- clamped, not refused");
+		EV(WSK_EV_UP, 2000, 100);
+		ok(n == 0, "the release after a drag: no click");
+
+		/* a click on an item without moving is still a click */
+		w.vx = 0; w.vy = 0;
+		EV(WSK_EV_DOWN, 120, 110);
+		EV(WSK_EV_UP, 120, 110);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].item == 0, "CONTROL: a press and release on Pat is a click on Pat");
+
+		/* the wheel zooms about the pointer */
+		w.vx = 100; w.vy = 100;
+		wsk_world_at(&w, 160, 120, &wx, &wy);
+		ev.d = -40;
+		EV(WSK_EV_WHEEL, 160, 120);
+		wsk_world_at(&w, 160, 120, &wx2, &wy2);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_VIEW && w.zoom == 256 + 40 && nt[0].value == 296 &&
+		   wx2 >= wx - 1 && wx2 <= wx + 1 && wy2 >= wy - 1 && wy2 <= wy + 1,
+		   "a wheel notch up: zoom in by 40/256, and the world point under the pointer stays under it");
+		ev.d = 40;
+		for (int i = 0; i < 40; i++) EV(WSK_EV_WHEEL, 160, 120);
+		ok(w.zoom == 82 && w.vx == 0 && w.vy == 0,
+		   "zoomed far out: it stops where the whole 1000 x 800 world fits the view -- 320 / 1000 of 1:1, 82 -- inside it");
+		EV(WSK_EV_WHEEL, 160, 120);
+		ok(n == 0, "and past that, nothing changes and nothing is said");
+		ev.d = 0;
+
+		/* a torus's view wraps as it is dragged */
+		w.wspace = WSK_TORUS; w.ww = 400; w.wh = 300; w.zoom = 256; w.vx = 10; w.vy = 10;
+		EV(WSK_EV_DOWN, 100, 100);
+		EV(WSK_EV_MOVE, 150, 100);
+		ok(w.vx == 360 && w.vy == 10, "a torus dragged 50 right from a view at 10: the view wraps to 360");
+		EV(WSK_EV_UP, 150, 100);
+
+		/* bare floor: a root world says so, and where */
+		EV(WSK_EV_DOWN, 250, 20);
+		EV(WSK_EV_UP, 250, 20);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &w && nt[0].item == -1,
+		   "a click on a root world's bare floor: CLICK, item -1, in the world");
+		{
+			const wsk_tree_t *wd = 0;
+			ok(wsk_world_point(&w, 250, 20, &wd, &wx, &wy) == WSK_OK && wd == &w && wx == 210 && wy == 30,
+			   "and wsk_world_point: that world, and the point 360 + 250 = 610, wrapped to 210, and 30");
+		}
+		{
+			/* a world nested in a window: its own widget answers for its floor */
+			static const wsk_widget_t TOPW[] = {
+				{ .kind = WSK_LABEL, .id = "bar", .text = "bar", .size = 40 },
+				{ .kind = WSK_STACK, .id = "floor", .sub = 0, .weight = 1 },
+			};
+			wsk_tree_t root, k[1];
+			const wsk_tree_t *wd = 0;
+			wsk_init(&root, WSK_COL, 320, 200);
+			root.pad = 0; root.gap = 0; root.item = TOPW; root.n = 2; root.nest = k; root.nests = 1;
+			wsk_nest_init(&k[0], &root, WSK_COL);
+			k[0].pad = 0; k[0].item = WP; k[0].n = 1; k[0].overflow = WSK_WORLD; k[0].place = pl;
+			k[0].vx = 1000; k[0].vy = 2000;
+			ok(wsk_check(&root, 0) == WSK_OK, "a world as a pane under a 40-px bar");
+			wsk_ui_init(&ui, &root);
+			EV(WSK_EV_DOWN, 250, 140);
+			EV(WSK_EV_UP, 250, 140);
+			ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &root && nt[0].item == 1,
+			   "nested, a click on its bare floor is a CLICK on the world's own widget");
+			ok(wsk_world_point(&root, 250, 140, &wd, &wx, &wy) == WSK_OK && wd == &k[0] &&
+			   wx == 1250 && wy == 2100,
+			   "and wsk_world_point finds the world inside the window: 1000 + 250, 2000 + (140 - 40)");
+			ok(wsk_world_point(&root, 250, 20, &wd, &wx, &wy) == WSK_E_NOTFOUND, "CONTROL: on the bar, no world");
+		}
+#undef EV
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

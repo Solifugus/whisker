@@ -3024,6 +3024,67 @@ unchanged.
 Matthew's eye first), and the toolkit's pan and zoom with the demos
 (step 3).
 
+### Step 3, written before its code (2026-11-15): pan, zoom, and a floor to walk
+
+1. **A drag pans** a world — the deepest under the press, found as a drag
+   finds a scrolling stack — once it passes the slop either way, and so it
+   is not a click (as a scroll's drag is not). The view moves with the
+   pointer: `vx` back by the pointer's travel over the zoom.
+2. **The wheel zooms about the pointer**: the world point under it stays
+   under it. A notch of the wheel (40 px on SDL) is about 16 %; the zoom is
+   kept between 1/16 and 16.
+3. **Kept inside, never refused**, as a drag's scroll is clamped: a bounded
+   view stays in its world, a torus's view wraps (its `vx` kept in
+   `[0, ww)` so it cannot run off an `int`), and neither is zoomed out past
+   seeing the whole world.
+4. **`WSK_NOTE_VIEW`** on each change — the world, and its zoom — with the
+   world's rows to repaint.
+5. **The demo, `host/linux/floor.c`** (`run.sh --floor`, either host): a
+   conference floor. People are buttons with names, walking where a click
+   on bare floor sends them; posters are buttons on the walls; what people
+   say is shown above them, **scaled and faded by its distance from you** —
+   the program's policy, whisker drawing what it is told. Drag to look
+   around, wheel to zoom.
+
+### What step 3 came to, 2026-11-15
+
+**855 checks** (840 before): 15 in the suite. Every earlier output — 41
+files — byte-identical. In headless Chrome, **5** more (`floor.mjs`).
+
+- **Added while building the demo, because the demo needed it**: a click on
+  bare floor has to reach the program, and in a world that is the root
+  nothing is hit, so nothing was said. Now **CLICK with item −1, in the
+  world** — a nested world's own widget already answers for its floor, as a
+  stack answers for its padding. And **`wsk_world_point(root, x, y, &world,
+  &wx, &wy)`** finds the deepest world under a screen point at any depth and
+  the world point there — `wsk_world_at` needs a laid-out tree, which a
+  program does not hold for a nested world.
+- In the suite: a press moved 10 (inside the slop) pans nothing; dragged
+  40 left and 30 up, the view moves 40 right and 30 down and VIEW names the
+  world; dragged far, a bounded view stops at its edge; the release after a
+  drag is no click, and a press and release on an item is (the control). A
+  wheel notch zooms by 40/256 **keeping the world point under the pointer
+  within a pixel**; zoomed out, it stops where the whole 1,000 x 800 world
+  fits — 82/256 — and past that says nothing; a torus's view wraps as it is
+  dragged.
+- **The demo, `host/linux/floor.c`**, on both hosts: ten people wandering a
+  2,400 x 1,400 floor, six posters on the wall, speech over each person
+  scaled down to 3/8 and faded up to 210/255 by distance from you. In
+  Chrome: a click meets a person; a click on bare floor walks you to world
+  696,194; a real wheel zooms to 356/256; a real drag pans and is not a
+  walk. Looked at, three times: the first picture showed the posters run
+  together (300 wide at a scale of 320/256 is 375, spaced 370) and the
+  status line cut at a label's 31 characters — both the demo's, both fixed.
+  The SDL window opens it too, a frame in 3–4 ms.
+- **`WSK_NO_SCROLL` implies `WSK_NO_WORLD`** now too: a world pans through
+  the scroll drag's machinery (the every-switch build found it).
+
+**§7's question**: pan and zoom live in the toolkit; the world as drawn is
+still 1,848 bytes in the default, and the board tiers unchanged.
+
+**What is left of §5q**: posters (step 2b, for Matthew to approve — design
+above), pinch, and the P4 game.
+
 
 ---
 

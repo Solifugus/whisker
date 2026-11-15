@@ -1,0 +1,151 @@
+// A conference floor in a real browser (design.md §5q step 3): floor.c
+// through the web host, driven as a person would -- meet someone, walk,
+// zoom with the wheel, look around with a drag.
+//
+//   node floor.mjs <whisker-floor-web binary> <dir for pictures>
+import { spawn } from 'node:child_process';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const [bin, outDir] = process.argv.slice(2);
+const PORT = 18093, DEBUG = 19335;
+let fails = 0;
+const ok = (c, what) => { console.log((c ? 'ok    ' : 'FAIL  ') + what); if (!c) fails++; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const app = spawn(bin, [], { env: { ...process.env, WHISKER_PORT: String(PORT) } });
+let said = '';
+app.stdout.on('data', d => { said += d; });
+const profile = mkdtempSync(join(tmpdir(), 'whisker-chrome-'));
+const chrome = spawn('google-chrome', ['--headless=new', `--remote-debugging-port=${DEBUG}`,
+  `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
+  '--window-size=1100,700', 'about:blank'], { stdio: 'ignore' });
+
+let ws, seq = 0;
+const waiting = new Map();
+function cdp(method, params = {}) {
+  const id = ++seq;
+  ws.send(JSON.stringify({ id, method, params }));
+  return new Promise(res => waiting.set(id, res));
+}
+async function js(expr) {
+  const r = await cdp('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
+  return r.result?.value;
+}
+async function settle() {             // every document drawn, and no more coming
+  let last = -1;
+  for (let i = 0; i < 40; i++) {
+    const n = await js('whisker.idle().then(()=>whisker.drawn())');
+    if (n === last) return n;
+    last = n;
+    await sleep(100);
+  }
+  return last;
+}
+async function at(x, y) {             // device pixels to page coordinates
+  return js(`(()=>{const r=whisker.canvas.getBoundingClientRect();
+    return [r.left+(${x}+0.5)*r.width/whisker.canvas.width, r.top+(${y}+0.5)*r.height/whisker.canvas.height];})()`);
+}
+async function click(x, y) {
+  const [px, py] = await at(x, y);
+  await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: px, y: py, button: 'left', buttons: 1, clickCount: 1 });
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: px, y: py, button: 'left', buttons: 0, clickCount: 1 });
+}
+async function clicks(x, y, n) {     // a double- or triple-click, as Chrome counts them
+  const [px, py] = await at(x, y);
+  for (let c = 1; c <= n; c++) {
+    await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: px, y: py, button: 'left', buttons: 1, clickCount: c });
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: px, y: py, button: 'left', buttons: 0, clickCount: c });
+  }
+}
+async function type(text) {
+  for (const ch of text) {
+    await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: ch, text: ch });
+    await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: ch });
+  }
+}
+async function key(name, code, modifiers = 0, commands) {   // CDP: Alt 1, Ctrl 2, Shift 8
+  const vk = { Enter: 13, Tab: 9, Home: 36, End: 35, Backspace: 8, ArrowLeft: 37 }[name] ?? name.toUpperCase().charCodeAt(0);
+  await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: name, code, modifiers,
+                                        windowsVirtualKeyCode: vk, ...(commands ? { commands } : {}) });
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code, modifiers });
+}
+async function rightClick(x, y) {
+  const [px, py] = await at(x, y);
+  await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: px, y: py, button: 'right', buttons: 2, clickCount: 1 });
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: px, y: py, button: 'right', buttons: 0, clickCount: 1 });
+}
+async function snap(name) {
+  const url = await js('whisker.canvas.toDataURL("image/png")');
+  writeFileSync(join(outDir, name), Buffer.from(url.split(',')[1], 'base64'));
+  console.log(`      wrote ${join(outDir, name)}`);
+}
+
+try {
+  let target;
+  for (let i = 0; i < 50 && !target; i++) {
+    try {
+      const list = await (await fetch(`http://127.0.0.1:${DEBUG}/json/list`)).json();
+      target = list.find(t => t.type === 'page');
+    } catch { await sleep(100); }
+  }
+  ws = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise(r => ws.addEventListener('open', r));
+  ws.addEventListener('message', e => {
+    const m = JSON.parse(e.data);
+    if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m.result ?? m); waiting.delete(m.id); }
+  });
+  await cdp('Page.enable');
+  await cdp('Runtime.enable');
+  await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+  await sleep(500);
+  ok((await settle()) > 0, 'the conference floor draws in a real browser');
+  await sleep(1500);
+  await snap('floor_first.png');
+
+  // "You" start at world 500,400; the view at 100,0, the floor from 4,36
+  // (the window's padding, then a 32-px status line), puts them at
+  // 404..474, 436..466
+  await click(435, 447);
+  await sleep(400);
+  ok(said.includes('meet   You waves.'), 'a click on a person meets them: "You waves."');
+
+  // bare floor between the posters (to 180) and where anyone walks (from 284)
+  await click(600, 230);
+  await sleep(400);
+  ok(said.includes('walk   to 696,194'), 'a click on bare floor walks you there: world 696,194 -- 100 + 600 - 4, 230 - 36');
+  await sleep(2500);
+  await snap('floor_walked.png');
+
+  // the wheel zooms about the pointer
+  {
+    const [px, py] = await at(500, 300);
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: px, y: py, deltaX: 0, deltaY: -100 });
+    await sleep(500);
+    const m = said.match(/view   (-?\d+),(-?\d+) at (\d+)\/256/g) || [];
+    const last = m.length ? m[m.length - 1].match(/at (\d+)/)[1] : '0';
+    ok(m.length > 0 && Number(last) > 256, `the wheel zooms in: ${m.length ? m[m.length - 1] : 'no view notice'}`);
+  }
+  // and a drag looks around
+  {
+    const before = (said.match(/view   /g) || []).length;
+    const [ax, ay] = await at(900, 260), [bx] = await at(700, 260);
+    await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: ax, y: ay, button: 'left', buttons: 1, clickCount: 1 });
+    for (let k = 1; k <= 5; k++)
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ax + (bx - ax) * k / 5, y: ay, button: 'left', buttons: 1 });
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bx, y: ay, button: 'left', buttons: 0, clickCount: 1 });
+    await sleep(500);
+    ok((said.match(/view   /g) || []).length > before && !said.slice(said.length - 200).includes('walk   to 8'),
+       'a drag pans the floor -- VIEW notices -- and is not a walk');
+  }
+  await snap('floor_zoomed.png');
+} finally {
+  try { ws?.close(); } catch {}
+  chrome.kill();
+  app.kill();
+  await sleep(300);
+  rmSync(profile, { recursive: true, force: true });
+}
+console.log(fails ? `\n${fails} floor check(s) failed` : '\nall floor checks passed');
+process.exit(fails ? 1 : 0);

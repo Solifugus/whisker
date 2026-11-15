@@ -250,6 +250,11 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   background; 0 byte-identical). **Posters** (stacks inside a world) wait
   on step 2b: a scale threaded through layout's measurements, written up in
   design §5q for Matthew to approve first.
+- **§5q step 3** (2026-11-15): a drag pans a world, the wheel zooms about
+  the pointer (clamped, never refused; `WSK_NOTE_VIEW`); bare floor is CLICK
+  item −1 in a root world, and `wsk_world_point` maps any screen point to the
+  world under it. **Demo: `host/linux/floor.c`** (`run.sh --floor`, either
+  host) — a conference floor, speech scaled and faded by distance.
 
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
@@ -258,13 +263,13 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **840 checks**, including a step
+`src/run.sh --module` is the whole of it: **855 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 41, including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
-`host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, and 15 for
-the code editor (`code.mjs`).
+`host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 15 for
+the code editor (`code.mjs`) and 5 for the conference floor (`floor.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

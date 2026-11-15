@@ -7,6 +7,7 @@
 #   ./run.sh --input         a field and a keyboard; click the keys
 #   ./run.sh --edit          fields you type into with the real keyboard (§5j)
 #   ./run.sh --code [file]   a code editor: whisker's source widget (§5v)
+#   ./run.sh --floor         a conference floor: whisker's world (§5q)
 #   ./run.sh --test          the contract, headless, with no person
 #
 # The pixels come from RV-9's own rasteriser, built from its tree through the
@@ -33,6 +34,13 @@ if [[ "${1:-}" == "--edit" ]]; then
 		"$HERE/edit.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec "$OUT/whisker-edit" "$@"
+fi
+
+if [[ "${1:-}" == "--floor" ]]; then
+	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-floor" \
+		"$HERE/floor.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
+	exec "$OUT/whisker-floor"
 fi
 
 if [[ "${1:-}" == "--code" ]]; then

@@ -219,9 +219,10 @@
 #if defined(WSK_NO_NEST) && !defined(WSK_NO_OVER)
 #  define WSK_NO_OVER 1            /* an overlay is a tree in `nest` (§5l) */
 #endif
-#if defined(WSK_NO_NEST) && !defined(WSK_NO_WORLD)
+#if (defined(WSK_NO_NEST) || defined(WSK_NO_SCROLL)) && !defined(WSK_NO_WORLD)
 #  define WSK_NO_WORLD 1           /* drawn through copies, as nesting is; its
-                                      posters are stacks (§5q) */
+                                      posters are stacks; and it pans through
+                                      a scroll's drag (§5q) */
 #endif
 #if (defined(WSK_NO_OVER) || defined(WSK_NO_INPUT)) && !defined(WSK_NO_MENUKEYS)
 #  define WSK_NO_MENUKEYS 1        /* the keys walk an overlay (§5y) */
@@ -4306,8 +4307,10 @@ enum { WSK_NOTE_CLICK = 1, WSK_NOTE_SCROLL, WSK_NOTE_TEXT, WSK_NOTE_ENTER,
        WSK_NOTE_COPY,             /* the selection is in ui.clip: value, its length */
        WSK_NOTE_PASTE,            /* Ctrl-V in a field: hand wsk_ui_paste the text */
        WSK_NOTE_GUTTER,           /* a source's gutter clicked: value, the line (§5v) */
-       WSK_NOTE_SPLIT };          /* a divider dragged: item, the divider; value, the
+       WSK_NOTE_SPLIT,            /* a divider dragged: item, the divider; value, the
                                      new extent of the pane it moved (§5x) */
+       WSK_NOTE_VIEW };           /* a world panned or zoomed: in, the world; value,
+                                     its zoom (§5q step 3) */
 
 /* The keys that mean something to a field (§5j). A character typed is TEXT,
    not a key, so that a keyboard layout stays the host's business. */
@@ -4347,6 +4350,9 @@ typedef struct {
 	wsk_tree_t       *drag;      /* the scrolling stack under the down */
 	wsk_tree_t        drag_at;   /* ... as laid out: its area and range */
 	short             scroll0;
+#ifndef WSK_NO_WORLD
+	int               wv0x, wv0y; /* or the world: its view at the down */
+#endif
 
 	const wsk_tree_t *focus_in;  /* the focused field: its tree and index, */
 	short             focus_item;
@@ -4466,8 +4472,11 @@ static inline wsk_tree_t *wsk__scroller(const wsk_tree_t *t, wsk_tree_t *orig,
 		break;                       /* stacks do not overlap */
 	}
 #endif
-	if (t->overflow == WSK_SCROLL && x >= t->ax && x < t->ax + t->aw &&
-	    y >= t->ay && y < t->ay + t->ah) {
+	if ((t->overflow == WSK_SCROLL
+#ifndef WSK_NO_WORLD
+	     || t->overflow == WSK_WORLD          /* a world pans and zooms (§5q) */
+#endif
+	    ) && x >= t->ax && x < t->ax + t->aw && y >= t->ay && y < t->ay + t->ah) {
 #ifndef WSK_NO_NEST
 		wsk__tcopy(at, t);
 #else
@@ -5027,6 +5036,55 @@ static inline int wsk_ui_open_at(wsk_ui_t *ui, int sub, int x, int y, int *y0, i
 }
 #endif
 
+#ifndef WSK_NO_WORLD
+/*
+ * The deepest world under a screen point, at any depth, and the world point
+ * there (step 3): what a program asks when a click lands on bare floor.
+ * `world` is the caller's own tree. WSK_E_NOTFOUND where no world is.
+ */
+static inline int wsk_world_point(const wsk_tree_t *root, int x, int y,
+                                  const wsk_tree_t **world, int *wx, int *wy)
+{
+	wsk_tree_t at;
+	wsk_tree_t *f = wsk__scroller(root, (wsk_tree_t *)root, x, y, &at, 0);
+	if (f == 0 || at.overflow != WSK_WORLD) return WSK_E_NOTFOUND;
+	if (world != 0) *world = f;
+	return wsk_world_at(&at, x, y, wx, wy);
+}
+
+/*
+ * A world's view set to vx, vy at zoom z (§5q step 3 rule 3): zoomed no
+ * further out than its whole world, a bounded view kept inside it, a
+ * torus's wrapped. Written to the caller's tree and the laid-out copy; 1 if
+ * anything moved.
+ */
+static inline int wsk__view_to(wsk_tree_t *orig, wsk_tree_t *at, int vx, int vy, int z)
+{
+	if (z < 16) z = 16;
+	if (z > 4096) z = 4096;
+	if (at->wspace != WSK_OPEN) {
+		int zmin = (at->aw * 256 + at->ww - 1) / at->ww, zy = (at->ah * 256 + at->wh - 1) / at->wh;
+		if (zy > zmin) zmin = zy;
+		if (z < zmin) z = zmin;
+	}
+	if (at->wspace == WSK_BOUNDED) {
+		int mx = at->ww - at->aw * 256 / z, my = at->wh - at->ah * 256 / z;
+		if (vx > mx) vx = mx;
+		if (vy > my) vy = my;
+		if (vx < 0) vx = 0;
+		if (vy < 0) vy = 0;
+	} else if (at->wspace == WSK_TORUS) {
+		vx = wsk__wrap(vx, at->ww);
+		vy = wsk__wrap(vy, at->wh);
+	}
+	if (vx == orig->vx && vy == orig->vy && z == orig->zoom) return 0;
+	orig->vx = at->vx = vx;
+	orig->vy = at->vy = vy;
+	orig->zoom = at->zoom = (short)z;
+	return 1;
+}
+#endif
+
 #ifndef WSK_NO_SPLIT
 /*
  * A held divider moved `d` pixels along its stack (§5x rules 3 and 4): the
@@ -5272,6 +5330,9 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		if (ui->drag != 0) ui->drag_at = *r;
 #endif
 		if (ui->drag != 0) ui->scroll0 = ui->drag->scroll;
+#ifndef WSK_NO_WORLD
+		if (ui->drag != 0) { ui->wv0x = ui->drag->vx; ui->wv0y = ui->drag->vy; }
+#endif
 #endif
 #ifndef WSK_NO_SPLIT
 		/* a divider held: not a click, not a scroll -- the panes' sizes,
@@ -5352,6 +5413,26 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			}
 		}
 #endif
+#ifndef WSK_NO_WORLD
+		/* a world pans both ways, once past the slop either way (step 3) */
+		if (ui->drag != 0 && !took && ui->drag_at.overflow == WSK_WORLD) {
+			int dx = x - ui->x0, dy = y - ui->y0, z = ui->drag_at.zoom;
+			took = 1;
+			if (!ui->dragging && (dx > ui->slop || dx < -ui->slop || dy > ui->slop || dy < -ui->slop)) {
+				ui->dragging = 1;
+				if (r->held != 0) {
+					r->held = 0;
+					wsk__span(&lo, &hi, ui->held.y, ui->held.y + ui->held.h);
+				}
+			}
+			if (ui->dragging && wsk__view_to(ui->drag, &ui->drag_at, ui->wv0x - dx * 256 / z,
+			                                 ui->wv0y - dy * 256 / z, z)) {
+				int a0, a1;
+				if (wsk_area_rows(&ui->drag_at, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
+				n = wsk__note(note, max, n, WSK_NOTE_VIEW, ui->drag, -1, z);
+			}
+		}
+#endif
 #ifndef WSK_NO_SCROLL
 		if (ui->drag != 0 && !took) {
 			int col = (ui->drag_at.axis == WSK_COL);
@@ -5383,6 +5464,13 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			r->held = 0;
 			wsk__span(&lo, &hi, ui->held.y, ui->held.y + ui->held.h);
 		}
+#ifndef WSK_NO_WORLD
+		/* bare floor in a world that is the root: nothing was hit, and the
+		   program still has to hear it -- CLICK, item -1, in the world; a
+		   nested world's widget answers for its floor already (step 3) */
+		if (!ui->dragging && ui->hit < 0 && ui->drag == r && r->overflow == WSK_WORLD)
+			n = wsk__note(note, max, n, WSK_NOTE_CLICK, r, -1, -1);
+#endif
 		if (!ui->dragging && ui->hit >= 0) {
 			const wsk_tree_t *in = 0, *lay = r;
 			wsk_tree_t at;
@@ -5656,6 +5744,21 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		wsk_tree_t *s = wsk__scroller(r, r, x, y, &at, 0);
 #ifdef WSK_NO_NEST
 		if (s != 0) at = *r;
+#endif
+#ifndef WSK_NO_WORLD
+		/* the wheel zooms a world about the pointer: the world point under
+		   it stays under it (step 3 rule 2) */
+		if (s != 0 && at.overflow == WSK_WORLD) {
+			int z = at.zoom, nz = z - z * ev->d / 256, px = x - at.ax, py = y - at.ay;
+			int wx = at.vx + px * 256 / z, wy = at.vy + py * 256 / z;
+			if (nz == z) nz = z + ((ev->d < 0) ? 1 : -1);
+			if (wsk__view_to(s, &at, wx - px * 256 / (nz < 16 ? 16 : nz > 4096 ? 4096 : nz),
+			                 wy - py * 256 / (nz < 16 ? 16 : nz > 4096 ? 4096 : nz), nz)) {
+				int a0, a1;
+				if (wsk_area_rows(&at, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
+				n = wsk__note(note, max, n, WSK_NOTE_VIEW, s, -1, s->zoom);
+			}
+		} else
 #endif
 		if (s != 0 && wsk__scroll_to(s, &at, s->scroll + ev->d)) {
 			int a0, a1;
