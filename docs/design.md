@@ -3262,6 +3262,69 @@ stack out of line.
 pixels; a world inside a poster is refused (`WSK_E_KIND`); a field in one
 waits with a world's.
 
+### Step 6, written before its code (2026-11-15): moving an item, and bringing it to the front
+
+Matthew chose it next. Today a drag anywhere on a world pans it; a program
+that wants a token, a card or a poster moved by hand has nothing to say
+so with, and **array order is the only z order** — and the arrays may be
+`static const`, so whisker cannot reorder them.
+
+1. **`place.move`**, a byte in the struct's padding (its size is
+   unchanged): 0, a drag on the item pans the world as today; 1, a drag
+   **moves the item**. Per item, because a floor's people walk by program
+   and its posters are arranged by hand.
+2. Once past the slop, the item's place is where it started plus the
+   pointer's travel in world units (`d x 256 / zoom`, from the press, so it
+   cannot drift); **bounded, kept inside** the world; **a torus wraps** it.
+   The caller's `place` is written, as `vx` is by a pan. **`WSK_NOTE_MOVE`**,
+   the world and the item; the rows of where it was and where it is to
+   repaint (a torus's whole view, since its copies may be anywhere). The
+   release after a move is not a click. What a move *means* — snapping,
+   refusing an overlap, telling a server — is the program's: it hears MOVE
+   and may write the place back.
+3. **`short *order`** on the world, the caller's and writable: the drawing
+   order, bottom first, each item exactly once (or refused, `WSK_E_KIND`).
+   0 is array order, byte for byte. Drawing, hit (topmost first) and
+   `wsk_world_in` follow it.
+4. **`wsk_world_raise(world, i)`**: item i to the top of `order`. And the
+   toolkit raises a movable item when it is pressed, if the world has an
+   order — **`WSK_NOTE_RAISE`**, so a program can keep its own layering
+   (the floor keeps people above posters by raising them back).
+5. A press on a button inside a movable poster is the button's if it is
+   released where it was, and the poster's move if it is dragged.
+
+Done when: a movable item dragged by the bytes at zoom 1 and 2, clamped in
+a bounded world and wrapped on a torus, a fixed one still panning (the
+control); MOVE and RAISE heard, no click after a move, a click without
+one; `order` drawn, hit and asked in its order, a bad one refused, none
+byte-identical; and the floor's posters arranged by hand in Chrome.
+
+**What it came to**: as written. **950 checks** (932 before): 18 in the
+suite; every earlier output — 42 files — byte-identical.
+
+- In the suite: an order of 0, 1, 2 drawing what array order draws, byte
+  for byte; order 1, 0, 2 drawing, hitting and `wsk_world_in` naming a
+  above b; an order with b twice refused naming a; raise moving a to the
+  top and then answering 0. Through the toolkit: a press on a movable item
+  is RAISE with its rows; dragged 40, 30 it is MOVE at 140,130 with the
+  view unpanned and the rows of both places; released, no click; pressed
+  and released, a click (the control); kept inside a bounded world; zoomed
+  2, half the travel; on a torus wrapped from 260 to 20; and a drag on an
+  item that may not move still pans (the control).
+- **The floor**: posters may be moved; the program answers RAISE by raising
+  every person and their words back above the posters. In Chrome a poster
+  dragged 150 right over its neighbour says `raise p0` and `move p0 to
+  270,20`, the floor does not pan, and a click where the two overlap is
+  the dragged poster's Visit, not the neighbour's. Looked at: it covers the
+  neighbour's left part.
+
+**§7's question**: the world is **2,900 bytes** in the default (+184); the
+board tiers unchanged.
+
+**Named, not done**: no keyboard for moving an item; no lowering (a program
+lowers by raising everything else, as the floor does); a move is not
+undone by Escape.
+
 
 ---
 

@@ -4822,6 +4822,111 @@ int main(void)
 		   "the abstract breaks into the same lines at 1, 2 and 1/2 -- it reflows in proportion, not to the screen");
 	}
 
+	printf("\n-- §5q  a world, step 6: moving an item, bringing it to the front\n");
+	{
+		static const wsk_widget_t WM[] = {
+			{ .kind = WSK_BUTTON, .id = "a", .text = "A" },
+			{ .kind = WSK_BUTTON, .id = "b", .text = "B" },
+			{ .kind = WSK_LABEL,  .id = "c", .text = "C" },
+		};
+		wsk_place_t pl[3] = {
+			{ .x = 100, .y = 100, .w = 40, .h = 20, .scale = 256, .move = 1 },
+			{ .x = 120, .y = 105, .w = 40, .h = 20, .scale = 256 },          /* over a's right half */
+			{ .x = 10,  .y = 10,  .w = 40, .h = 20, .scale = 256 },
+		};
+		short ord[3] = { 0, 1, 2 };
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char d0[4096], d1[4096];
+		int which = -2, y0 = 0, y1 = 0, n, out[4];
+
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.ids = 1; w.item = WM; w.n = 3; w.overflow = WSK_WORLD; w.place = pl;
+		w.wspace = WSK_BOUNDED; w.ww = 1000; w.wh = 800;
+		render_into(&w, d0, sizeof d0, 4096);
+		w.order = ord;
+		render_into(&w, d1, sizeof d1, 4096);
+		ok(strcmp(d0, d1) == 0, "an order of 0, 1, 2 draws byte for byte what array order does");
+		ok(wsk_hit(&w, 130, 110) == 1, "where a and b overlap, b -- on top in either");
+		ord[0] = 1; ord[1] = 0;
+		render_into(&w, d1, sizeof d1, 4096);
+		ok(strstr(d1, "id=\"a\"") > strstr(d1, "id=\"b\"") && strstr(d1, "id=\"b\"") != 0,
+		   "order 1, 0, 2: a is drawn after b");
+		ok(wsk_hit(&w, 130, 110) == 0 && wsk_world_in(&w, 125, 108, 5, 5, out, 4) == 2 && out[0] == 0,
+		   "and is hit first where they overlap, and named first by wsk_world_in");
+		ord[1] = 1;
+		ok(wsk_check(&w, &which) == WSK_E_KIND && which == 0, "an order holding b twice and a never: refused, naming a");
+		ord[0] = 0;
+		ok(wsk_check(&w, 0) == WSK_OK, "CONTROL: 0, 1, 2 again, accepted");
+		ok(wsk_world_raise(&w, 0) == 1 && ord[0] == 1 && ord[1] == 2 && ord[2] == 0,
+		   "wsk_world_raise(a): the order becomes 1, 2, 0");
+		ok(wsk_world_raise(&w, 0) == 0, "and again: it is on top already, 0");
+		ord[0] = 0; ord[1] = 1; ord[2] = 2;
+
+		/* the toolkit: a press raises, a drag moves */
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 105; ev.y = 105;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_RAISE && nt[0].in == &w && nt[0].item == 0 &&
+		   ord[2] == 0 && y0 <= 100 && y1 >= 120,
+		   "a press on a, which may move: RAISE, a on top, its rows to repaint");
+		ev.kind = WSK_EV_MOVE; ev.x = 145; ev.y = 135;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_MOVE && nt[0].item == 0 && pl[0].x == 140 && pl[0].y == 130 &&
+		   w.vx == 0 && w.vy == 0,
+		   "dragged 40 right and 30 down: MOVE, a at 140,130 -- and the view did not pan");
+		ok(y0 <= 100 && y1 >= 150, "the rows where it was and where it is, 100..150, to repaint");
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0, "released after a move: no click");
+		ev.kind = WSK_EV_DOWN; ev.x = 150; ev.y = 135;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].item == 0,
+		   "CONTROL: pressed and released where it is, a click on a -- and no RAISE, it is on top");
+		ev.kind = WSK_EV_DOWN; ev.x = 150; ev.y = 135;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = -2000; ev.y = 135;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(pl[0].x == 0 && pl[0].y == 130, "dragged far off the left: kept inside the bounded world, at 0");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+
+		/* zoomed 2: the pointer's travel is half as far in the world */
+		pl[0].x = 20; pl[0].y = 20; w.zoom = 512;
+		ev.kind = WSK_EV_DOWN; ev.x = 50; ev.y = 50;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = 90; ev.y = 70;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(pl[0].x == 40 && pl[0].y == 30, "zoomed 2, dragged 40 and 20: a moves 20 and 10 in the world");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		w.zoom = 256;
+
+		/* a torus wraps it */
+		w.wspace = WSK_TORUS; w.ww = 400; w.wh = 300;
+		pl[0].x = 260; pl[0].y = 100;
+		ev.kind = WSK_EV_DOWN; ev.x = 265; ev.y = 105;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = 425; ev.y = 105;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(pl[0].x == 20 && pl[0].y == 100, "on a torus 400 wide, dragged 160 right from 260: wrapped to 20");
+		ok(y0 == 0 && y1 == 200, "and its rows are the whole view, where its copies may be");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		w.wspace = WSK_BOUNDED; w.ww = 1000; w.wh = 800;
+
+		/* an item that may not move: a drag on it pans, as before */
+		ev.kind = WSK_EV_DOWN; ev.x = 150; ev.y = 110;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = 110; ev.y = 110;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_VIEW && w.vx == 40 && pl[1].x == 120,
+		   "CONTROL: a drag on b, which may not move, pans the world -- b stays at 120");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+	}
+
 	/* ---- what an independent read of the night's code found ---- */
 	printf("\n-- review fixes, 2026-11-15\n");
 	{

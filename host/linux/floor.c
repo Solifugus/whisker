@@ -18,6 +18,10 @@
  * Looking around -- a drag or the arrows -- stops it following; walking, or
  * a click on yourself, starts it again. Zooming does not stop it.
  *
+ * Posters may be arranged by hand (§5q step 6): a drag on one moves it, and
+ * whisker brings it to the front of the floor's order -- this program then
+ * raises the people and what they say back above it, its own layering.
+ *
  * Nobody walks through anybody: whisker says what a step would touch
  * (wsk_world_in, §5q step 4) and this program decides -- you stop and meet
  * whoever it is; the others choose somewhere else to go.
@@ -73,6 +77,7 @@ static const wsk_widget_t ABSTRACT[1] = { { .kind = WSK_TEXT, .id = "abstract" }
 
 static wsk_widget_t win_items[2], items[ITEMS], poster[POSTERS][3], abstract[POSTERS][1];
 static wsk_place_t place[ITEMS];
+static short order[ITEMS];                      /* bottom first: posters, people, speech */
 static wsk_tree_t win, nest[1 + 2 * POSTERS];    /* the floor; each poster and its abstract */
 static wsk_ui_t ui;
 static int px[PEOPLE], py[PEOPLE], tx[PEOPLE], ty[PEOPLE];   /* where, and where to */
@@ -189,6 +194,7 @@ int main(void)
 		it->fill = 0x2a3a50u;
 		place[i].x = 120 + i * 380; place[i].y = 20;
 		place[i].w = 300; place[i].h = 116; place[i].scale = 256;
+		place[i].move = 1;                                       /* arranged by hand */
 		p[0].kind = WSK_LABEL; snprintf(p[0].id, WSK_ID_MAX, "t%d", i);
 		snprintf(p[0].text, WSK_TEXT_MAX, "%.31s", TITLES[i]); p[0].size = 22;
 		p[1].kind = WSK_STACK; snprintf(p[1].id, WSK_ID_MAX, "x%d", i);
@@ -228,6 +234,8 @@ int main(void)
 	nest[0].bg = 0x1a2a20u;
 	nest[0].item = items; nest[0].n = ITEMS;
 	nest[0].overflow = WSK_WORLD; nest[0].place = place;
+	for (int i = 0; i < ITEMS; i++) order[i] = (short)i;
+	nest[0].order = order;
 	nest[0].wspace = WSK_BOUNDED; nest[0].ww = FLOOR_W; nest[0].wh = FLOOR_H;
 	nest[0].vx = 100; nest[0].vy = 0;
 	win_items[1].fill = nest[0].bg;
@@ -318,6 +326,14 @@ int main(void)
 					say("Walking...");
 					all = 1;
 				}
+			} else if (t->kind == WSK_NOTE_RAISE) {
+				/* a poster to the front of the posters -- but people and their
+				   words stay above every poster: this program's layering */
+				for (int j = POSTERS; j < ITEMS; j++) wsk_world_raise(&nest[0], j);
+				printf("raise  p%d\n", t->item);
+				all = 1;
+			} else if (t->kind == WSK_NOTE_MOVE) {
+				printf("move   p%d to %d,%d\n", t->item, place[t->item].x, place[t->item].y);
 			} else if (t->kind == WSK_NOTE_VIEW) {
 				/* the person looked around: stop following -- unless it was a zoom */
 				if (ev.kind == WSK_EV_MOVE || ev.kind == WSK_EV_KEY) {

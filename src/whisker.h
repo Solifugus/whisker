@@ -327,6 +327,7 @@ typedef struct {
 	short         w, h;
 	short         scale;
 	unsigned char fade;
+	unsigned char move;          /* 1: a drag moves it rather than panning (step 6) */
 } wsk_place_t;
 
 /*
@@ -654,6 +655,8 @@ typedef struct wsk_tree {
 	 * set in the one-item copies an item is drawn through.
 	 */
 	wsk_place_t  *place;
+	short        *order;         /* the drawing order, bottom first, or 0: array
+	                                order -- the caller's, writable (step 6) */
 	int           vx, vy, ww, wh;
 	short         zoom;
 	unsigned char wspace;
@@ -1386,6 +1389,15 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 				if (which != 0) *which = i;
 				return WSK_E_KIND;
 			}
+		/* an order holds each item exactly once (step 6) */
+		for (int j = 0; t->order != 0 && j < t->n; j++) {
+			int seen = 0;
+			for (int q = 0; q < t->n; q++) if (t->order[q] == j) seen++;
+			if (seen != 1) {
+				if (which != 0) *which = j;
+				return WSK_E_KIND;
+			}
+		}
 		if (t->wspace == WSK_BOUNDED &&
 		    (t->vx < 0 || t->vy < 0 || t->vx + t->aw * 256 / t->zoom > t->ww ||
 		     t->vy + t->ah * 256 / t->zoom > t->wh)) {
@@ -1584,6 +1596,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 #endif
 #ifndef WSK_NO_WORLD
 	t->place = 0;
+	t->order = 0;
 	t->vx = t->vy = t->ww = t->wh = 0;
 	t->zoom = 256;
 	t->wspace = WSK_OPEN;
@@ -2056,6 +2069,12 @@ static inline int wsk__wrap(int v, int n)
 {
 	v %= n;
 	return (v < 0) ? v + n : v;
+}
+
+/* The item drawn j-th, bottom first: by the caller's order, or the array's. */
+static inline int wsk__wi(const wsk_tree_t *t, int j)
+{
+	return (t->order != 0) ? t->order[j] : j;
 }
 
 static inline wsk_rect_t wsk__wrect_at(const wsk_tree_t *t, int i, int ox, int oy)
@@ -2735,7 +2754,7 @@ static inline int wsk_hit(const wsk_tree_t *t, int x, int y)
 		int i = j;
 #ifndef WSK_NO_WORLD
 		if (t->overflow == WSK_WORLD) {               /* the topmost first (§5q) */
-			i = t->n - 1 - j;
+			i = wsk__wi(t, t->n - 1 - j);
 			if (wsk__whit(t, i, x, y)) return i;
 			continue;
 		}
@@ -2817,7 +2836,7 @@ static inline int wsk__hit_at(const wsk_tree_t *t, const wsk_tree_t *orig,
 #ifndef WSK_NO_WORLD
 		if (t->overflow == WSK_WORLD) {               /* the topmost first (§5q) */
 			int hitk;
-			i = t->n - 1 - j;
+			i = wsk__wi(t, t->n - 1 - j);
 			if ((hitk = wsk__whit(t, i, x, y)) == 0) continue;
 			if (t->item[i].kind == WSK_STACK && depth + 1 < WSK_DEPTH_MAX) {
 				int k = wsk__whit_in(t, i, hitk, x, y, in, at, depth);
@@ -2946,7 +2965,8 @@ static inline int wsk__world_in(const wsk_tree_t *t, int x, int y, int w, int h,
 {
 	int n = 0, torus = (t->wspace == WSK_TORUS);
 	if (t->overflow != WSK_WORLD || t->place == 0) return 0;
-	for (int j = t->n - 1; j >= 0; j--) {
+	for (int q = t->n - 1; q >= 0; q--) {
+		int j = wsk__wi(t, q);
 		const wsk_place_t *p = &t->place[j];
 		long long pw = ((long long)p->w * p->scale) >> 8, ph = ((long long)p->h * p->scale) >> 8;
 		if (j == skip) continue;
@@ -2971,6 +2991,22 @@ static inline int wsk_world_overlaps(const wsk_tree_t *t, int i, int *out, int m
 	p = &t->place[i];
 	return wsk__world_in(t, p->x, p->y, (int)(((long long)p->w * p->scale) >> 8),
 	                     (int)(((long long)p->h * p->scale) >> 8), i, out, max);
+}
+
+/*
+ * Item i to the top of a world's order (step 6): drawn last, hit first.
+ * Returns 1 if it moved, 0 if it was on top already or the world has no
+ * order to change -- array order belongs to arrays that may be in flash.
+ */
+static inline int wsk_world_raise(wsk_tree_t *t, int i)
+{
+	int j = 0;
+	if (t->overflow != WSK_WORLD || t->order == 0 || i < 0 || i >= t->n) return 0;
+	while (j < t->n && t->order[j] != i) j++;
+	if (j >= t->n - 1) return 0;
+	for (; j < t->n - 1; j++) t->order[j] = t->order[j + 1];
+	t->order[t->n - 1] = (short)i;
+	return 1;
 }
 #endif
 
@@ -4180,10 +4216,11 @@ __attribute__((noinline, unused))
 static void wsk__world(const wsk_doc_t *d, const wsk_tree_t *t, wsk_sink_t *s)
 {
 	wsk_tree_t c;
-	for (int i = 0; i < t->n; i++)
+	for (int j = 0; j < t->n; j++)
 	/* a torus's item across a seam is drawn again a world back, each way
 	   (step 2 rule 2); anything else once */
 	for (int k = 0; k < ((t->wspace == WSK_TORUS) ? 4 : 1); k++) {
+		int i = wsk__wi(t, j);
 		int ox = (k & 1) ? -t->ww : 0, oy = (k & 2) ? -t->wh : 0;
 		wsk_rect_t v = wsk__wrect_at(t, i, ox, oy);
 		long long zs = (long long)t->zoom * t->place[i].scale;
@@ -4192,6 +4229,7 @@ static void wsk__world(const wsk_doc_t *d, const wsk_tree_t *t, wsk_sink_t *s)
 		wsk__tcopy(&c, t);
 		c.item = &t->item[i];
 		c.place = &t->place[i];
+		c.order = 0;
 		c.n = 1;
 		c.wone = 1;
 		c.wdx = ox; c.wdy = oy;
@@ -4558,8 +4596,10 @@ enum { WSK_NOTE_CLICK = 1, WSK_NOTE_SCROLL, WSK_NOTE_TEXT, WSK_NOTE_ENTER,
        WSK_NOTE_GUTTER,           /* a source's gutter clicked: value, the line (§5v) */
        WSK_NOTE_SPLIT,            /* a divider dragged: item, the divider; value, the
                                      new extent of the pane it moved (§5x) */
-       WSK_NOTE_VIEW };           /* a world panned or zoomed: in, the world; value,
+       WSK_NOTE_VIEW,             /* a world panned or zoomed: in, the world; value,
                                      its zoom (§5q step 3) */
+       WSK_NOTE_MOVE,             /* a world's item dragged: in, the world; item (step 6) */
+       WSK_NOTE_RAISE };          /* ... and brought to the top of its order */
 
 /* The keys that mean something to a field (§5j). A character typed is TEXT,
    not a key, so that a keyboard layout stays the host's business. */
@@ -4601,6 +4641,8 @@ typedef struct {
 	short             scroll0;
 #ifndef WSK_NO_WORLD
 	int               wv0x, wv0y; /* or the world: its view at the down */
+	short             witem;     /* the item a drag moves, or -1 (step 6) */
+	int               wp0x, wp0y; /* ... its place at the down */
 #endif
 
 	const wsk_tree_t *focus_in;  /* the focused field: its tree and index, */
@@ -4638,6 +4680,9 @@ static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
 	ui->down = 0;
 	ui->dragging = 0;
 	ui->drag = 0;
+#ifndef WSK_NO_WORLD
+	ui->witem = -1;
+#endif
 	ui->hit = -1;
 	ui->word = -1;
 	ui->focus_in = 0;
@@ -5383,6 +5428,46 @@ static inline int wsk__view_to(wsk_tree_t *orig, wsk_tree_t *at, int vx, int vy,
 	orig->zoom = at->zoom = (short)z;
 	return 1;
 }
+
+/* The rows item i of a laid-out world shows on: a torus's whole view, since
+   its copies may be anywhere in it; else its rectangle, cut (step 6). */
+static inline void wsk__wrows(const wsk_tree_t *at, int i, int *lo, int *hi)
+{
+	wsk_rect_t v = wsk__wrect(at, i);
+	int a0, a1;
+	if (at->wspace == WSK_TORUS) {
+		if (wsk_area_rows(at, &a0, &a1) == WSK_OK) wsk__span(lo, hi, a0, a1);
+	} else if (wsk__cut(at, &v))
+		wsk__span(lo, hi, v.y, v.y + v.h);
+}
+
+/*
+ * The item a drag holds to x, y in the world (step 6 rule 2): kept inside
+ * a bounded world, wrapped on a torus. Its rows before and after to
+ * repaint. 1 if it moved.
+ */
+static inline int wsk__item_to(wsk_ui_t *ui, int x, int y, int *lo, int *hi)
+{
+	const wsk_tree_t *at = &ui->drag_at;
+	wsk_place_t *p = &ui->drag->place[ui->witem];
+	if (at->wspace == WSK_BOUNDED) {
+		int mx = at->ww - (int)(((long long)p->w * p->scale) >> 8);
+		int my = at->wh - (int)(((long long)p->h * p->scale) >> 8);
+		if (x > mx) x = mx;
+		if (y > my) y = my;
+		if (x < 0) x = 0;
+		if (y < 0) y = 0;
+	} else if (at->wspace == WSK_TORUS) {
+		x = wsk__wrap(x, at->ww);
+		y = wsk__wrap(y, at->wh);
+	}
+	if (x == p->x && y == p->y) return 0;
+	wsk__wrows(at, ui->witem, lo, hi);
+	p->x = x;
+	p->y = y;
+	wsk__wrows(at, ui->witem, lo, hi);
+	return 1;
+}
 #endif
 
 #ifndef WSK_NO_WORLD
@@ -5761,6 +5846,26 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		if (ui->drag != 0) ui->scroll0 = ui->drag->scroll;
 #ifndef WSK_NO_WORLD
 		if (ui->drag != 0) { ui->wv0x = ui->drag->vx; ui->wv0y = ui->drag->vy; }
+		/* the topmost item under the press: a movable one is the drag's to
+		   move, and is raised if the world keeps an order (step 6) */
+		ui->witem = -1;
+		if (ui->drag != 0 && ui->drag_at.overflow == WSK_WORLD) {
+			const wsk_tree_t *wt = &ui->drag_at;
+			for (int j = wt->n - 1; j >= 0; j--) {
+				int i = wsk__wi(wt, j);
+				if (!wsk__whit(wt, i, x, y)) continue;
+				if (wt->place[i].move) {
+					ui->witem = (short)i;
+					ui->wp0x = wt->place[i].x;
+					ui->wp0y = wt->place[i].y;
+					if (wsk_world_raise(ui->drag, i)) {
+						wsk__wrows(wt, i, &lo, &hi);
+						n = wsk__note(note, max, n, WSK_NOTE_RAISE, ui->drag, i, 0);
+					}
+				}
+				break;
+			}
+		}
 #endif
 #endif
 #ifndef WSK_NO_SPLIT
@@ -5854,7 +5959,10 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 					wsk__span(&lo, &hi, ui->held.y, ui->held.y + ui->held.h);
 				}
 			}
-			if (ui->dragging && wsk__view_to(ui->drag, &ui->drag_at, ui->wv0x - dx * 256 / z,
+			if (ui->dragging && ui->witem >= 0) {
+				if (wsk__item_to(ui, ui->wp0x + dx * 256 / z, ui->wp0y + dy * 256 / z, &lo, &hi))
+					n = wsk__note(note, max, n, WSK_NOTE_MOVE, ui->drag, ui->witem, 0);
+			} else if (ui->dragging && wsk__view_to(ui->drag, &ui->drag_at, ui->wv0x - dx * 256 / z,
 			                                 ui->wv0y - dy * 256 / z, z)) {
 				int a0, a1;
 				if (wsk_area_rows(&ui->drag_at, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);

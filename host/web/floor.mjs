@@ -122,6 +122,25 @@ try {
   ok(said.includes('poster Tiny GUIs on RISC-V: a GUI in 3.8 KB on a C5'),
      'and its abstract, a word of wrapped text inside it, is the poster\'s too');
 
+  // §5q step 6: posters are arranged by hand. Drag the first 150 right --
+  // world 120 to 270, over the second (500..800) -- and it comes to the
+  // front: its Visit button, where the two overlap, is the one hit
+  {
+    const [ax, ay] = await at(60, 70), [bx] = await at(210, 70);
+    await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: ax, y: ay, button: 'left', buttons: 1, clickCount: 1 });
+    for (let k = 1; k <= 6; k++)
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ax + (bx - ax) * k / 6, y: ay, button: 'left', buttons: 1 });
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bx, y: ay, button: 'left', buttons: 0, clickCount: 1 });
+    await sleep(500);
+    ok(said.includes('raise  p0') && said.includes('move   p0 to 270,20') && !said.includes('view   '),
+       'a poster dragged: RAISE, then MOVE to 270,20 -- the floor did not pan');
+    await click(440, 153);
+    await sleep(400);
+    ok(said.includes('poster You visit "Tiny GUIs on RISC-V".') && !said.includes('You visit "Damage, banded"'),
+       'where it now covers the second poster, its button is the one on top');
+    await snap('floor_arranged.png');
+  }
+
   // bare floor between the posters (to 172) and where anyone walks (from 284)
   await click(600, 230);
   await sleep(400);
