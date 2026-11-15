@@ -1,8 +1,9 @@
 # The distance to gBASIC's `window`, and to Studio on it — measured
 
-> **Recounted 2026-11-12, against gBASIC Studio at `94b36e3`: twenty-one of
-> twenty-five words answered, three in part, one not** (§7, at the end).
-> Everything above §7 is October's count, kept as measured.
+> **Recounted 2026-11-15, against gBASIC Studio at `4aa0420`: all
+> twenty-five words answered — nineteen directly, six by composition**
+> (§8, at the end). §7 is the count of 2026-11-12 (twenty-one of
+> twenty-five); everything above it is October's, kept as measured.
 
 **Written 2026-10-24**, against gBASIC at `8e804d5` and gBASIC Studio at
 `fb14cba` (2026-10-23). It replaces `gbasic-gap.md` and `studio-gap.md` as the
@@ -245,3 +246,60 @@ has more declaring it, still to design.
 **Twenty-one of twenty-five**, from fifteen in October. The record whisker
 would be handed is unchanged and still pure; the distance that remains is
 three partial widgets, one editor, and a host's worth of input.
+
+## 8. The recount, 2026-11-15
+
+Against gBASIC Studio at `4aa0420` (2026-11-14), `lib/studio_shell_qt.bas`,
+**1,317 lines — the same length as on 2026-11-12**. The words, by the
+builders' first argument, comments excluded:
+
+    grep -v "^\s*'" lib/studio_shell_qt.bas \
+      | grep -oE "\b(part|bare|box|named|captioned)\(\s*\"[a-z_]+\"" | ...
+
+gives `text` 26, `button` 21, `column` 11, `stretch` 9, `row` 9, `item` 9,
+`field` 8, `memo` 7, `separator` 6, `check` 5, `choice` 4, `source` 2,
+`popup` 2, and one each of `toolbar`, `tabs`, `scroll`, `menu`; `table`,
+`tree`, `tab`, `split`, `docks`, `dock`, `status` and `form` are built by
+their own helpers and appear as quoted words 2, 1, 2, 1, 1, 1, 2, 1 times.
+**The same twenty-five words.** (`row` reads 9 here against §7's 7 — this
+grep counts builder calls, §7 counted containers; the vocabulary is what
+matters.) Non-comment lines naming `qt.` number 72, and **every one is
+`studio_shell_qt.`** — the module calling itself; calls into Qt, **zero**,
+as before. The record is still pure.
+
+What moved is whisker, four iterations since §7 (§5s–§5w):
+
+| word | whisker, 2026-11-15 | |
+|---|---|---|
+| `popup` | right-click is an event of its own on both hosts, and `wsk_ui_open_at` opens a menu at the pointer (§5s) | **yes** — was by composition |
+| `memo` | edits (§5o), soft-wraps (§5u), selects, copies and pastes (§5s), undoes (§5v), moves by words (§5w) | **yes** — was in part |
+| `table` | columns and a header (§5n); **sorting is the program's**, as a tree's expansion is | **yes** — was in part |
+| `tree` | depths over a flat list, the program owning expansion (§5p), ▸/▾ drawn on every host (§5t) | **yes** — was in part |
+| `source` | a gutter of numbers and marks, colour runs from the program, undo, UTF-8, words (§5v, §5w) | **yes** — was not |
+
+**Twenty-five of twenty-five: nineteen directly, six by composition.**
+The six — `tabs`, `tab`, `split`, `docks`, `dock`, `choice` — draw and work;
+what each lacks is an interaction a person expects for free:
+
+1. **`split`: a draggable divider.** Two panes whose sizes are fixed by
+   their weights. The one Studio would feel first — its window *is* a split
+   (navigator | editor | output).
+2. **`choice`: the keyboard in a menu.** A click opens its overlay and a
+   click chooses; Up, Down and Enter do not walk it yet, and a choice is the
+   one control a person expects to drive from the keyboard.
+3. **`docks` / `dock`: docking and floating.** Areas, never moved — and
+   floating needs more than one window, which is a host's (§4).
+4. `tabs` / `tab`: nothing missing that a person would name; the program
+   swaps the body, as `wkeys` does.
+
+### And still the host's
+
+File dialogs (the host has the file system), more than one window, and
+proportional text — unchanged since §7. The clipboard, right-click and
+shortcuts, listed there, are done (§5s).
+
+### The one number
+
+**Twenty-five of twenty-five**, from twenty-one three days ago and fifteen
+in October. What is left is three interactions, not a widget.
+

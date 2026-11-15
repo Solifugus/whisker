@@ -48,14 +48,15 @@ place. `docs/design.md` §6 records what would have to be true first. **Every
 whisker document written before 2026-10-22 that measures gBASIC measured its
 GTK tree** (last GTK commit `d997c94`): `gbasic-gap.md` and `studio-gap.md`
 are history. **`docs/window-gap.md` (2026-10-24) is the current distance**:
-Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
-21 of its 25 words** (14 directly, 7 by composition), 3 in part (`memo`,
-`table`, `tree`), 1 not (`source`) — `window-gap.md` §7. Since then §5n gave
-`table` its columns.
+Studio's window is a pure record. **Recounted 2026-11-15 (`window-gap.md`
+§8): whisker answers all 25 of its words** — 19 directly, 6 by
+composition (21 of 25 on 2026-11-12). What is left is three interactions,
+not a widget: a draggable divider (`split`), the keyboard in a menu
+(`choice`), docking (`docks`).
 
 ## Status
 
-**Twenty iterations are built, and two of them have now run on the C5.**
+**Twenty-three iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
