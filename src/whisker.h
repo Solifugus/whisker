@@ -108,6 +108,7 @@
  *     -DWSK_NO_UNDO     undo and redo of what was typed (§5v)
  *     -DWSK_NO_SOURCE   the code editor: a gutter, colour runs (§5v)
  *     -DWSK_NO_ENTITY   < > & in text, for a host that decodes entities (§5v)
+ *     -DWSK_NO_WORDS    Ctrl's word moves, double- and triple-click (§5w)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -136,6 +137,9 @@
 #  endif
 #  ifndef WSK_NO_SOURCE
 #    define WSK_NO_SOURCE 1        /* and so is a code editor */
+#  endif
+#  ifndef WSK_NO_WORDS
+#    define WSK_NO_WORDS 1         /* no Ctrl on its keyboard (§5w) */
 #  endif
 #endif
 #ifdef WSK_MINIMAL
@@ -202,6 +206,9 @@
 #endif
 #if (defined(WSK_NO_INPUT) || defined(WSK_NO_FIELD)) && !defined(WSK_NO_UNDO)
 #  define WSK_NO_UNDO 1            /* and so is what undo undoes */
+#endif
+#if (defined(WSK_NO_INPUT) || defined(WSK_NO_FIELD)) && !defined(WSK_NO_WORDS)
+#  define WSK_NO_WORDS 1           /* and words are the toolkit's moves (§5w) */
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -3880,7 +3887,9 @@ enum { WSK_EV_DOWN = 1, WSK_EV_MOVE, WSK_EV_UP, WSK_EV_WHEEL, WSK_EV_KEY, WSK_EV
 typedef struct {
 	unsigned char  kind;
 	short          x, y;         /* device pixels */
-	short          d;            /* WHEEL: pixels along the stack's axis */
+	short          d;            /* WHEEL: pixels along the stack's axis;
+	                                DOWN: the clicks the host counted, 2 a
+	                                double-click -- 0 or 1, a single (§5w) */
 	unsigned short key;
 	char           text[8];
 	unsigned int   ms;
@@ -3947,6 +3956,10 @@ typedef struct {
 	int               clipcap;
 	int               anchor;    /* a drag's selection: the end it started at */
 	unsigned char     selecting; /* a press in the focused field, selecting */
+#ifndef WSK_NO_WORDS
+	int               wa, wz;    /* a double-click's word, which a drag keeps;
+	                                wa -1, none (§5w) */
+#endif
 #endif
 #ifndef WSK_NO_SOURCE
 	int               gline;     /* a press in a source's gutter: its line, or -1 */
@@ -4428,7 +4441,12 @@ static inline void wsk__follow(wsk_ui_t *ui)
 /* A key that moves the caret, and so with Shift extends a selection. */
 static inline int wsk__moves(int k)
 {
-	return (k >= WSK_KEY_LEFT && k <= WSK_KEY_END) || k == WSK_KEY_UP || k == WSK_KEY_DOWN;
+#ifndef WSK_NO_WORDS
+	if (k & WSK_MOD_CTRL) k &= ~WSK_MOD_CTRL;     /* Ctrl's word moves too (§5w) */
+	else
+#endif
+	if (k == WSK_KEY_UP || k == WSK_KEY_DOWN) return 1;
+	return k >= WSK_KEY_LEFT && k <= WSK_KEY_END;
 }
 
 /* Delete the selection: the caret at its start. 1 if there was one. */
@@ -4440,6 +4458,43 @@ static inline int wsk__drop(wsk_buf_t *b)
 	wsk__put(b, s0, m, "", 0, 0);
 	b->caret = s0;
 	return 1;
+}
+#endif
+
+#ifndef WSK_NO_WORDS
+/*
+ * What a byte is to a word (§5w rule 1): 1 inside one -- a letter, a digit,
+ * '_', or any byte of a character beyond ASCII, so é and 日本 never split
+ * a word; 2 a mark, which makes words of its own; 0 a space; 3 a line
+ * break, which Ctrl's moves pass as a space and a double-click does not.
+ */
+static inline int wsk__wc(char ch)
+{
+	unsigned char c = (unsigned char)ch;
+	if (c == '\n') return 3;
+	if (c == ' ') return 0;
+	if (c >= 0x80 || c == '_' || (c >= '0' && c <= '9') || ((c | 32) >= 'a' && (c | 32) <= 'z'))
+		return 1;
+	return 2;
+}
+
+/* Where Ctrl-Left (back = 1) or Ctrl-Right lands from `at`: over spaces and
+   line breaks, then to the far edge of the word there (§5w rule 2). */
+static inline int wsk__wmove(const char *b, int len, int at, int back)
+{
+	int c;
+	if (back) {
+		while (at > 0 && (wsk__wc(b[at - 1]) == 0 || wsk__wc(b[at - 1]) == 3)) at--;
+		if (at == 0) return 0;
+		c = wsk__wc(b[at - 1]);
+		while (at > 0 && wsk__wc(b[at - 1]) == c) at--;
+		return at;
+	}
+	while (at < len && (wsk__wc(b[at]) == 0 || wsk__wc(b[at]) == 3)) at++;
+	if (at == len) return len;
+	c = wsk__wc(b[at]);
+	while (at < len && wsk__wc(b[at]) == c) at++;
+	return at;
 }
 #endif
 
@@ -4657,9 +4712,38 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		/* A tap on a field focuses it, the caret at the character tapped;
 		   a tap on anything else leaves focus alone, so that a key of an
 		   on-screen keyboard does not take it from the field (§5j rule 2). */
-		if (k >= 0 && wsk__fbuf(lay, &lay->item[k]) != 0)
+#if !defined(WSK_NO_WORDS) && !defined(WSK_NO_TEXTSEL)
+		ui->wa = -1;
+#endif
+		if (k >= 0 && wsk__fbuf(lay, &lay->item[k]) != 0) {
 			n = wsk__press_field(ui, in, k, lay, rect, x, y, ev->key & WSK_MOD_SHIFT,
 			                     &lo, &hi, note, max, n);
+#if !defined(WSK_NO_WORDS) && !defined(WSK_NO_TEXTSEL)
+			/* the host counted the clicks (§5w rule 5): two select the
+			   word there, three its line -- a drag after them extends */
+			if (ev->d >= 2 && !(ev->key & WSK_MOD_SHIFT)) {
+				wsk_buf_t *b = wsk__fbuf(lay, &lay->item[k]);
+				int a = b->caret, z = b->caret, c;
+				if (ev->d >= 3) {
+					while (a > 0 && b->b[a - 1] != '\n') a--;
+					while (z < b->len && b->b[z] != '\n') z++;
+				} else {
+					/* the word the click is in, or else the one it ends */
+					c = (z < b->len && b->b[z] != '\n') ? wsk__wc(b->b[z])
+					  : (a > 0) ? wsk__wc(b->b[a - 1]) : 3;
+					if (c != 3) {
+						while (a > 0 && wsk__wc(b->b[a - 1]) == c) a--;
+						while (z < b->len && wsk__wc(b->b[z]) == c) z++;
+					}
+				}
+				b->caret = z;
+				b->span = a - z;
+				ui->anchor = a;
+				ui->wa = a;
+				ui->wz = z;
+			}
+#endif
+		}
 #endif
 #ifndef WSK_NO_SOURCE
 		/* in a source's gutter: the press put the caret at its line's
@@ -4705,10 +4789,18 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 				took = 1;
 				if (k >= 0 && wsk__fbuf(lay, &lay->item[k]) == ui->focus_b) {
 					wsk_buf_t *b = ui->focus_b;
-					int c = wsk__char_at(lay, k, b, wsk_rect(lay, k), x, y);
-					if (c != b->caret) {
+					int c = wsk__char_at(lay, k, b, wsk_rect(lay, k), x, y), anchor = ui->anchor;
+#ifndef WSK_NO_WORDS
+					/* after a double-click the word stays chosen, and a drag
+					   grows the selection out from whichever end it leaves by */
+					if (ui->wa >= 0) {
+						if (c >= ui->wa && c <= ui->wz) { anchor = ui->wa; c = ui->wz; }
+						else anchor = (c > ui->wz) ? ui->wa : ui->wz;
+					}
+#endif
+					if (c != b->caret || anchor - c != b->span) {
 						b->caret = c;
-						b->span = (ui->anchor - c);
+						b->span = (anchor - c);
 #ifndef WSK_NO_MEMO
 						wsk__follow(ui);
 #endif
@@ -4920,6 +5012,35 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			b->caret = ((key == WSK_KEY_LEFT) ? s0 : s1);
 			b->span = 0;
 			moved = 1;
+		}
+#endif
+#ifndef WSK_NO_WORDS
+		/* Ctrl's moves and deletions, a word at a time; Ctrl-Home and
+		   Ctrl-End the whole text's ends (§5w rules 2-4) */
+		else if (key == (WSK_KEY_LEFT | WSK_MOD_CTRL) || key == (WSK_KEY_RIGHT | WSK_MOD_CTRL) ||
+		         key == (WSK_KEY_HOME | WSK_MOD_CTRL) || key == (WSK_KEY_END | WSK_MOD_CTRL)) {
+			int k0 = key & ~WSK_MOD_CTRL;
+			int to = (k0 == WSK_KEY_HOME) ? 0 : (k0 == WSK_KEY_END) ? b->len
+			       : wsk__wmove(b->b, b->len, b->caret, k0 == WSK_KEY_LEFT);
+			used = 1;
+			if (to != b->caret) { b->caret = to; moved = 1; }
+#ifndef WSK_NO_TEXTSEL
+			/* a chord it used, so the rule below keeps a selection: a
+			   move without Shift lets it go here */
+			if (!ext && b->span != 0) { b->span = 0; moved = 1; }
+#endif
+		} else if (key == (WSK_KEY_BACKSPACE | WSK_MOD_CTRL) || key == (WSK_KEY_DELETE | WSK_MOD_CTRL)) {
+			used = 1;
+#ifndef WSK_NO_TEXTSEL
+			if (sel > 0) edit = wsk__drop(b);
+			else
+#endif
+			{
+				int back = ((key & ~WSK_MOD_CTRL) == WSK_KEY_BACKSPACE);
+				int to = wsk__wmove(b->b, b->len, b->caret, back);
+				int a = back ? to : b->caret, z = back ? b->caret : to;
+				if (z > a) { wsk__put(b, a, z - a, "", 0, 0); b->caret = a; edit = 1; }
+			}
 		}
 #endif
 #ifndef WSK_NO_MEMO

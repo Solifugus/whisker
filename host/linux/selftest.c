@@ -128,6 +128,11 @@ int main(void)
 		ok(ev.x == r.x + 10 && ev.y == r.y + 10,
 		   "divided back down from the window to device pixels");
 		ok(wsk_hit(&t, ev.x, ev.y) == 1, "and whisker names the widget under it");
+		ok(ev.d == 0, "CONTROL: a press SDL counted as nothing carries a count of 0, a single");
+		e.button.clicks = 2;                    /* the desktop's double-click */
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_PRESS && ev.d == 2,
+		   "a press SDL counted as a second click carries d = 2 (§5w)");
 	}
 
 	/* And the gap, which must resolve to nothing at all. */

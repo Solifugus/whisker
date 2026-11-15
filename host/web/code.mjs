@@ -68,6 +68,13 @@ async function click(x, y) {
   await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: px, y: py, button: 'left', buttons: 1, clickCount: 1 });
   await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: px, y: py, button: 'left', buttons: 0, clickCount: 1 });
 }
+async function clicks(x, y, n) {     // a double- or triple-click, as Chrome counts them
+  const [px, py] = await at(x, y);
+  for (let c = 1; c <= n; c++) {
+    await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: px, y: py, button: 'left', buttons: 1, clickCount: c });
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: px, y: py, button: 'left', buttons: 0, clickCount: c });
+  }
+}
 async function type(text) {
   for (const ch of text) {
     await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: ch, text: ch });
@@ -75,7 +82,7 @@ async function type(text) {
   }
 }
 async function key(name, code, modifiers = 0, commands) {   // CDP: Alt 1, Ctrl 2, Shift 8
-  const vk = { Enter: 13, Tab: 9, Home: 36, End: 35, Backspace: 8 }[name] ?? name.toUpperCase().charCodeAt(0);
+  const vk = { Enter: 13, Tab: 9, Home: 36, End: 35, Backspace: 8, ArrowLeft: 37 }[name] ?? name.toUpperCase().charCodeAt(0);
   await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: name, code, modifiers,
                                         windowsVirtualKeyCode: vk, ...(commands ? { commands } : {}) });
   await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code, modifiers });
@@ -161,6 +168,27 @@ try {
   console.log(`      after typing \u00e9 it ends at x ${end3e}; after Backspace, ${end3b}`);
   // both measured with the caret at the line's end, which is what lights last
   ok(end3e - end3b === 9, 'an \u00e9 typed at its end is one column, 9 px, and Backspace takes it back whole');
+
+  // §5w: a real double-click on "powers" in line 9, "function powers(n)" --
+  // the browser counts the clicks, the page sends the count, whisker
+  // selects the word -- and Ctrl-C copies it through the program
+  await clicks(55 + 11 * 9 + 4, rowY(9) + 8, 2);
+  await settle(); await sleep(200);
+  await key('c', 'KeyC', 2);
+  await settle(); await sleep(300);
+  ok(await js('whisker.clip()') === 'powers', `a double-click in Chrome selects "powers", and Ctrl-C copies it: "${await js('whisker.clip()')}"`);
+  await clicks(55 + 11 * 9 + 4, rowY(9) + 8, 3);
+  await settle(); await sleep(200);
+  await key('c', 'KeyC', 2);
+  await settle(); await sleep(300);
+  ok(await js('whisker.clip()') === 'function powers(n)', 'a triple-click, its line');
+  // and Ctrl-Shift-Left from the line's end, three times: ")" (marks are a
+  // word of their own), then "n", then "(" -- "(n)" selected
+  await key('End', 'End');
+  for (let i = 0; i < 3; i++) await key('ArrowLeft', 'ArrowLeft', 2 | 8);
+  await key('c', 'KeyC', 2);
+  await settle(); await sleep(300);
+  ok(await js('whisker.clip()') === '(n)', `Ctrl-Shift-Left three times from the end: ")" then "n" then "(" -- "${await js('whisker.clip()')}"`);
 
   // a click in the gutter by line 10
   await click(10, rowY(10) + 8);

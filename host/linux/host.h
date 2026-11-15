@@ -60,7 +60,8 @@ enum { WH_MOD_SHIFT = 0x100, WH_MOD_CTRL = 0x200, WH_MOD_ALT = 0x400 };
 typedef struct {
 	int  kind;               /* WH_* */
 	int  x, y;               /* device pixels, as the panel reports them */
-	int  d;                  /* WH_WHEEL */
+	int  d;                  /* WH_WHEEL; on WH_PRESS, the click count --
+	                            the platform's double-click, counted (§5w) */
 	int  key;                /* WH_KEY; on WH_PRESS, WH_MOD_SHIFT or 0 */
 	char text[8];            /* WH_TEXT */
 } wh_event_t;

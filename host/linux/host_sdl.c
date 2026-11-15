@@ -254,6 +254,7 @@ int wh_poll(wh_event_t *out)
 			if (e.button.button == SDL_BUTTON_LEFT && point_of(e.button.x, e.button.y, out)) {
 				out->kind = WH_PRESS;
 				out->key = (SDL_GetModState() & KMOD_SHIFT) ? WH_MOD_SHIFT : 0;
+				out->d = e.button.clicks;   /* SDL counts, by the desktop's timing */
 				return WH_PRESS;
 			}
 			break;

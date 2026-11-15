@@ -111,9 +111,14 @@ static const char PAGE[] =
 "  return Math.floor((e.clientX-r.left)*W/r.width)+' '+Math.floor((e.clientY-r.top)*H/r.height);}\n"
 /* the primary button presses; the secondary asks for a context menu, which
    is the platform's contextmenu event -- a right-click, or a long press on a
-   phone. A page may read the clipboard only when it is pasted into (§5s). */
+   phone. A page may read the clipboard only when it is pasted into (§5s).
+   A mouse's press goes from mousedown, the only event whose detail counts
+   clicks -- a pointerdown's is 0, measured in Chrome 156 -- so a double-
+   click is the platform's, timing and all (§5w); a finger's, from
+   pointerdown, as a single. */
 "c.addEventListener('pointerdown',e=>{if(e.button!==0)return;c.focus();c.setPointerCapture(e.pointerId);\n"
-"  send('D '+pt(e)+(e.shiftKey?' 256':''));});\n"
+"  if(e.pointerType!=='mouse')send('D '+pt(e)+' '+(e.shiftKey?256:0)+' 1');});\n"
+"c.addEventListener('mousedown',e=>{if(e.button===0)send('D '+pt(e)+' '+(e.shiftKey?256:0)+' '+e.detail);});\n"
 "c.addEventListener('pointermove',e=>{if(e.buttons&1)send('M '+pt(e));});\n"
 "c.addEventListener('pointerup',e=>{if(e.button===0)send('U '+pt(e));});\n"
 "c.addEventListener('contextmenu',e=>{e.preventDefault();send('R '+pt(e));});\n"
@@ -221,7 +226,7 @@ static void event_line(const char *l)
 	wh_event_t e;
 	memset(&e, 0, sizeof e);
 	switch (l[0]) {
-	case 'D': e.kind = WH_PRESS;   sscanf(l + 1, "%d %d %d", &e.x, &e.y, &e.key); break;
+	case 'D': e.kind = WH_PRESS;   sscanf(l + 1, "%d %d %d %d", &e.x, &e.y, &e.key, &e.d); break;
 	case 'R': e.kind = WH_MENU;    sscanf(l + 1, "%d %d", &e.x, &e.y); break;
 	case 'P': {
 		/* pasted: unescaped into the host's clipboard, then Ctrl-V */

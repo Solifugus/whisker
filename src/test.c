@@ -3740,6 +3740,149 @@ int main(void)
 #undef SET
 	}
 
+	/* ---- §5w. words: Ctrl's moves, double- and triple-click ---- */
+	printf("\n-- §5w  words\n");
+	{
+		static const wsk_widget_t FW[] = {
+			{ .kind = WSK_FIELD, .id = "f", .sub = 0, .size = 32 },
+			{ .kind = WSK_MEMO,  .id = "m", .sub = 1, .size = 80 },
+		};
+		char fb[64] = "", mb[64] = "", ub[512];
+		wsk_buf_t buf[2];
+		wsk_undo_t u;
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int n, y0 = 0, y1 = 0;
+
+		memset(buf, 0, sizeof buf);
+		memset(&u, 0, sizeof u);
+		u.b = ub; u.cap = sizeof ub;
+		buf[0].b = fb; buf[0].cap = sizeof fb; buf[0].undo = &u;
+		buf[1].b = mb; buf[1].cap = sizeof mb;
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.pad = 4; w.gap = 4; w.item = FW; w.n = 2; w.buf = buf; w.bufs = 2; w.caps = WSK_CAP_UTF8;
+		wsk_ui_init(&ui, &w);
+		wsk_ui_focus(&ui, "f", &y0, &y1);
+		memset(&ev, 0, sizeof ev);
+#define SETB(B, S, C) (snprintf((B).b, (size_t)(B).cap, "%s", (S)), (B).len = (int)strlen((B).b), \
+                       (B).caret = (C), (B).top = 0, (B).span = 0)
+#define KEY(K)  (ev.kind = WSK_EV_KEY, ev.key = (unsigned short)(K), n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define CTRL(K) KEY((K) | WSK_MOD_CTRL)
+
+		/*            0         1         2
+		              0123456789012345678901234567 */
+		SETB(buf[0], "if x_1 := f(y)  then caf\xc3\xa9", 0);
+		CTRL(WSK_KEY_RIGHT);
+		ok(n == 0 && buf[0].caret == 2, "Ctrl-Right from the start: the end of \"if\", 2 -- and no KEY notice, the field used it");
+		CTRL(WSK_KEY_RIGHT);
+		ok(buf[0].caret == 6, "again: over the space, to the end of \"x_1\" -- '_' and digits are in a word");
+		CTRL(WSK_KEY_RIGHT);
+		ok(buf[0].caret == 9, "again: \":=\", marks are a word of their own");
+		CTRL(WSK_KEY_RIGHT); CTRL(WSK_KEY_RIGHT);
+		ok(buf[0].caret == 12, "f, then \"(\" -- 12");
+		CTRL(WSK_KEY_RIGHT); CTRL(WSK_KEY_RIGHT); CTRL(WSK_KEY_RIGHT);
+		ok(buf[0].caret == 20, "y, \")\", then over two spaces to the end of \"then\", 20");
+		CTRL(WSK_KEY_RIGHT);
+		ok(buf[0].caret == 26 && buf[0].caret == buf[0].len, "\"caf\xc3\xa9\" is one word, its \xc3\xa9 inside it: the end, byte 26");
+		CTRL(WSK_KEY_RIGHT);
+		ok(n == 0 && buf[0].caret == 26, "at the end, it stays");
+		CTRL(WSK_KEY_LEFT);
+		ok(buf[0].caret == 21, "Ctrl-Left: the start of \"caf\xc3\xa9\"");
+		CTRL(WSK_KEY_LEFT);
+		ok(buf[0].caret == 16, "over the space to the start of \"then\"");
+		buf[0].caret = 18;
+		CTRL(WSK_KEY_LEFT);
+		ok(buf[0].caret == 16, "from inside a word: its own start");
+		buf[0].caret = 2;
+		CTRL(WSK_KEY_LEFT); CTRL(WSK_KEY_LEFT);
+		ok(buf[0].caret == 0, "and to 0, where it stays");
+
+		/* with Shift, a selection */
+		buf[0].caret = 3;
+		KEY(WSK_KEY_RIGHT | WSK_MOD_CTRL | WSK_MOD_SHIFT);
+		ok(buf[0].caret == 6 && buf[0].span == -3, "Ctrl-Shift-Right selects \"x_1\"");
+		KEY(WSK_KEY_RIGHT | WSK_MOD_CTRL | WSK_MOD_SHIFT);
+		ok(buf[0].caret == 9 && buf[0].span == -6, "and extends over \" :=\"");
+		CTRL(WSK_KEY_RIGHT);
+		ok(buf[0].span == 0, "Ctrl-Right without Shift lets it go");
+
+		/* deleting words */
+		SETB(buf[0], "print total  + 1", 13);
+		memset(&u, 0, sizeof u); u.b = ub; u.cap = sizeof ub;
+		CTRL(WSK_KEY_BACKSPACE);
+		ok(n == 1 && strcmp(fb, "print + 1") == 0 && buf[0].caret == 6,
+		   "Ctrl-Backspace after \"total  \": the spaces and the word, back to 6");
+		CTRL(WSK_KEY_DELETE);
+		ok(strcmp(fb, "print  1") == 0, "Ctrl-Delete: the \"+\" after, a word of marks");
+		KEY('z' | WSK_MOD_CTRL);
+		ok(strcmp(fb, "print + 1") == 0, "each is one undo step: the \"+\" back");
+		KEY('z' | WSK_MOD_CTRL);
+		ok(strcmp(fb, "print total  + 1") == 0 && buf[0].caret == 13, "and \"total  \" back, the caret after it");
+		buf[0].caret = 0; buf[0].span = 5;
+		CTRL(WSK_KEY_DELETE);
+		ok(strcmp(fb, " total  + 1") == 0, "with a selection, Ctrl-Delete takes the selection, not a word");
+		buf[0].caret = 0; buf[0].span = 0;
+		CTRL(WSK_KEY_BACKSPACE);
+		ok(n == 0, "Ctrl-Backspace at 0: nothing, and no notice");
+
+		/* the whole text's ends, in a memo */
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		SETB(buf[1], "one\ntwo\nthree", 5);
+		KEY(WSK_KEY_HOME);
+		ok(buf[1].caret == 4, "CONTROL: in a memo, Home is the line's start, 4");
+		CTRL(WSK_KEY_HOME);
+		ok(buf[1].caret == 0, "Ctrl-Home the text's, 0");
+		KEY(WSK_KEY_END | WSK_MOD_CTRL | WSK_MOD_SHIFT);
+		ok(buf[1].caret == 13 && buf[1].span == -13, "Ctrl-Shift-End selects to the text's end");
+		buf[1].caret = 4; buf[1].span = 0;
+		CTRL(WSK_KEY_LEFT);
+		ok(buf[1].caret == 0, "Ctrl-Left passes a line break as a space: from \"two\" to \"one\"'s start");
+
+		/* clicks: the memo is at y 40, its first row's text at 46..62, x 10 a column 0 */
+		SETB(buf[1], "say hello_world(x) now\nnext line", 0);
+		ev.kind = WSK_EV_DOWN; ev.key = 0; ev.x = 10 + 8 * 7 + 3; ev.y = 50; ev.d = 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[1].caret == 7 && buf[1].span == 0, "CONTROL: a single click (d 1) puts the caret, selects nothing");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.d = 2;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[1].caret == 15 && buf[1].span == -11, "a double-click (d 2) in \"hello_world\" selects it, 4..15");
+		ev.kind = WSK_EV_MOVE; ev.x += 3;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[1].caret == 15 && buf[1].span == -11, "a jitter before the release keeps the word");
+		ev.x = 10 + 8 * 20 + 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[1].caret == 20 && buf[1].span == -16, "a drag on to column 20 extends from the word's start");
+		ev.x = 10 + 8 * 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[1].caret == 1 && buf[1].span == 14, "and back to column 1, from its end: the word stays inside");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.x = 10 + 8 * 15 + 1; ev.d = 2;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[1].caret == 16 && buf[1].span == -1, "on the \"(\": a word of marks, and \"x\" after it is not one -- 15..16");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.x = 10 + 8 * 5 + 1; ev.d = 3;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[1].caret == 22 && buf[1].span == -22, "a triple-click: the line as typed, 0..22, not its break");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.x = 10 + 8 * 30; ev.d = 2;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[1].caret == 22 && buf[1].span == -3, "a double-click past a line's end: the word it ends, \"now\"");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.d = 0;
+
+		/* with no field focused, the chords are still the program's */
+		ui.root->focus = 0; ui.focus_b = 0;
+		CTRL(WSK_KEY_LEFT);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_KEY && nt[0].value == (WSK_KEY_LEFT | WSK_MOD_CTRL),
+		   "with no field focused, Ctrl-Left is a KEY notice, as before");
+#undef SETB
+#undef KEY
+#undef CTRL
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

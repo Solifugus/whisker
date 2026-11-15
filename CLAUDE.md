@@ -219,6 +219,12 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
   mark wins on a line (gBASIC's five categories) is the program's. A set
   `marks` pointer reserves the column. `code.c` draws breakpoints. 408 bytes.
 
+- **§5w — words** (2026-11-15): Ctrl-Left/Right, Ctrl-Backspace/Delete,
+  Ctrl-Home/End; **a double-click selects a word, a triple its line** —
+  the host counts clicks and says so in `d` on a DOWN (SDL's `clicks`; the
+  browser's *mousedown* `detail`, since a pointerdown's is always 0).
+  `WSK_NO_WORDS`, set by `WSK_PANEL`.
+
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
 very nice sounds". It found two rules for any board program: **draw little,
@@ -226,12 +232,12 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **714 checks**, including a step
+`src/run.sh --module` is the whole of it: **748 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 39, including the
+looking at the pictures. `host/linux/run.sh --test` adds 41, including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
-`host/web/run.sh --test` adds 31 over HTTP, 18 in headless Chrome, and 11 for
+`host/web/run.sh --test` adds 32 over HTTP, 18 in headless Chrome, and 14 for
 the code editor (`code.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**

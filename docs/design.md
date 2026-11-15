@@ -3568,6 +3568,86 @@ asked yet: a whole-line highlight in the text (a debugger's current line is
 a gutter bar here), wide characters (step 3's note), and marks that follow
 edits.
 
+## 5w. Iteration 23 — words: Ctrl-arrows, Ctrl-Backspace, double-click
+
+**Written 2026-11-14, before its code**, overnight, under Matthew's "and
+whatever else you can do". The code editor of §5v moves a character at a
+time; every desktop editor a person has used moves a word with Ctrl, and
+selects one with a double-click. Small, and the difference between an editor
+and a text box.
+
+1. **A word** is a run of letters, digits, `_` and any character beyond
+   ASCII (so `é` and `日本` are inside words, not between them); a run of
+   other marks (`:=`, `"(`) is a word of its own; spaces separate them. A
+   line break is a space to Ctrl's moves, and a wall to a double-click.
+2. **Ctrl-Left** goes back over spaces, then to the start of the word
+   before; **Ctrl-Right** over spaces, then to the end of the word after —
+   each lands on a word's edge, both ways, as VS Code does. With Shift they
+   extend the selection, as every move does (§5s rule 4).
+3. **Ctrl-Backspace** and **Ctrl-Delete** delete what Ctrl-Left and
+   Ctrl-Right would have moved over — a selection instead, if there is one —
+   as one undo step.
+4. **Ctrl-Home** and **Ctrl-End**: the start and end of the whole text. In a
+   memo or source, Home and End are the line's; in a field they were the
+   text's already.
+5. **A double-click selects the word under it; a triple-click, its line**
+   (as typed, without its break). The *host* counts clicks — the platform
+   owns double-click timing and distance, and SDL and the browser both
+   report a count — and says so on the press: **`d` on a DOWN is the click
+   count** (0 or 1, a single). `d` was the wheel's alone, so no event
+   struct grows, and a host that counts nothing sends 0, a single click.
+6. These chords become the focused field's: until now they reached the
+   program as KEY notices (§5s rule 3), and with no field focused they still
+   do. **`WSK_NO_WORDS`**, set by `WSK_PANEL` — the P4's keyboard has no
+   Ctrl, and a finger no double-click.
+
+Done when: each move, from inside a word, from its edge, over spaces, over
+marks, over a line break, at either end of the text; extending with Shift;
+both deletions and their undo; double- and triple-click in a field and a
+memo, and a single click (the control) selecting nothing; UTF-8 inside a
+word; every earlier output byte-identical; both hosts sending the count, and
+a double-click in Chrome selecting a word that Ctrl-C then copies.
+
+### What it came to, 2026-11-15
+
+**748 checks** (714 before): 33 in the suite — **28 fail against the
+previous header**, the other five are controls and things that held before
+(a single click, Home in a memo, the chords with no field focused) — and
+the `-DWSK_NO_WORDS` link; **20** profiles and switches build. Every earlier
+output — 38 files — byte-identical. The Linux host adds 2 (41): SDL's own
+click count reaches the press, and an uncounted press is 0. In headless
+Chrome, 3 more (`code.mjs`, 14): a real double-click selects `powers` and
+Ctrl-C copies it, a triple-click its line, Ctrl-Shift-Left three times from
+a line's end selects `(n)`.
+
+- **Found by the browser check, which failed first: a pointerdown's
+  `detail` is always 0** in Chrome 156 — measured, three presses with click
+  counts 1, 2, 3 gave pointerdown 0, 0, 0 and mousedown 1, 2, 3. So the
+  page sends a *mouse's* press from mousedown, and a finger's or a pen's
+  from pointerdown as a single, as before. The HTTP checks could not see
+  this; only a real browser could.
+- **Found by the suite: a word move must drop a selection itself.** Ctrl's
+  chords are marked *used* so they do not reach the program as KEY notices,
+  and *used* is also what keeps a selection through Ctrl-A and Ctrl-C — so
+  Ctrl-Right without Shift kept one. It lets it go in its own branch now.
+- **A double-click's word survives jitter**: the toolkit keeps the word
+  (`ui.wa`, `ui.wz`), so a pointer moving a pixel before the release does not
+  shrink the selection to a character, and a drag after it grows the
+  selection out from whichever end of the word it leaves by.
+- Double-clicking past a line's end selects the word the line ends with,
+  as editors do; on an empty line, nothing.
+
+**§7's question, and a measurement that is not one.** `module_nest.c`
+built without words is **44 bytes** smaller — but that program has no
+editable field, so the compiler drops most of what words add; a floor, not
+the price (undo's 28 there has the same flaw, and §5v step 1's "92 bytes
+larger without it" likely the same cause). Natively at `-Os`, `code.c` — an
+editor — is **845 bytes** smaller without words (and 1,224 without UTF-8).
+No RV-9 module edits text with a keyboard, so there is no board figure to
+take, and the board tiers carry none of it: `WSK_PANEL` 10,340,
+`WSK_MINIMAL` 3,788, both unchanged; the default's small panel, 15,004,
+unchanged too — it has no toolkit.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this
