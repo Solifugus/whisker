@@ -140,7 +140,7 @@ static const char PAGE[] =
 "    if(k===13)m=0;\n"
 "    e.preventDefault();send('K '+(k|m));return;\n"
 "  }\n"
-"  if(e.key.length===1&&!m){e.preventDefault();send('T '+e.key);}\n"
+"  if([...e.key].length===1&&!m){e.preventDefault();send('T '+e.key);}\n"
 "});\n"
 "window.whisker={send,canvas:c,drawn:()=>drawn,idle:()=>chain,images:()=>Object.keys(IMG).filter(k=>IMG[k]).length,\n"
 "  clip:()=>clip,copied:()=>copied};\n"

@@ -3494,6 +3494,166 @@ int main(void)
 		ok(wsk_feed(&ui, &ev, nt, 4, &y0, &y1) == 0, "CONTROL: for a host without the bit, typing > is refused");
 	}
 
+	/* ---- §5v step 3. UTF-8 in fields, memos and source ---- */
+	printf("\n-- §5v  UTF-8 editing\n");
+	{
+		/* é is 2 bytes, — 3, 😀 4: positions are bytes, columns characters */
+#define E_ "\xc3\xa9"
+#define D_ "\xe2\x80\x94"
+#define S_ "\xf0\x9f\x98\x80"
+		static const wsk_widget_t FU8[] = {
+			{ .kind = WSK_FIELD,  .id = "f", .sub = 0, .size = 32 },
+			{ .kind = WSK_MEMO,   .id = "m", .sub = 1, .size = 60 },
+			{ .kind = WSK_SOURCE, .id = "s", .sub = 2, .size = 60 },
+		};
+		char fb[64] = "", mb[128] = "", sb[64] = "", ub[512], clip[32], ud[4096], dashes[80];
+		wsk_buf_t buf[3];
+		wsk_undo_t u;
+		wsk_ink_t ik[2];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int n, y0 = 0, y1 = 0, which = -2;
+
+		memset(buf, 0, sizeof buf);
+		memset(&u, 0, sizeof u);
+		u.b = ub; u.cap = sizeof ub;
+		buf[0].b = fb; buf[0].cap = sizeof fb; buf[0].undo = &u;
+		buf[1].b = mb; buf[1].cap = sizeof mb;
+		buf[2].b = sb; buf[2].cap = sizeof sb;
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.pad = 4; w.gap = 4; w.item = FU8; w.n = 3; w.buf = buf; w.bufs = 3;
+#define SETB(B, S, C) (snprintf((B).b, (size_t)(B).cap, "%s", (S)), (B).len = (int)strlen((B).b), \
+                       (B).caret = (C), (B).top = 0, (B).span = 0)
+#define TYPE(T) (ev.kind = WSK_EV_TEXT, snprintf(ev.text, sizeof ev.text, "%s", (T)), \
+                 n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define KEY(K)  (ev.kind = WSK_EV_KEY, ev.key = (unsigned short)(K), n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+
+		SETB(buf[0], "caf" E_ " " D_ " ok", 0);
+		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 0,
+		   "CONTROL: without WSK_CAP_UTF8, a field holding \"caf\xc3\xa9 \xe2\x80\x94 ok\" is refused, as before");
+		w.caps = WSK_CAP_UTF8;
+		ok(wsk_check(&w, 0) == WSK_OK, "with it, accepted");
+		buf[0].caret = 4;
+		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 0,
+		   "but not with the caret inside a character: byte 4 is the middle of \xc3\xa9");
+		buf[0].caret = buf[0].len;
+		fb[3] = '\xe9';                    /* Latin-1's é, not UTF-8's */
+		ok(wsk_check(&w, 0) == WSK_E_TEXT, "nor a byte that starts no character");
+		SETB(buf[0], "caf" E_ " " D_ " ok", 12);
+
+		/* drawn in columns: the caret after 10 characters, not 12 bytes */
+		render_into(&w, ud, sizeof ud, 4096);
+		wsk_ui_init(&ui, &w);
+		wsk_ui_focus(&ui, "f", &y0, &y1);
+		render_into(&w, ud, sizeof ud, 4096);
+		ok(has(ud, ">caf\xc3\xa9 \xe2\x80\x94 ok</text>") && has(ud, "<rect x=\"82\" y=\"14\" width=\"2\""),
+		   "a field: the text whole, its caret at 10 + 9 x 8 = 82 -- nine characters, though twelve bytes");
+
+		/* the caret steps a character at a time */
+		KEY(WSK_KEY_LEFT); KEY(WSK_KEY_LEFT); KEY(WSK_KEY_LEFT); KEY(WSK_KEY_LEFT);
+		ok(buf[0].caret == 6, "Left four times from the end: o, k, a space, and the 3-byte dash -- byte 6");
+		KEY(WSK_KEY_LEFT); KEY(WSK_KEY_LEFT);
+		ok(buf[0].caret == 3, "twice more: the space and the 2-byte \xc3\xa9, byte 3");
+		KEY(WSK_KEY_RIGHT);
+		ok(buf[0].caret == 5, "Right: over \xc3\xa9 whole, byte 5");
+		KEY(WSK_KEY_BACKSPACE);
+		ok(n == 1 && strcmp(fb, "caf " D_ " ok") == 0 && buf[0].caret == 3,
+		   "Backspace takes the whole \xc3\xa9, both bytes");
+		KEY(WSK_KEY_RIGHT);
+		KEY(WSK_KEY_DELETE);
+		ok(strcmp(fb, "caf  ok") == 0, "Delete the whole dash, all three");
+		KEY('z' | WSK_MOD_CTRL); KEY('z' | WSK_MOD_CTRL);
+		ok(strcmp(fb, "caf" E_ " " D_ " ok") == 0, "and both undone, whole");
+
+		/* typing beyond ASCII, and undo's step */
+		SETB(buf[0], "", 0);
+		memset(&u, 0, sizeof u); u.b = ub; u.cap = sizeof ub;
+		TYPE("n"); TYPE("a"); TYPE(E_); TYPE("v"); TYPE("e");
+		ok(strcmp(fb, "na" E_ "ve") == 0 && buf[0].caret == 6, "typed: n, a, \xc3\xa9, v, e -- the caret after six bytes");
+		TYPE(" "); TYPE(S_);
+		ok(strcmp(fb, "na" E_ "ve " S_) == 0, "and a space and a 4-byte character");
+		KEY('z' | WSK_MOD_CTRL);
+		ok(strcmp(fb, "na" E_ "ve") == 0, "one undo: \" \xf0\x9f\x98\x80\", the space and the word, as with ASCII");
+		KEY('z' | WSK_MOD_CTRL);
+		ok(fb[0] == '\0', "another: \"na\xc3\xa9ve\" was one step -- \xc3\xa9 joined the word it was typed in");
+		TYPE("\xe2\x80");
+		ok(n == 0 && fb[0] == '\0', "a character cut off before its end is refused");
+		w.caps = 0;
+		TYPE(E_);
+		ok(n == 0 && fb[0] == '\0', "CONTROL: and for a host without UTF-8, so is \xc3\xa9");
+		w.caps = WSK_CAP_UTF8;
+
+		/* paste, and a selection measured in columns */
+		ok(wsk_ui_paste(&ui, "x" D_ "y", 5, nt, 4, &y0, &y1) == 1 && strcmp(fb, "x" D_ "y") == 0,
+		   "a paste beyond ASCII");
+		ok(wsk_ui_paste(&ui, "\xe2\x80", 2, nt, 4, &y0, &y1) == WSK_E_TEXT && strcmp(fb, "x" D_ "y") == 0,
+		   "and a paste ending inside a character refused, the buffer as it was");
+		KEY(WSK_KEY_LEFT);
+		KEY(WSK_KEY_LEFT | WSK_MOD_SHIFT);
+		render_into(&w, ud, sizeof ud, 4096);
+		ok(buf[0].caret == 1 && buf[0].span == 3 && has(ud, "<rect x=\"18\" y=\"12\" width=\"8\" height=\"16\""),
+		   "Shift-Left selects the dash: three bytes, one column -- a box 8 wide at column 1");
+		ui.clip = clip; ui.clipcap = sizeof clip;
+		KEY('c' | WSK_MOD_CTRL);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_COPY && nt[0].value == 3 && strcmp(clip, D_) == 0,
+		   "copied whole: three bytes");
+
+		/* a click: the column under the pointer, as a byte */
+		ev.kind = WSK_EV_DOWN; ev.x = 10 + 2 * 8 + 1; ev.y = 20; ev.key = 0;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[0].caret == 4, "a click at column 2, after the dash: byte 4");
+
+		/* a memo: Up and Down keep the column in characters */
+		SETB(buf[1], E_ D_ "ab\nwxyz", 6);
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		KEY(WSK_KEY_DOWN);
+		ok(buf[1].caret == 11, "a memo: from column 3 (byte 6, after \xc3\xa9\xe2\x80\x94" "a), Down keeps column 3 -- byte 11, after wxy");
+		KEY(WSK_KEY_UP);
+		ok(buf[1].caret == 6, "and Up comes back to byte 6, not to 3 bytes in");
+		KEY(WSK_KEY_END); KEY(WSK_KEY_HOME);
+		ok(buf[1].caret == 0, "End, then Home");
+		buf[1].wrap = 1;
+		{
+			/* the memo is 312 wide: (312 - 12 - 2) / 8 = 37 characters a row */
+			char *p = mb;
+			for (int i = 0; i < 20; i++) { memcpy(p, D_, 3); p += 3; }
+			memcpy(p, " abcdefghijklmnopqrstu", 23);
+			buf[1].len = (int)strlen(mb); buf[1].caret = 0; buf[1].top = 0; buf[1].span = 0;
+			render_into(&w, ud, sizeof ud, 4096);
+			for (int i = 0; i < 20; i++) memcpy(dashes + 1 + 3 * i, D_, 3);
+			dashes[0] = '>';
+			memcpy(dashes + 61, "</text>", 8);
+			ok(has(ud, ">abcdefghijklmnopqrstu</text>") && has(ud, dashes),
+			   "wrapping counts characters: 20 dashes (60 bytes), a space, 21 letters -- 42 characters break at the space");
+			buf[1].wrap = 0;
+			SETB(buf[1], "", 0);
+		}
+
+		/* source: runs at their columns */
+		SETB(buf[2], "s = \"" E_ D_ "\" + x", 0);
+		ik[0].at = 4; ik[0].len = 7; ik[0].ink = 0xce9178u;       /* "é—" */
+		buf[2].inks = ik; buf[2].ninks = 1;
+		ok(wsk_check(&w, 0) == WSK_OK, "a source line with a string holding \xc3\xa9\xe2\x80\x94, its run over the string");
+		render_into(&w, ud, sizeof ud, 4096);
+		ok(has(ud, "fill=\"#ce9178\">\"\xc3\xa9\xe2\x80\x94\"</text>") && has(ud, "x=\"106\" y=\"") &&
+		   has(ud, ">+ x</text>"),
+		   "and the gap after it at column 9 -- x 34 + 9 x 8 = 106, not byte 12's 130");
+		ik[0].len = 4;                                             /* into the dash */
+		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 2,
+		   "a run ending inside a character is refused: its <text> would split one");
+		buf[2].inks = 0; buf[2].ninks = 0;
+#undef SETB
+#undef TYPE
+#undef KEY
+#undef E_
+#undef D_
+#undef S_
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

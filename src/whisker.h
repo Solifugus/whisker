@@ -779,6 +779,73 @@ static inline int wsk__text_ok(const char *t, int caps)
 	return 1;
 }
 
+#ifndef WSK_NO_FIELD
+/*
+ * n bytes an editor may hold (§5v step 3): what wsk__text_ok accepts,
+ * counted rather than terminated -- a buffer, a paste, a key's text -- and
+ * \n too where `nl` says lines are allowed.
+ */
+static inline int wsk__ok_n(const char *t, int n, int caps, int nl)
+{
+	for (int i = 0; i < n; ) {
+		unsigned char c = (unsigned char)t[i];
+		int more = 0;
+		if (c == '\n' && nl) { i++; continue; }
+		if (c < 0x80) {
+			if (c < 32 || c == 127 || wsk__markup(c, caps)) return 0;
+			i++;
+			continue;
+		}
+#ifndef WSK_NO_UTF8
+		if (!(caps & WSK_CAP_UTF8)) return 0;
+		if (c >= 0xC2 && c <= 0xDF) more = 1;
+		else if (c >= 0xE0 && c <= 0xEF) more = 2;
+		else if (c >= 0xF0 && c <= 0xF4) more = 3;
+		else return 0;
+		if (i + more >= n) return 0;     /* cut off before its end */
+		for (int k = 1; k <= more; k++)
+			if (((unsigned char)t[i + k] & 0xC0) != 0x80) return 0;
+		i += more + 1;
+#else
+		(void)more;
+		return 0;
+#endif
+	}
+	return 1;
+}
+
+/* Whether byte `at` of a buffer begins a character -- or is its end. */
+static inline int wsk__starts(const char *t, int len, int at)
+{
+	return at <= 0 || at >= len || ((unsigned char)t[at] & 0xC0) != 0x80;
+}
+
+/* The character before `at`, and after it: where the caret steps to. */
+static inline int wsk__prev(const char *t, int at)
+{
+	if (at <= 0) return 0;
+	at--;
+#ifndef WSK_NO_UTF8
+	while (at > 0 && ((unsigned char)t[at] & 0xC0) == 0x80) at--;
+#else
+	(void)t;
+#endif
+	return at;
+}
+
+static inline int wsk__next(const char *t, int len, int at)
+{
+	if (at >= len) return len;
+	at++;
+#ifndef WSK_NO_UTF8
+	while (at < len && ((unsigned char)t[at] & 0xC0) == 0x80) at++;
+#else
+	(void)t;
+#endif
+	return at;
+}
+#endif
+
 static inline int wsk_text_ok(const char *t)
 {
 	for (int i = 0; t[i] != '\0'; i++) {
@@ -1009,12 +1076,11 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 				return WSK_E_KIND;
 			}
 			/* a memo's lines are separated by \n, and that is the one
-			   character it may hold that a label may not (§5o rule 4) */
-			for (int k = 0; k < b->len && good; k++) {
-				char c = b->b[k];
-				if (c == '\n' && t->item[i].kind != WSK_FIELD) continue;
-				if (c < 32 || c > 126 || wsk__markup(c, t->caps)) good = 0;
-			}
+			   character it may hold that a label may not (§5o rule 4);
+			   beyond ASCII for a host that draws it, the caret between
+			   characters, never inside one (§5v step 3) */
+			good = wsk__ok_n(b->b, b->len, t->caps, t->item[i].kind != WSK_FIELD) &&
+			       wsk__starts(b->b, b->len, b->caret);
 #ifndef WSK_NO_SOURCE
 			/* colour runs in order, none over another, none before 0 --
 			   past the end is allowed: the text may just have shrunk */
@@ -1022,8 +1088,10 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 				if (b->inks == 0) good = 0;
 				for (int k = 0; good && k < b->ninks; k++)
 					if (b->inks[k].at < 0 || b->inks[k].len < 0 ||
-					    (k > 0 && b->inks[k].at < b->inks[k - 1].at + b->inks[k - 1].len))
-						good = 0;
+					    (k > 0 && b->inks[k].at < b->inks[k - 1].at + b->inks[k - 1].len) ||
+					    !wsk__starts(b->b, b->len, b->inks[k].at) ||
+					    !wsk__starts(b->b, b->len, b->inks[k].at + b->inks[k].len))
+						good = 0;      /* nor through a character */
 			}
 #endif
 			if (!good) {
@@ -2797,9 +2865,10 @@ static inline void wsk__selbox(wsk_sink_t *s, const wsk_tree_t *t, const wsk_wid
 	if (s0 < from) s0 = from;
 	if (s1 > from + n) s1 = from + n;
 	if (s1 <= s0) return;
-	r.x = (short)(x + (s0 - from) * adv);
+	/* bytes to columns: characters, for a host that draws UTF-8 */
+	r.x = (short)(x + wsk__chars(b->b + from, s0 - from) * adv);
 	r.y = (short)top;
-	r.w = (short)((s1 - s0) * adv);
+	r.w = (short)(wsk__chars(b->b + s0, s1 - s0) * adv);
 	r.h = t->font;
 	wsk__box(s, 0, r, t->selfill);
 }
@@ -2828,7 +2897,9 @@ static inline void wsk__field(wsk_sink_t *s, const wsk_tree_t *t,
 	const char *txt = (b != 0) ? b->b : w->text;
 	int len = (b != 0) ? b->len : wsk__len(w->text);
 	int caret = (b != 0) ? b->caret : len;
-	int from, n = wsk__view(t, r, len, caret, &from);
+	/* the view is in characters, the text in bytes (§5v step 3) */
+	int col = wsk__chars(txt, caret);
+	int from, n = wsk__view(t, r, wsk__chars(txt, len), col, &from);
 	int x = r.x + WSK_FIELD_PAD;
 	int show = (w->mark == WSK_MARK_CARET);
 	int top = r.y + (r.h - t->font) / 2;
@@ -2836,6 +2907,9 @@ static inline void wsk__field(wsk_sink_t *s, const wsk_tree_t *t,
 
 	/* the text and its caret, whole or not at all (§5e) */
 	if (!wsk__shows(t, r.x, r.x + r.w, top)) return;
+	caret = col - from;              /* the caret's column in the view */
+	from = wsk__byte_of(txt, len, from);
+	n = wsk__byte_of(txt + from, len - from, n);
 #ifndef WSK_NO_TEXTSEL
 	wsk__selbox(s, t, w, b, from, n, x, top);
 #endif
@@ -2847,7 +2921,7 @@ static inline void wsk__field(wsk_sink_t *s, const wsk_tree_t *t,
 #endif
 	if (show) {
 		wsk_rect_t c;
-		c.x = (short)(x + (caret - from) * wsk_advance(t->font));
+		c.x = (short)(x + caret * wsk_advance(t->font));
 		c.y = (short)(top + t->font / 8);
 		c.w = WSK_CARET_W;
 		c.h = (short)(t->font - t->font / 4);
@@ -2896,12 +2970,14 @@ static inline int wsk__vrow(const char *b, int len, int at, int room, int *end)
 {
 	int e = at;
 	while (e < len && b[e] != '\n') e++;
-	if (e - at > room) {
-		int sp = at + room;              /* a space here may still break */
+	/* room is characters; a line is never more of them than its bytes */
+	if (e - at > room && wsk__chars(b + at, e - at) > room) {
+		int cut = at + wsk__byte_of(b + at, e - at, room);
+		int sp = cut;                    /* a space here may still break */
 		while (sp > at && b[sp] != ' ') sp--;
 		if (sp > at) { *end = sp; return sp + 1; }
-		*end = at + room;
-		return at + room;
+		*end = cut;
+		return cut;
 	}
 	*end = e;
 	return (e < len) ? e + 1 : len + 1;
@@ -2914,7 +2990,9 @@ static inline void wsk__where(const char *b, int len, int at, int room,
 	int k = 0, st = 0, end, next, found = 0;
 	for (;;) {
 		next = wsk__vrow(b, len, st, room, &end);
-		if (!found && (at < next || next > len)) { *line = k; *col = at - st; found = 1; }
+		if (!found && (at < next || next > len)) {
+			*line = k; *col = wsk__chars(b + st, at - st); found = 1;   /* in characters */
+		}
 		if (next > len) break;
 		st = next;
 		k++;
@@ -3010,7 +3088,8 @@ static inline void wsk__inked(wsk_sink_t *s, const wsk_tree_t *t, const wsk_widg
 		else e = (lo < ni) ? ik[lo].at : stop;
 		if (e > stop) e = stop;
 		for (p = pos; p < e && txt[p] == ' '; p++) ;
-		if (p < e) wsk__textel(s, 1, x + (p - from) * adv, base, ink, txt + p, e - p);
+		if (p < e) wsk__textel(s, 1, x + wsk__chars(txt + from, p - from) * adv, base, ink,
+		                       txt + p, e - p);
 		if (e > pos) pos = e;
 	}
 }
@@ -3056,9 +3135,10 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 	at = wsk__line(txt, len, top, wr, &end);
 	for (int k = top; k < top + vis && k < lines; k++) {
 		int y = r.y + WSK_FIELD_PAD + (k - top) * pitch, next = wsk__vrow(txt, len, at, wr, &end);
-		int from = at + left, n = end - from;
+		/* columns are characters: `left` and `room` count them (§5v step 3) */
+		int from = at + wsk__byte_of(txt + at, end - at, left), n = end - from;
 		if (wsk__shows(t, r.x, r.x + r.w, y)) {
-			if (n > room) n = room;
+			n = wsk__byte_of(txt + from, n, room);
 #ifndef WSK_NO_SOURCE
 			if (gut > 0) wsk__lineno(s, t, k + 1, r.x + gut - adv / 2, y);
 #endif
@@ -4117,12 +4197,14 @@ static inline void wsk__urec(wsk_undo_t *u, const char *txt, int at, int del,
 		int size = wsk__g4(u->b + u->used - 4), st = u->used - size;
 		int pat = wsk__g4(u->b + st), pdel = wsk__g4(u->b + st + 4), pins = wsk__g4(u->b + st + 8);
 		/* a space after a word starts the next step, which it is part of */
-		if (pdel == 0 && pat + pins == at && u->used + 1 <= u->cap &&
+		if (pdel == 0 && pat + pins == at && u->used + n <= u->cap &&
 		    !(ins[0] == ' ' && u->b[u->used - 5] != ' ')) {
-			u->b[u->used - 4] = ins[0];          /* over the old size... */
-			wsk__u4(u->b + st + 8, pins + 1);
-			wsk__u4(u->b + u->used - 3, size + 1);   /* ...and a new one after */
-			u->used++;
+			/* the character over the old size -- one byte, or a UTF-8
+			   character's two to four -- and a new size after it */
+			for (int j = 0; j < n; j++) u->b[u->used - 4 + j] = ins[j];
+			wsk__u4(u->b + st + 8, pins + n);
+			wsk__u4(u->b + u->used - 4 + n, size + n);
+			u->used += n;
 			u->end = u->used;
 			return;
 		}
@@ -4217,17 +4299,16 @@ static inline int wsk__char_at(const wsk_tree_t *lay, int k, wsk_buf_t *b,
 		at = wsk__line(b->b, b->len, line, wr, &end);
 		c = left + (x - (whole.x + WSK_FIELD_PAD) + adv / 2) / adv;
 		if (c < 0) c = 0;
-		c = (at + c > end) ? end : at + c;
+		c = at + wsk__byte_of(b->b + at, end - at, c);     /* a column to its byte */
 		b->top = top;
 		return c;
 	}
 #endif
 	(void)k; (void)y;
-	(void)wsk__view(lay, whole, b->len, b->caret, &from);
+	(void)wsk__view(lay, whole, wsk__chars(b->b, b->len), wsk__chars(b->b, b->caret), &from);
 	c = from + (x - (whole.x + WSK_FIELD_PAD) + adv / 2) / adv;
 	if (c < 0) c = 0;
-	if (c > b->len) c = b->len;
-	return c;
+	return wsk__byte_of(b->b, b->len, c);
 }
 
 /*
@@ -4343,11 +4424,7 @@ static inline int wsk_ui_paste(wsk_ui_t *ui, const char *text, int len,
 #ifndef WSK_NO_MEMO
 	memo = wsk__lined(ui->focus_in->item[ui->focus_item].kind);
 #endif
-	for (int i = 0; i < len; i++) {
-		char c = text[i];
-		if (c == '\n' && memo) continue;
-		if (c < 32 || c > 126 || wsk__markup(c, ui->root->caps)) return WSK_E_TEXT;
-	}
+	if (!wsk__ok_n(text, len, ui->root->caps, memo)) return WSK_E_TEXT;
 	sel = wsk__selr(b, &s0, &s1);
 	if (b->len - sel + len >= b->cap) return WSK_E_BUDGET;
 	wsk__put(b, s0, sel, text, len, 0);          /* one step: the selection replaced */
@@ -4726,17 +4803,14 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		if (ev->kind == WSK_EV_TEXT) {
 			/* All of it or none of it: characters the window can draw, and
 			   room for every one (§5j rule 3) -- in place of a selection */
-			int m = 0, ok = 1;
-			while (m < (int)sizeof ev->text && ev->text[m] != '\0') {
-				char c = ev->text[m];
-				if (c < 32 || c > 126 || wsk__markup(c, r->caps)) ok = 0;
-				m++;
-			}
+			int m = 0, ok;
+			while (m < (int)sizeof ev->text && ev->text[m] != '\0') m++;
+			ok = wsk__ok_n(ev->text, m, r->caps, 0);
 			if (ok && m > 0 && b->len - sel + m < b->cap) {
 				int at = sel ? s0 : b->caret;
 				/* one character, replacing nothing: typing, which undo
 				   groups; anything else is a step of its own */
-				wsk__put(b, at, sel, ev->text, m, sel == 0 && m == 1);
+				wsk__put(b, at, sel, ev->text, m, sel == 0 && wsk__chars(ev->text, m) == 1);
 				b->caret = at + m;
 				b->span = 0;
 				edit = 1;
@@ -4801,23 +4875,25 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			at = wsk__line(b->b, b->len, line, wr, &end);
 			if (key == WSK_KEY_HOME) to = at;
 			else if (key == WSK_KEY_END) to = end;
-			else to = (at + col > end) ? end : at + col;
+			else to = at + wsk__byte_of(b->b + at, end - at, col);   /* the column kept */
 			if (to != b->caret) { b->caret = to; moved = 1; }
 		}
 #endif
+		/* a character at a time, however many bytes it is (§5v step 3) */
 		else if (key == WSK_KEY_LEFT && b->caret > 0) {
-			b->caret--; moved = 1;
+			b->caret = wsk__prev(b->b, b->caret); moved = 1;
 		} else if (key == WSK_KEY_RIGHT && b->caret < b->len) {
-			b->caret++; moved = 1;
+			b->caret = wsk__next(b->b, b->len, b->caret); moved = 1;
 		} else if (key == WSK_KEY_HOME && b->caret != 0) {
 			b->caret = 0; moved = 1;
 		} else if (key == WSK_KEY_END && b->caret != b->len) {
 			b->caret = b->len; moved = 1;
 		} else if (key == WSK_KEY_BACKSPACE && b->caret > 0) {
-			wsk__put(b, b->caret - 1, 1, "", 0, 0);
-			b->caret--; edit = 1;
+			int p = wsk__prev(b->b, b->caret);
+			wsk__put(b, p, b->caret - p, "", 0, 0);
+			b->caret = p; edit = 1;
 		} else if (key == WSK_KEY_DELETE && b->caret < b->len) {
-			wsk__put(b, b->caret, 1, "", 0, 0);
+			wsk__put(b, b->caret, wsk__next(b->b, b->len, b->caret) - b->caret, "", 0, 0);
 			edit = 1;
 		} else if (key == WSK_KEY_ENTER) {
 			n = wsk__note(note, max, n, WSK_NOTE_ENTER, ui->focus_in, ui->focus_item, b->len);

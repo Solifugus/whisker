@@ -20,7 +20,7 @@
 //
 //   node chrome.mjs <whisker-edit-web binary> <dir for pictures>
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -75,7 +75,7 @@ async function type(text) {
   }
 }
 async function key(name, code, modifiers = 0, commands) {   // CDP: Alt 1, Ctrl 2, Shift 8
-  const vk = { Enter: 13, Tab: 9, Home: 36, End: 35 }[name] ?? name.toUpperCase().charCodeAt(0);
+  const vk = { Enter: 13, Tab: 9, Home: 36, End: 35, Backspace: 8 }[name] ?? name.toUpperCase().charCodeAt(0);
   await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: name, code, modifiers,
                                         windowsVirtualKeyCode: vk, ...(commands ? { commands } : {}) });
   await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code, modifiers });
@@ -139,6 +139,27 @@ try {
   const blue = await near(0x56, 0x9c, 0xd6), green = await near(0x6a, 0x99, 0x55);
   console.log(`      ${blue} pixels in the keyword colour, ${green} in the comment colour`);
   ok(blue > 200 && green > 200, 'keywords and comments drawn in the colours the program gave them');
+
+  // §5v step 3: line 3 holds an em dash -- three bytes, one character. Its
+  // text must end where its characters say, 37 + n x 9, or every column
+  // after a character beyond ASCII would drift from where whisker put it
+  const line3 = readFileSync(sample, 'utf8').split('\n')[2];
+  const chars3 = [...line3].length, bytes3 = Buffer.byteLength(line3);
+  const end3 = await lastLight(rowY(3));
+  console.log(`      line 3: ${chars3} characters, ${bytes3} bytes, ends at x ${end3}`);
+  ok(bytes3 > chars3 && Math.abs(end3 - (37 + chars3 * 9)) <= 6,
+     `a line with an em dash ends at its characters' width, near ${37 + chars3 * 9} -- not its bytes', ${37 + bytes3 * 9}`);
+  // typed: one character, one column; Backspace takes it back whole
+  await click(1000, rowY(3) + 8);
+  await type('\u00e9');
+  await settle(); await sleep(300);
+  const end3e = await lastLight(rowY(3));
+  await key('Backspace', 'Backspace');
+  await settle(); await sleep(300);
+  const end3b = await lastLight(rowY(3));
+  console.log(`      after typing \u00e9 it ends at x ${end3e}; after Backspace, ${end3b}`);
+  // both measured with the caret at the line's end, which is what lights last
+  ok(end3e - end3b === 9, 'an \u00e9 typed at its end is one column, 9 px, and Backspace takes it back whole');
 
   // a click in the gutter by line 10
   await click(10, rowY(10) + 8);

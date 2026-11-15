@@ -99,7 +99,8 @@ static void status(void)
 {
 	int line = 1, col = 1;
 	for (int i = 0; i < buf[0].caret; i++) {
-		if (text[i] == '\n') { line++; col = 1; } else col++;
+		if (text[i] == '\n') { line++; col = 1; }
+		else if (((unsigned char)text[i] & 0xC0) != 0x80) col++;   /* characters, not bytes */
 	}
 	const char *base = strrchr(path, '/');
 	char t[64];
@@ -137,13 +138,14 @@ int main(int argc, char **argv)
 	win.talign = WSK_ALIGN_START;
 	status();
 	/* whisker refuses what its host cannot draw, and says so: a tab, a
-	   character beyond ASCII (until UTF-8 editing, §5v step 3), or < > & on
-	   a host that does not decode entities -- RV-9's /w0, and so the SDL
-	   window, until RV-9 does (docs/rv9-request-entities.md) */
+	   character beyond ASCII on a host that draws none (the SDL window --
+	   /w0's font is ASCII), or < > & on a host that does not decode
+	   entities -- RV-9's /w0, and so the SDL window, until RV-9 does
+	   (docs/rv9-request-entities.md) */
 	if ((e = wsk_check_in(&win, &which, &in)) != WSK_OK) {
 		fprintf(stderr, "code: %s was refused (%d): %s\n", path, e,
 		        e != WSK_E_TEXT ? "see design.md"
-		        : (win.caps & WH_CAP_ENTITY) ? "it holds a tab or a character beyond ASCII"
+		        : (win.caps & WH_CAP_ENTITY) ? "it holds a tab, a control character or malformed UTF-8"
 		        : "it holds a tab, a character beyond ASCII, or < > & -- which this host "
 		          "cannot draw until RV-9 decodes &lt; &gt; &amp;");
 		return 1;

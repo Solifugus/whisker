@@ -3430,6 +3430,64 @@ small panel: +936 since step 1, with entities and the memo's single pass);
 1.2 % of gBASIC's lines; until then such a file is refused. And breakpoint
 *marks* in the gutter, which the program can only print today.
 
+### What the third step came to, 2026-11-14: UTF-8 editing
+
+Written with the code, overnight, on Matthew's "go ahead with source" — the
+rule it follows was settled in §5r and is only carried through here.
+
+**The rule: positions are bytes, columns are characters.** A buffer's
+`caret`, `span`, `len` and a colour run's `at` and `len` stay byte offsets —
+a program indexes its own text, and nothing it holds changes meaning. Every
+place that turns a position into a place on the glass counts characters
+(`wsk__chars`), and every place that turns a place back into a position
+finds the byte a column starts at (`wsk__byte_of`): a field's view and
+caret, a memo's row, column and Up/Down, a soft wrap's room, a click, a
+selection's box, and a colour run's x. **For ASCII the two are the same
+number**, which is why nothing earlier moves.
+
+- **The caret steps a character at a time**: Left and Right over a whole
+  character, Backspace and Delete take all of its bytes, so the caret is
+  never inside one. **The check refuses one that is** (`WSK_E_TEXT`), and a
+  colour run that starts or ends inside a character, since its `<text>`
+  would split it.
+- **What goes in is checked as a label is** (§5r): well-formed UTF-8 for a
+  host that claims `WSK_CAP_UTF8`, ASCII for one that does not — typed text,
+  a paste (all or nothing, D8: one cut off before its end is refused) and a
+  buffer filled by hand, through one function (`wsk__ok_n`).
+- **Undo**: a character typed is one character whatever its bytes, so `é`
+  joins the word it is typed in, as `e` does.
+- **Hosts**: the browser's page now sends a typed character outside the
+  Basic Multilingual Plane (an emoji is two UTF-16 units, and `e.key.length`
+  said 2). The SDL window claims no UTF-8 — `/w0`'s font is ASCII — so
+  there, such a file is still refused, by name.
+
+**Checks: 694** (664 before): 29 in the suite, 20 of which fail against
+the previous commit's header (the other nine are controls and ASCII that
+worked before), and the `-DWSK_NO_UTF8` link. In a browser: over HTTP an `é`
+typed and a Backspace taking it back whole; in headless Chrome, `sample.bas`
+now has an em dash on line 3, and **its line ends at x 676 — 37 + 71
+characters × 9 — not at its 73 bytes' 694**: the browser's monospace advance
+holds for the dash, so columns after it do not drift. An `é` typed is
+exactly 9 px. Every earlier output — 37 files — byte-identical.
+
+**§7's question**: UTF-8 costs the default **744 bytes** (14,596 for a small
+panel, +476); `WSK_PANEL` **10,340** (+56 — the shared validator and the
+character steps, compiled down to ASCII and ±1); `WSK_MINIMAL` **3,788**,
+unchanged.
+
+**Not done, and named**: a character's *width* is taken to be one cell. True
+of the em dash in Chrome's monospace (measured above), not of CJK or most
+emoji, which are two cells wide; whisker has no width table and would put
+what follows them a cell early. Combining marks count as a character each.
+**Counted in gBASIC's 1,568 `.bas` files, 2,035 characters beyond ASCII:**
+mostly `§` (927) and `—` (639), then accented Latin, arrows, Cyrillic; **67
+are wide** (日本語, 中文, 😀) **and one combining**, all in twelve test
+programs (`tests/string_nul_test.bas` has 30). **Studio's own files hold
+none at all.** So a gBASIC test file with 日本語 opens and edits, and its
+columns after the wide characters drift by a cell each — the next step if
+Studio ever has to show those files. Breakpoint marks in the gutter are
+still the program's to print.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

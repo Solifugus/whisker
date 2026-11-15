@@ -154,6 +154,8 @@ link_check module_shape.c "module_shape.c -DWSK_NO_CHECK" -DWSK_NO_CHECK
 NOCHECK="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_MEMO" -DWSK_NO_MEMO
 NOMEMO="$SIZE"
+link_check module_shape.c "module_shape.c -DWSK_NO_UTF8" -DWSK_NO_UTF8
+NOUTF8="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_PANEL" -DWSK_PANEL
 PANEL="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
@@ -164,9 +166,10 @@ printf "        desktop, browser   (default)       %6d bytes\n" "$FULL"
 printf "        touch panel, P4    -DWSK_PANEL     %6d\n" "$PANEL"
 printf "        readout, C5        -DWSK_MINIMAL   %6d\n" "$MIN"
 echo "      and what each part costs the default, by building without it:"
-printf "        nesting %d, wrap %d, text items %d, the check %d, the memo %d, source %d;\n" \
+printf "        nesting %d, wrap %d, text items %d, the check %d, the memo %d, source %d,\n" \
 	"$(( FULL - NONEST ))" "$(( FULL - NOWRAP ))" "$(( FULL - NOTEXT ))" "$(( FULL - NOCHECK ))" \
 	"$(( FULL - NOMEMO ))" "$(( FULL - NOSOURCE ))"
+printf "        UTF-8 %d;\n" "$(( FULL - NOUTF8 ))"
 printf "        overlays %d, selection and the clipboard %d, undo %d, to a toolkit program\n" \
 	"$(( NEST - NOOVER ))" "$(( NEST - NOSEL ))" "$(( NEST - NOUNDO ))"
 echo "        (module_nest.c)."

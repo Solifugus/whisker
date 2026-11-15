@@ -34,7 +34,7 @@ def middle(b):
 
 def post(body):
     c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=5)
-    c.request("POST", "/ev", body=body)
+    c.request("POST", "/ev", body=body.encode())
     r = c.getresponse()
     r.read()
     c.close()
@@ -64,7 +64,7 @@ class Events:
                 return None
             self.buf += got
         msg, self.buf = self.buf.split(b"\n\n", 1)
-        return msg.decode()
+        return msg.decode("utf-8", "replace")
 
     def until(self, needle, timeout=5):
         end = time.time() + timeout
@@ -122,6 +122,16 @@ try:
     ok(m is not None, "and the document that comes back has \"hi\" in the focused field")
     ok(m is not None and not m.startswith("data: 0 0 "),
        "as a clipped repaint -- the field's rows, not the whole screen")
+
+    # §5v step 3: a character beyond ASCII typed, and Backspace takes all
+    # of it -- the field's text is "hi" again, not "hi" and half an é
+    post("T \u00e9")
+    m = ev.until(">hi\u00e9</text>")
+    ok(m is not None, "an \u00e9 typed (two bytes in UTF-8) into a host that draws UTF-8")
+    post("K 5")                       # Backspace
+    m = ev.until("</svg>")
+    ok(m is not None and ">hi</text>" in m and "\ufffd" not in m,
+       "and one Backspace takes it back whole: \"hi\"")
 
     post("K 8")                       # Tab
     post("T Paris")
