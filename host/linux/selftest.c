@@ -133,6 +133,20 @@ int main(void)
 		SDL_PushEvent(&e);
 		ok(poll_until(&ev, 20) == WH_PRESS && ev.d == 2,
 		   "a press SDL counted as a second click carries d = 2 (§5w)");
+		{
+			/* a finger from a device that is not a touchscreen -- what a
+			   touchpad looked like, pressing at a fraction of the PAD */
+			SDL_Event f;
+			memset(&f, 0, sizeof f);
+			f.type = SDL_FINGERDOWN;
+			f.tfinger.touchId = 4242;
+			f.tfinger.x = 0.9f; f.tfinger.y = 0.9f;
+			SDL_PushEvent(&f);
+			ok(poll_until(&ev, 20) == WH_NOTHING,
+			   "a finger from a device that is not a touchscreen is not a press (a touchpad's taps are mouse clicks)");
+			SDL_PushEvent(&e);
+			ok(poll_until(&ev, 20) == WH_PRESS, "CONTROL: a mouse press still is");
+		}
 	}
 
 	/* And the gap, which must resolve to nothing at all. */

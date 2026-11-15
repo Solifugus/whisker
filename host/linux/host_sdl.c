@@ -27,6 +27,15 @@
  */
 #define fmul rv9_svg_fmul
 
+/* RV-9's driver says "drew N bytes in M ms" for every document -- 25 lines a
+   second from an animated program, which buried the program's own output
+   (a floor demo's "walk to" lines). Its information lines only when asked:
+   WHISKER_VERBOSE=1. Warnings and errors always. */
+#include <stdlib.h>
+#include "esp_log.h"
+#undef ESP_LOGI
+#define ESP_LOGI(t, ...) do { if (getenv("WHISKER_VERBOSE") != 0) { \
+	printf("I %s: ", t); printf(__VA_ARGS__); printf("\n"); } } while (0)
 #include "drv_svgwin.c"      /* statics and all, as tools/hosttest does */
 
 #undef fmul                  /* or math.h's gets renamed too, and collides */
@@ -225,6 +234,7 @@ int wh_poll(wh_event_t *out)
 			return WH_TEXT;
 		}
 		case SDL_MOUSEMOTION:
+			if (e.motion.which == SDL_TOUCH_MOUSEID) break;
 			if ((e.motion.state & SDL_BUTTON_LMASK) && point_of(e.motion.x, e.motion.y, out)) {
 				out->kind = WH_MOVE;
 				return WH_MOVE;
@@ -247,6 +257,9 @@ int wh_poll(wh_event_t *out)
 		   wants a point, and does not care which produced it. The panel
 		   reports five and whisker uses one (§2.6). */
 		case SDL_MOUSEBUTTONDOWN:
+			/* a touchscreen's touch is taken as a finger, below; the mouse
+			   press SDL makes of it too would press twice */
+			if (e.button.which == SDL_TOUCH_MOUSEID) break;
 			/* the right button asks for a context menu (§5s); the middle
 			   one means nothing here */
 			if (e.button.button == SDL_BUTTON_RIGHT && point_of(e.button.x, e.button.y, out))
@@ -259,19 +272,26 @@ int wh_poll(wh_event_t *out)
 			}
 			break;
 		case SDL_MOUSEBUTTONUP:
+			if (e.button.which == SDL_TOUCH_MOUSEID) break;
 			if (e.button.button == SDL_BUTTON_LEFT && point_of(e.button.x, e.button.y, out))
 				{ out->kind = WH_RELEASE; return WH_RELEASE; }
 			break;
+		/* A finger on a touchscreen, where its position is on the window.
+		   Not a touchpad's: SDL 2.32 reports those as fingers too, at
+		   fractions of the PAD, so a tap pressed somewhere else as well as
+		   where the pointer was -- two presses and no click (2026-11-15,
+		   Matthew's ThinkPad, a click on the floor demo doing nothing). A
+		   touchpad's taps arrive as mouse clicks anyway. */
 		case SDL_FINGERDOWN:
-			if (point_of((int)(e.tfinger.x * S.w * S.scale),
-			             (int)(e.tfinger.y * S.h * S.scale), out))
-				{ out->kind = WH_PRESS; out->key = 0; return WH_PRESS; }
-			break;
 		case SDL_FINGERUP:
-			if (point_of((int)(e.tfinger.x * S.w * S.scale),
-			             (int)(e.tfinger.y * S.h * S.scale), out))
-				{ out->kind = WH_RELEASE; return WH_RELEASE; }
-			break;
+		case SDL_FINGERMOTION:
+			if (SDL_GetTouchDeviceType(e.tfinger.touchId) != SDL_TOUCH_DEVICE_DIRECT) break;
+			if (!point_of((int)(e.tfinger.x * S.w * S.scale),
+			              (int)(e.tfinger.y * S.h * S.scale), out)) break;
+			if (e.type == SDL_FINGERDOWN)
+				{ out->kind = WH_PRESS; out->key = 0; out->d = 1; return WH_PRESS; }
+			out->kind = (e.type == SDL_FINGERUP) ? WH_RELEASE : WH_MOVE;
+			return out->kind;
 		default:
 			break;
 		}
