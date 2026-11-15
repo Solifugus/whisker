@@ -65,7 +65,7 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **On a desk** | `host/linux`, typing loop closed with a mouse (D7) |
 | **Decisions** | D0–D8 ratified |
 | **`SRC_MAX` on a 7-inch panel** | measured 2026-10-03: it does **not** bind; §2.3 corrected |
-| **Open** | two gates, below, and two decisions that are Matthew's |
+| **Open** | two gates, below, and four decisions that are Matthew's (§4.1, §4.2, and since 2026-11-15 §4.4 posters, §4.5 list keys) |
 
 Eight iterations' worth of work has landed, and **G1 closed on 2026-10-03
 without any** (D9). What is left is **not mostly code** — it is four
@@ -400,6 +400,21 @@ controls.
   §5c had seen in the pictures and sized away there, but never in the module.
 - `tools/evidence/p4_panel/`'s 6×10 grid had been reporting 5,639 bytes for a
   grid taller than the screen. It now says so.
+
+### 4.4 Posters in a world: a scale through layout (2026-11-15)
+
+Whether whisker's measurements — `size`, `pad`, `gap`, text widths, at
+every depth — take one scale factor from the tree that carries `nest`, so
+a stack inside a world (a poster) zooms as one. 1:1 stays byte-identical;
+the change is to the core of layout in every profile, which is why it waits
+for a yes. Design `§5q`, "Step 2, … why not posters yet".
+
+### 4.5 The keyboard in a list: one Tab stop, or roving focus (2026-11-15)
+
+Whether a selecting stack becomes one Tab stop with Up/Down inside it (A —
+reaches tables; changes §5m's Tab order deliberately) or focus roves
+between a list's buttons (B — changes nothing; tables stay mouse-only).
+Recommendation A. Design `§5z`.
 
 ## 5. What is explicitly *not* on this map
 

@@ -3999,6 +3999,34 @@ overlay's ring and the reset on close); `WSK_PANEL` **10,344** and
 
 ---
 
+
+## 5z. Proposed, not built — the keyboard in a list (a decision for Matthew)
+
+**Written 2026-11-15**, after §5y gave menus their keys. Lists and trees —
+Studio's navigator, a table's rows, `edit.c`'s file tree — are chosen from
+with a pointer only. Every desktop list moves with Up and Down. It is not
+built, because the obvious design **changes what Tab does today**, and that
+is a choice, not an arithmetic:
+
+- **A. The list is one Tab stop.** Tab reaches a selecting stack as a whole;
+  Up, Down, Home, End and Page Up/Down move its `sel` (scrolling it into
+  view); Enter is a CLICK on the chosen row. Its rows stop being Tab stops
+  of their own — today a list of buttons is one stop per button, so a
+  50-row list is 50 Tabs. This is what every desktop toolkit does, and it
+  moves existing behaviour: §5m's tests Tab through a list's buttons, and
+  `edit.c`'s table (rows of labels) would become reachable where it is not
+  now.
+- **B. Roving focus, nothing moved.** Tab stays as it is; when focus is on
+  a button inside a selecting stack, Up and Down move focus *and* the choice
+  to the row before or after. No existing behaviour changes — but a table
+  whose rows are stacks of labels has no button to focus, so it stays
+  unreachable from the keyboard.
+
+**Recommendation: A**, as a deliberate, listed change of §5m's Tab order —
+it is the one that reaches tables, and the one a person expects. The cost
+to §5m's tests is a few lines; the cost of B is that Studio's main views
+stay mouse-only. Whichever is chosen, `WSK_NO_LISTKEYS` in `WSK_PANEL`.
+
 ## 6. What would have to be true before gBASIC took this
 
 Recorded so that the bar is set now, while nothing is invested, rather than
