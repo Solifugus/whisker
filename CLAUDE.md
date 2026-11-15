@@ -202,8 +202,14 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
   edit goes through one primitive (`wsk__put`) that records it in the
   buffer's **`wsk_undo_t`, caller memory**; Ctrl-Z, Ctrl-Y/Ctrl-Shift-Z.
   `WSK_NO_UNDO`, set by `WSK_PANEL`. **Zero a buffer before setting its
-  fields** — it grows. Next: `WSK_SOURCE` (gutter, colour runs), then UTF-8
-  editing, which 1.2 % of Studio's lines need.
+  fields** — it grows.
+- **§5v step 2 — `WSK_SOURCE`** (2026-11-14): a memo for code — no wrap, a
+  gutter of line numbers (GUTTER notice on a click), and **colour runs from
+  the program** (`wsk_ink_t` in the buffer; whisker knows no syntax). Demo:
+  `host/linux/code.c`, `run.sh --code`. And **`WSK_CAP_ENTITY`**: `<` `>` `&`
+  in text for a host that decodes entities — the browser; `/w0` does not,
+  so the SDL window refuses real code until RV-9 does
+  (`docs/rv9-request-entities.md`). Next: UTF-8 editing (step 3).
 
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
@@ -212,12 +218,13 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **631 checks**, including a step
+`src/run.sh --module` is the whole of it: **664 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 39, including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
-`host/web/run.sh --test` adds 28 over HTTP and 18 in headless Chrome.
+`host/web/run.sh --test` adds 29 over HTTP, 18 in headless Chrome, and 7 for
+the code editor (`code.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

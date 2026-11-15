@@ -21,7 +21,7 @@ echo
 echo "-- 1  the document parses, by something that is not us"
 python3 - <<'PY'
 import xml.dom.minidom as m
-for f in ("/tmp/wsk_full.svg", "/tmp/wsk_clip.svg", "/tmp/wsk_compose.svg", "/tmp/wsk_nest.svg", "/tmp/wsk_wrap.svg"):
+for f in ("/tmp/wsk_full.svg", "/tmp/wsk_clip.svg", "/tmp/wsk_compose.svg", "/tmp/wsk_nest.svg", "/tmp/wsk_wrap.svg", "/tmp/wsk_entity.svg"):
 	m.parse(f)
 	print("ok    %s is well-formed XML" % f)
 PY
@@ -61,7 +61,7 @@ for W in wrapped text; do
 done
 # The controls. Without these, "byte for byte" is satisfied by a minimal build
 # that draws a field as a label and says nothing.
-for W in field marked scrolled nested wrapped text check memo arrow; do
+for W in field marked scrolled nested wrapped text check memo arrow source; do
 	F="$(/tmp/wsk_prof_full $W)"; M="$(/tmp/wsk_prof_min $W)"
 	case "$F$M" in
 	drew*refused\ -6*) echo "ok    CONTROL: $W -- full ${F%% bytes*} bytes, minimal ${M}" ;;
@@ -83,14 +83,14 @@ int g(wsk_tree_t *t, wsk_sink_t *s) { return wsk_render(t, s, 4096) + wsk_hit(t,
 C
 for D in "" -DWSK_PANEL -DWSK_MINIMAL -DWSK_NO_FIELD -DWSK_NO_MARKS -DWSK_NO_SCROLL \
          -DWSK_NO_NEST -DWSK_NO_WRAP -DWSK_NO_TEXT -DWSK_NO_OVER -DWSK_NO_CHECK \
-         -DWSK_NO_MEMO -DWSK_NO_INPUT -DWSK_NO_UTF8 -DWSK_NO_IMAGE -DWSK_NO_TEXTSEL -DWSK_NO_UNDO; do
+         -DWSK_NO_MEMO -DWSK_NO_INPUT -DWSK_NO_UTF8 -DWSK_NO_IMAGE -DWSK_NO_TEXTSEL -DWSK_NO_UNDO -DWSK_NO_SOURCE -DWSK_NO_ENTITY; do
 	if ${CC:-gcc} -O1 -Wall -Wextra -Werror $D -I"$HERE" -c -o /dev/null /tmp/wsk_switch.c 2>/tmp/wsk_switch.err; then
 		:
 	else
 		echo "FAIL  whisker.h does not build with '${D:-the default}'"; head -5 /tmp/wsk_switch.err; exit 1
 	fi
 done
-echo "ok    whisker.h builds with each of the 17 profiles and switches, -Werror"
+echo "ok    whisker.h builds with each of the 19 profiles and switches, -Werror"
 
 echo
 echo "-- 3, 8  through RV-9's own rasteriser, to a picture"
@@ -148,6 +148,8 @@ link_check module_nest.c "module_nest.c -DWSK_NO_TEXTSEL" -DWSK_NO_TEXTSEL
 NOSEL="$SIZE"
 link_check module_nest.c "module_nest.c -DWSK_NO_UNDO" -DWSK_NO_UNDO
 NOUNDO="$SIZE"
+link_check module_shape.c "module_shape.c -DWSK_NO_SOURCE" -DWSK_NO_SOURCE
+NOSOURCE="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_CHECK" -DWSK_NO_CHECK
 NOCHECK="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_MEMO" -DWSK_NO_MEMO
@@ -162,9 +164,9 @@ printf "        desktop, browser   (default)       %6d bytes\n" "$FULL"
 printf "        touch panel, P4    -DWSK_PANEL     %6d\n" "$PANEL"
 printf "        readout, C5        -DWSK_MINIMAL   %6d\n" "$MIN"
 echo "      and what each part costs the default, by building without it:"
-printf "        nesting %d, wrap %d, text items %d, the check %d, the memo %d;\n" \
+printf "        nesting %d, wrap %d, text items %d, the check %d, the memo %d, source %d;\n" \
 	"$(( FULL - NONEST ))" "$(( FULL - NOWRAP ))" "$(( FULL - NOTEXT ))" "$(( FULL - NOCHECK ))" \
-	"$(( FULL - NOMEMO ))"
+	"$(( FULL - NOMEMO ))" "$(( FULL - NOSOURCE ))"
 printf "        overlays %d, selection and the clipboard %d, undo %d, to a toolkit program\n" \
 	"$(( NEST - NOOVER ))" "$(( NEST - NOSEL ))" "$(( NEST - NOUNDO ))"
 echo "        (module_nest.c)."

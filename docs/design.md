@@ -3371,10 +3371,64 @@ before — 35 files — byte-identical with the buffer's positions widened to
   undo nor selection, and a module cannot call `memset`.)
 - `edit.c`'s three fields keep 2 KB of undo each.
 
-**§7's question**: building *without* undo comes out **92 bytes larger**
+**§7's question** (step 1): building *without* undo comes out **92 bytes larger**
 for a toolkit program — the compiler inlines the one edit primitive
 differently — so undo's cost is, as measured, nothing. `WSK_PANEL` +20
 (10,244), from the wider positions; `WSK_MINIMAL` unchanged.
+
+### What the second step came to, 2026-11-14: `WSK_SOURCE`
+
+**664 checks** (631 before): 26 in the suite, 6 at the pixels, a profile
+control; **19** profiles and switches build. Every earlier output
+byte-identical. In a browser, **7 more** checks in headless Chrome
+(`host/web/code.mjs`).
+
+- **The widget**: a memo for code — it shares the memo's editing, selection,
+  undo and view, and never wraps. A **gutter** of line numbers in the
+  window's `bg`, two digits wide at least and widening as a file passes 99,
+  999 lines; a press there puts the caret at the line's start and its
+  release notes **GUTTER** with the line — Studio's breakpoints. The control:
+  a press in the text is a click and no GUTTER.
+- **Colour runs from the program**, drawn as a `<text>` per run at its
+  column; gaps in the widget's ink; a piece's opening spaces not sent, its x
+  says where. Runs out of order or overlapping refused; a run past the end
+  ignored, since the text may just have shrunk. At the pixels through RV-9's
+  rasteriser: "function" is blue and the comment green, "n * n" neither (the
+  control) — measured **by hue**, because thin anti-aliased glyphs at 16 px
+  put almost no pixel on their ink (two of 1,024 within 40 of it); the
+  first, exact-colour version of the check was wrong, as §5s's was.
+- **300 KB** — Studio's own file size: drawn with the last line's number and
+  a 5-digit gutter, typed into past offset 32,767 by ten times, Home to the
+  line's start. The memo's draw now walks the text once a picture, not once a
+  row. The whole suite still runs in 15 ms.
+- **Found, and not a source matter: `<`, `>` and `&`.** Code is full of them
+  and whisker refused them in all text, because `/w0` draws `&lt;` as four
+  characters (§2.4). That is a host's limit, so it became a capability:
+  **`WSK_CAP_ENTITY`** — a host that decodes the three says so, and whisker
+  accepts them and escapes them as it writes, in its one `<text>` emitter.
+  Without the bit nothing changes, byte for byte (no `&` ever reached the
+  emitter before). The browser claims it; SDL and RV-9 do not, so **the
+  desktop window refuses `sample.bas`**, by name, until RV-9 decodes the
+  three entities — `docs/rv9-request-entities.md` asks it to. The board tiers
+  carry none of it (`WSK_NO_ENTITY`): `WSK_MINIMAL` is 3,788, as before.
+- **Found in the browser: runs of spaces collapsed.** An SVG collapses them,
+  `/w0` does not; indentation survived anyway (each run is placed at its
+  column) but ten spaces inside a comment drew as one. `xml:space` on the
+  root did nothing in Chrome — measured; `white-space:pre` in the page's
+  style does — measured both ways, 450 against 369.
+- **The demo, `host/linux/code.c`** (`run.sh --code`, either host): opens
+  `sample.bas` or any file, colours it with gBASIC's own keyword list (from
+  its lexer) — strings, comments, numbers, calls — re-colours on each TEXT
+  notice before repainting, prints breakpoints from the gutter, never writes
+  the file.
+
+**§7's question**: source is **740 bytes** in the default (14,120 for a
+small panel: +936 since step 1, with entities and the memo's single pass);
+`WSK_PANEL` **10,284** (+40); `WSK_MINIMAL` **3,788**, unchanged.
+
+**Left for step 3, and named**: UTF-8 in fields, memos and source —
+1.2 % of gBASIC's lines; until then such a file is refused. And breakpoint
+*marks* in the gutter, which the program can only print today.
 
 ---
 

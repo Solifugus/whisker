@@ -80,6 +80,24 @@ static uint16_t pix565(unsigned int c)
 	return (uint16_t)(((c >> 8) & 0xF800) | ((c >> 5) & 0x07E0) | ((c >> 3) & 0x001F));
 }
 
+/*
+ * Pixels in a rectangle of a hue: bright, and blue (hue 'b') or green ('g')
+ * clearly leading. Thin anti-aliased glyphs at 16 px rarely reach their ink
+ * on any pixel -- measured: two of 64x16 within 40 of it -- so a check asks
+ * what the eye sees, the hue, not the exact colour.
+ */
+static int hue(wsk_rect_t r, char h)
+{
+	int n = 0;
+	for (int y = r.y; y < r.y + r.h && y < PH; y++)
+		for (int x = r.x; x < r.x + r.w && x < PW; x++) {
+			uint16_t v = at(x, y);
+			int R = ((v >> 11) & 0x1F) * 255 / 31, G = ((v >> 5) & 0x3F) * 255 / 63, B = (v & 0x1F) * 255 / 31;
+			if (h == 'b' ? (B > 120 && B - R > 60) : (G > 100 && G - B > 25 && G - R > 15)) n++;
+		}
+	return n;
+}
+
 static void shot(const char *name)
 {
 	FILE *o = fopen(name, "wb");
@@ -1572,6 +1590,83 @@ int main(void)
 		   "the memo holds what was typed, and no line break: wrapping is drawing");
 		ok(good, "every keystroke's rows, repainted alone, equal a full redraw");
 		shot("memo_wrap.ppm");
+	}
+
+	/*
+	 * Source, at the pixels (design.md §5v): a gutter, and colour runs the
+	 * program gave -- through RV-9's own rasteriser, which is what the
+	 * desktop window and the boards draw with. No < > & here: /w0 cannot
+	 * take them until it decodes entities.
+	 */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_SOURCE, .id = "s", .sub = 0, .weight = 1 },
+		};
+		static char sb[128] = "' squares\nfunction sq(n)\n    return n * n\nend function\n\nprint sq(12)";
+		static uint16_t want[PW * PH];
+		wsk_ink_t ik[12];
+		wsk_buf_t buf[1];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[2];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		uint32_t v;
+		int y0, y1, ni = 0, lo, hi;
+		/* the program's colouring: keywords, a comment, a number, a call --
+		   each found in the text in order, as a program's scanner would */
+		static const struct { const char *word; unsigned int ink; } RUNS[] = {
+			{ "' squares", 0x6a9955u }, { "function", 0x569cd6u }, { "sq", 0xdcdcaau },
+			{ "return", 0x569cd6u }, { "end", 0x569cd6u }, { "function", 0x569cd6u },
+			{ "print", 0x569cd6u }, { "sq", 0xdcdcaau }, { "12", 0xb5cea8u },
+		};
+		{
+			const char *from = sb;
+			for (int i = 0; i < 9; i++) {
+				const char *at = strstr(from, RUNS[i].word);
+				ik[ni].at = (int)(at - sb); ik[ni].len = (int)strlen(RUNS[i].word);
+				ik[ni].ink = RUNS[i].ink; ni++;
+				from = at + strlen(RUNS[i].word);
+			}
+		}
+		memset(buf, 0, sizeof buf);
+		buf[0].b = sb; buf[0].cap = sizeof sb; buf[0].len = (int)strlen(sb);
+		buf[0].inks = ik; buf[0].ninks = ni;
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 4; w.gap = 4; w.bg = 0x10203au; w.font = 16; w.item = F; w.n = 1; w.buf = buf; w.bufs = 1;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		s.put = to_window; s.ctx = &dev;
+
+		printf("\n  source (§5v)\n");
+		ok(wsk_check(&w, 0) == WSK_OK,
+		   "six lines of gBASIC and nine colour runs, as a program would give them");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		{
+			/* row k at 4 + 6 + 20k, text from 4 + 24 + 6 = 34, 8 a character */
+			wsk_rect_t kwr = { 34, 4 + 6 + 20, 8 * 8, 16 }, com = { 34 + 16, 4 + 6, 7 * 8, 16 };
+			wsk_rect_t ink = { 34 + 11 * 8, 4 + 6 + 40, 5 * 8, 16 };
+			wsk_rect_t gut = { 4, 4, 24, (short)(PH - 8) }, after = { 4 + 24 + 1, 4, 4, (short)(PH - 8) };
+			printf("    blue on \"function\" %d, green on the comment %d\n", hue(kwr, 'b'), hue(com, 'g'));
+			ok(hue(kwr, 'b') > 30 && hue(kwr, 'g') == 0, "\"function\" on line 2 is blue, the keyword colour");
+			ok(hue(com, 'g') > 30 && hue(com, 'b') == 0, "the comment on line 1 is green");
+			ok(hue(ink, 'b') == 0 && hue(ink, 'g') == 0, "CONTROL: \"n * n\", no run, is neither");
+			ok(span(gut, pix565(w.bg), &lo, &hi) > 100 && span(after, pix565(w.bg), &lo, &hi) == 0,
+			   "the gutter is the window's background, and stops where the trough starts");
+		}
+		wsk_ui_focus(&ui, "s", &y0, &y1);
+		ev.kind = WSK_EV_TEXT; snprintf(ev.text, sizeof ev.text, "!");
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+		v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render_rows(&w, y0, y1, &s, 4096);
+		memcpy(want, screen, sizeof screen);
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		ok(y1 > y0 && sb[0] == '!' && memcmp(screen, want, sizeof screen) == 0,
+		   "a keystroke typed, and its rows, repainted alone, equal a full redraw");
+		shot("source.ppm");
 	}
 
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);

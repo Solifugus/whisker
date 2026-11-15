@@ -56,10 +56,12 @@ static const char PAGE[] =
 "</style></head><body><canvas id=c tabindex=0></canvas><script>\n"
 "const c=document.getElementById('c'),g=c.getContext('2d');\n"
 "let W=0,H=0,chain=Promise.resolve(),sent=Promise.resolve(),drawn=0;\n"
-/* whisker's advance is half the font size; make the browser's monospace agree */
+/* whisker's advance is half the font size; make the browser's monospace
+   agree -- and keep runs of spaces, which an SVG collapses and /w0 does not
+   (§5v: measured, xml:space on the root did nothing in Chrome; this does) */
 "g.font='100px monospace';\n"
 "const ls=(0.5-g.measureText('M').width/100).toFixed(4);\n"
-"const STYLE='<style>text{font-family:monospace;letter-spacing:'+ls+'em}</style>';\n"
+"const STYLE='<style>text{font-family:monospace;letter-spacing:'+ls+'em;white-space:pre}</style>';\n"
 /* an SVG drawn as an image may load nothing from outside itself, so each
    image is fetched once, kept as a data URL, and written into the SVG */
 "const IMG={};\n"
@@ -404,9 +406,10 @@ int wh_open(int w, int h, int scale, const char *title)
 
 void wh_clip(int y0, int y1) { S.y0 = y0; S.y1 = y1; }
 
-/* A browser draws UTF-8, images and clip paths (§5r). Not opacity yet: the
-   page composites by rows onto a canvas, and nothing whisker draws uses it. */
-int wh_caps(void) { return WH_CAP_UTF8 | WH_CAP_IMAGE | WH_CAP_CLIP; }
+/* A browser draws UTF-8, images and clip paths (§5r), and decodes entities,
+   so text may hold < > & (§5v). Not opacity yet: the page composites by
+   rows onto a canvas, and nothing whisker draws uses it. */
+int wh_caps(void) { return WH_CAP_UTF8 | WH_CAP_IMAGE | WH_CAP_CLIP | WH_CAP_ENTITY; }
 
 /* Collect a document; at "</svg>" send it, with its rows, to every page. */
 void wh_write(const void *bytes, int n)

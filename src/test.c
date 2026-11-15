@@ -3329,6 +3329,171 @@ int main(void)
 #undef REDO
 	}
 
+	/* ---- §5v. source: a gutter, colour runs ---- */
+	printf("\n-- §5v  source\n");
+	{
+		static const wsk_widget_t FS[] = {
+			{ .kind = WSK_SOURCE, .id = "src", .sub = 0, .size = 120 },
+		};
+		static char big[320000];
+		char sb[128] = "";
+		wsk_ink_t ik[4];
+		wsk_buf_t buf[1];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char sd[4096];
+		int n, y0 = 0, y1 = 0, which = -2;
+
+		/* 320 wide, pad 4: the widget 4..316, 120 high from 4. Under 100
+		   lines the gutter is 3 characters, 24 px; the text's column 0 at
+		   4 + 24 + 6 = 34; a number's last digit ends at 4 + 24 - 4 = 24 */
+		memset(buf, 0, sizeof buf);
+		buf[0].b = sb; buf[0].cap = sizeof sb;
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.pad = 4; w.gap = 4; w.item = FS; w.n = 1; w.buf = buf; w.bufs = 1;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+#define SET(S, C) (snprintf(sb, sizeof sb, "%s", (S)), buf[0].len = (int)strlen(sb), \
+                   buf[0].caret = (C), buf[0].top = 0, buf[0].span = 0)
+
+		SET("print \"hi\" ' note\ny = 2", 0);
+		ok(wsk_check(&w, 0) == WSK_OK, "a source widget of two lines");
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(has(sd, "<rect x=\"4\" y=\"4\" width=\"24\" height=\"120\""),
+		   "its gutter: three characters wide, the widget's height, in the window's background");
+		ok(has(sd, "x=\"16\" y=\"") && has(sd, ">1</text>") && has(sd, ">2</text>"),
+		   "the lines numbered, the last digit at 24");
+		ok(has(sd, ">print \"hi\" ' note</text>") && has(sd, "x=\"34\""),
+		   "CONTROL: with no colour runs, a line is one <text> in the widget's ink, at x 34");
+		ik[0].at = 0;  ik[0].len = 5; ik[0].ink = 0x569cd6u;      /* print   */
+		ik[1].at = 6;  ik[1].len = 4; ik[1].ink = 0xce9178u;      /* "hi"    */
+		ik[2].at = 11; ik[2].len = 6; ik[2].ink = 0x6a9955u;      /* ' note  */
+		buf[0].inks = ik; buf[0].ninks = 3;
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(has(sd, "x=\"34\" y=\"") && has(sd, "fill=\"#569cd6\">print</text>") &&
+		   has(sd, "x=\"82\" y=\"") && has(sd, "fill=\"#ce9178\">\"hi\"</text>") &&
+		   has(sd, "x=\"122\" y=\"") && has(sd, "fill=\"#6a9955\">' note</text>"),
+		   "with runs: each a <text> at its column -- print at 34, \"hi\" at 34 + 6 x 8, the comment at 34 + 11 x 8");
+		ok(has(sd, ">y = 2</text>"), "and a line no run touches is drawn as before");
+		SET("a = b", 0);
+		ik[0].at = 0; ik[0].len = 1;                               /* a */
+		buf[0].ninks = 1;
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(has(sd, "fill=\"#569cd6\">a</text>") && has(sd, "x=\"50\" y=\"") && has(sd, ">= b</text>"),
+		   "the gap after a run is the widget's ink, its opening space not sent: \"= b\" at column 2, x 50");
+		ik[0].at = 5; ik[0].len = 2; ik[1].at = 0; ik[1].len = 3;
+		buf[0].ninks = 2;
+		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 0, "runs out of order are refused");
+		ik[0].at = 0; ik[0].len = 5; ik[1].at = 3; ik[1].len = 4;
+		ok(wsk_check(&w, 0) == WSK_E_TEXT, "and runs over each other");
+		ik[0].at = 0; ik[0].len = 1; ik[1].at = 40; ik[1].len = 4;
+		ok(wsk_check(&w, 0) == WSK_OK && render_into(&w, sd, sizeof sd, 4096) > 0,
+		   "a run past the end is not refused: the text may just have shrunk");
+		buf[0].inks = 0; buf[0].ninks = 0;
+
+		/* never wraps, whatever the buffer says: a long line slides */
+		SET("abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", 62);
+		buf[0].wrap = 1;
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(!has(sd, ">abc") && has(sd, "XYZ</text>") && count(sd, "</text>") == 2,
+		   "source never wraps: 62 characters, the view slid to the caret -- one row and its number");
+		buf[0].wrap = 0;
+
+		/* a press in the gutter: the line's start, and on release its line */
+		SET("one\ntwo\nthree", 0);
+		ev.kind = WSK_EV_DOWN; ev.x = 10; ev.y = 4 + 6 + 20 + 5;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(buf[0].caret == 4, "a press in the gutter by line 1: the caret at its start, 4");
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_CLICK && nt[1].kind == WSK_NOTE_GUTTER && nt[1].value == 1,
+		   "and its release: CLICK, then GUTTER with the line, 1 -- Studio's breakpoint");
+		ev.kind = WSK_EV_DOWN; ev.x = 34 + 2 * 8 + 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && buf[0].caret == 6,
+		   "CONTROL: a press in the text is a click, no GUTTER, the caret at column 2");
+
+		/* the size of Studio's own file */
+		{
+			int L = 0, last = 0;
+			for (int i = 0; L < (int)sizeof big - 40; i++)
+				L += snprintf(big + L, sizeof big - (size_t)L, "line %05d of a long file\n", i + 1);
+			big[--L] = '\0';                /* no line break at the end */
+			memset(buf, 0, sizeof buf);
+			buf[0].b = big; buf[0].cap = sizeof big; buf[0].len = L; buf[0].caret = L;
+			wsk_ui_init(&ui, &w);
+			for (int i = 0; i < L; i++) if (big[i] == '\n') last++;
+			snprintf(sb, sizeof sb, ">%d</text>", last + 1);
+			ok(L > 300000 && wsk_check(&w, 0) == WSK_OK && render_into(&w, sd, sizeof sd, 4096) > 0 &&
+			   has(sd, sb) && has(sd, "<rect x=\"4\" y=\"4\" width=\"48\" height=\"120\""),
+			   "a 300 KB buffer, its caret at the end: the last line's number drawn, the gutter 6 wide for 5 digits");
+			wsk_ui_focus(&ui, "src", &y0, &y1);
+			ev.kind = WSK_EV_TEXT; snprintf(ev.text, sizeof ev.text, "!");
+			n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			ok(n == 1 && buf[0].len == L + 1 && big[L] == '!', "and typed into at its end, past offset 32,767 by ten times");
+			ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_HOME;
+			wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			ok(buf[0].caret == L + 1 - 26, "HOME goes to that line's start: 25 characters and the !");
+		}
+#undef SET
+	}
+
+	/* ---- §5v. < > & in text, for a host that decodes entities ---- */
+	printf("\n-- §5v  entities\n");
+	{
+		static const wsk_widget_t FE[] = {
+			{ .kind = WSK_LABEL,  .id = "l", .text = "if a < b & c > d", .size = 32 },
+			{ .kind = WSK_SOURCE, .id = "s", .sub = 0, .size = 80 },
+		};
+		char sb[64] = "while i < 10\n    i = i & 3", ed[4096];
+		wsk_buf_t buf[1];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int which = -2, y0, y1;
+
+		memset(buf, 0, sizeof buf);
+		buf[0].b = sb; buf[0].cap = sizeof sb; buf[0].len = (int)strlen(sb);
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.pad = 4; w.gap = 4; w.ids = 1; w.item = FE; w.n = 2; w.buf = buf; w.bufs = 1;
+		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 0,
+		   "without WSK_CAP_ENTITY, a label holding < & > is refused, as on /w0 it must be");
+		w.n = 1; w.item = &FE[1];
+		ok(wsk_check(&w, &which) == WSK_E_TEXT, "and so is code holding them, in a source widget");
+		w.caps = WSK_CAP_ENTITY; w.item = FE; w.n = 2;
+		ok(wsk_check(&w, 0) == WSK_OK, "with it, both are accepted");
+		render_into(&w, ed, sizeof ed, 4096);
+		ok(has(ed, ">if a &lt; b &amp; c &gt; d</text>") && has(ed, ">while i &lt; 10</text>") &&
+		   has(ed, ">i = i &amp; 3</text>"), "and written escaped: &lt; &amp; &gt;");
+		{
+			wsk_tree_t row;
+			wsk_widget_t one = FE[0];
+			one.size = 0;
+			wsk_init(&row, WSK_ROW, 320, 200);
+			row.pad = 4; row.gap = 4; row.item = &one; row.n = 1; row.caps = WSK_CAP_ENTITY;
+			ok(wsk_rect(&row, 0).w == 16 * 8 + 2 * 4,
+			   "measured in characters: sized by its text, \"if a < b & c > d\" is 16 wide, not the 26 written");
+		}
+		{
+			FILE *f = fopen("/tmp/wsk_entity.svg", "wb");
+			fputs(ed, f); fclose(f);
+		}
+		wsk_ui_init(&ui, &w);
+		wsk_ui_focus(&ui, "s", &y0, &y1);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_TEXT; snprintf(ev.text, sizeof ev.text, "<");
+		ok(wsk_feed(&ui, &ev, nt, 4, &y0, &y1) == 1 && sb[buf[0].caret - 1] == '<',
+		   "and typed: < goes into the text as itself");
+		w.caps = 0;
+		snprintf(ev.text, sizeof ev.text, ">");
+		ok(wsk_feed(&ui, &ev, nt, 4, &y0, &y1) == 0, "CONTROL: for a host without the bit, typing > is refused");
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

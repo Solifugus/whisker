@@ -106,6 +106,8 @@
  *     -DWSK_NO_INPUT    the toolkit: events, focus, editing
  *     -DWSK_NO_TEXTSEL  selection in a field, and the clipboard (§5s)
  *     -DWSK_NO_UNDO     undo and redo of what was typed (§5v)
+ *     -DWSK_NO_SOURCE   the code editor: a gutter, colour runs (§5v)
+ *     -DWSK_NO_ENTITY   < > & in text, for a host that decodes entities (§5v)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -132,6 +134,9 @@
 #  ifndef WSK_NO_UNDO
 #    define WSK_NO_UNDO 1          /* a desktop's, as the clipboard is */
 #  endif
+#  ifndef WSK_NO_SOURCE
+#    define WSK_NO_SOURCE 1        /* and so is a code editor */
+#  endif
 #endif
 #ifdef WSK_MINIMAL
 #  ifndef WSK_NO_INPUT
@@ -155,11 +160,18 @@
 #if (defined(WSK_MINIMAL) || defined(WSK_PANEL)) && !defined(WSK_NO_IMAGE)
 #  define WSK_NO_IMAGE 1
 #endif
+/* nor does /w0 decode &lt; -- measured, it draws four characters (§2.4) */
+#if (defined(WSK_MINIMAL) || defined(WSK_PANEL)) && !defined(WSK_NO_ENTITY)
+#  define WSK_NO_ENTITY 1
+#endif
 #if defined(WSK_PANEL) && !defined(WSK_NO_UTF8)
 #  define WSK_NO_UTF8 1
 #endif
 #if defined(WSK_NO_FIELD) && !defined(WSK_NO_MEMO)
 #  define WSK_NO_MEMO 1            /* a memo is a field with lines (§5o) */
+#endif
+#if defined(WSK_NO_MEMO) && !defined(WSK_NO_SOURCE)
+#  define WSK_NO_SOURCE 1          /* and source is a memo for code (§5v) */
 #endif
 #ifdef WSK_MINIMAL
 #  ifndef WSK_NO_FIELD
@@ -209,7 +221,19 @@
    build refuses WSK_FIELD, it does not renumber around it. A caller's panel,
    a golden and an id mean the same thing whatever this was compiled with. */
 enum { WSK_LABEL = 1, WSK_BUTTON, WSK_FIELD, WSK_STACK, WSK_TEXT, WSK_CHECK, WSK_MEMO,
-       WSK_IMAGE };
+       WSK_IMAGE, WSK_SOURCE };
+
+#ifndef WSK_NO_MEMO
+/* A widget of many lines: a memo, or source -- a memo for code (§5v). */
+static inline int wsk__lined(int kind)
+{
+	return kind == WSK_MEMO
+#ifndef WSK_NO_SOURCE
+	    || kind == WSK_SOURCE
+#endif
+	    ;
+}
+#endif
 enum { WSK_COL = 1, WSK_ROW };
 
 /*
@@ -291,7 +315,11 @@ enum {
 	WSK_CAP_UTF8    = 1,         /* text beyond ASCII */
 	WSK_CAP_IMAGE   = 2,         /* <image> */
 	WSK_CAP_CLIP    = 4,         /* <clipPath>: text slides at a scroll's edge */
-	WSK_CAP_OPACITY = 8          /* transparency: the world's fade (§5q) */
+	WSK_CAP_OPACITY = 8,         /* transparency: the world's fade (§5q) */
+	WSK_CAP_ENTITY  = 16         /* decodes &lt; &gt; &amp;: text may hold
+	                                < > &, escaped as it is written (§5v).
+	                                /w0 does not -- it draws &lt; as four
+	                                characters -- and code is full of them */
 };
 
 /* Where a stack's labels and buttons put their text (§5n): the middle of
@@ -336,6 +364,17 @@ typedef struct {
 	unsigned char join;          /* the last step may grow: typing */
 } wsk_undo_t;
 
+/*
+ * A colour run (§5v): `len` characters from `at` in `ink` -- the PROGRAM's
+ * colouring of its own text, since whisker knows no language's syntax. An
+ * array of them, sorted and not overlapping; characters none covers are in
+ * the widget's ink.
+ */
+typedef struct {
+	int          at, len;
+	unsigned int ink;
+} wsk_ink_t;
+
 typedef struct {
 	char  *b;
 	int    cap, len, caret;      /* int, not short: Studio's own files are
@@ -348,6 +387,10 @@ typedef struct {
 	                                0 slides sideways to the caret (§5u) */
 #ifndef WSK_NO_UNDO
 	wsk_undo_t   *undo;          /* what Ctrl-Z undoes, or 0 for none (§5v) */
+#endif
+#ifndef WSK_NO_SOURCE
+	const wsk_ink_t *inks;       /* source: its colour runs, or 0 (§5v) */
+	int           ninks;
 #endif
 } wsk_buf_t;
 
@@ -694,6 +737,18 @@ static inline const char *wsk__href(const wsk_tree_t *t, const wsk_widget_t *w)
  * window draws them literally or not at all (§2.4) -- and so is any byte that
  * starts no character, ends one too soon, or spells one the long way round.
  */
+/* One of the three characters text cannot carry raw: drawable only where
+   the host decodes entities (§5v). */
+static inline int wsk__markup(int c, int caps)
+{
+#ifdef WSK_NO_ENTITY
+	(void)caps;
+	return c == '<' || c == '&' || c == '>';
+#else
+	return (c == '<' || c == '&' || c == '>') && !(caps & WSK_CAP_ENTITY);
+#endif
+}
+
 static inline int wsk__text_ok(const char *t, int caps)
 {
 #ifndef WSK_NO_UTF8
@@ -702,7 +757,7 @@ static inline int wsk__text_ok(const char *t, int caps)
 			unsigned char c = (unsigned char)t[i];
 			int more = 0;
 			if (c < 0x80) {
-				if (c < 32 || c == 127 || c == '<' || c == '&' || c == '>') return 0;
+				if (c < 32 || c == 127 || wsk__markup(c, caps)) return 0;
 				i++;
 				continue;
 			}
@@ -716,10 +771,12 @@ static inline int wsk__text_ok(const char *t, int caps)
 		}
 		return 1;
 	}
-#else
-	(void)caps;
 #endif
-	return wsk_text_ok(t);
+	for (int i = 0; t[i] != '\0'; i++) {
+		char c = t[i];
+		if (c < 32 || c > 126 || wsk__markup(c, caps)) return 0;
+	}
+	return 1;
 }
 
 static inline int wsk_text_ok(const char *t)
@@ -940,7 +997,7 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 		   filled one by hand is checked the same way. */
 		if ((t->item[i].kind == WSK_FIELD
 #ifndef WSK_NO_MEMO
-		     || t->item[i].kind == WSK_MEMO
+		     || wsk__lined(t->item[i].kind)
 #endif
 		    ) && t->buf != 0 &&
 		    t->item[i].sub >= 0 && t->item[i].sub < t->bufs) {
@@ -956,8 +1013,19 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 			for (int k = 0; k < b->len && good; k++) {
 				char c = b->b[k];
 				if (c == '\n' && t->item[i].kind != WSK_FIELD) continue;
-				if (c < 32 || c > 126 || c == '<' || c == '&' || c == '>') good = 0;
+				if (c < 32 || c > 126 || wsk__markup(c, t->caps)) good = 0;
 			}
+#ifndef WSK_NO_SOURCE
+			/* colour runs in order, none over another, none before 0 --
+			   past the end is allowed: the text may just have shrunk */
+			if (t->item[i].kind == WSK_SOURCE && b->ninks > 0) {
+				if (b->inks == 0) good = 0;
+				for (int k = 0; good && k < b->ninks; k++)
+					if (b->inks[k].at < 0 || b->inks[k].len < 0 ||
+					    (k > 0 && b->inks[k].at < b->inks[k - 1].at + b->inks[k - 1].len))
+						good = 0;
+			}
+#endif
 			if (!good) {
 				if (which != 0) *which = i;
 				return WSK_E_TEXT;
@@ -966,6 +1034,12 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 #endif
 #ifdef WSK_NO_MEMO
 		if (t->item[i].kind == WSK_MEMO) {
+			if (which != 0) *which = i;
+			return WSK_E_KIND;
+		}
+#endif
+#ifdef WSK_NO_SOURCE
+		if (t->item[i].kind == WSK_SOURCE) {
 			if (which != 0) *which = i;
 			return WSK_E_KIND;
 		}
@@ -2453,7 +2527,7 @@ static inline void wsk__rect(wsk_sink_t *s, const wsk_tree_t *t,
 #ifndef WSK_NO_FIELD
 	         : (w->kind == WSK_FIELD
 #ifndef WSK_NO_MEMO
-	            || w->kind == WSK_MEMO
+	            || wsk__lined(w->kind)
 #endif
 	           ) ? t->trough
 #endif
@@ -2559,7 +2633,21 @@ static inline void wsk__textel(wsk_sink_t *s, int start, int x, int base,
 		wsk__col(s, ink);
 	}
 	wsk__s(s, "\">");
+#ifdef WSK_NO_ENTITY
 	wsk__w(s, b, n);
+#else
+	/* < & > reach here only from a host that decodes entities -- the checks
+	   refuse them elsewhere -- so they are escaped whenever they come, and
+	   text without them is written exactly as it always was */
+	for (int i = 0, from = 0; i <= n; i++) {
+		const char *e = (i == n) ? 0 : (b[i] == '<') ? "&lt;" : (b[i] == '>') ? "&gt;"
+		              : (b[i] == '&') ? "&amp;" : 0;
+		if (i < n && e == 0) continue;
+		if (i > from) wsk__w(s, b + from, i - from);
+		if (e != 0) wsk__s(s, e);
+		from = i + 1;
+	}
+#endif
 	wsk__s(s, "</text>");
 }
 
@@ -2650,7 +2738,7 @@ static inline wsk_buf_t *wsk__fbuf(const wsk_tree_t *t, const wsk_widget_t *w)
 {
 	if ((w->kind != WSK_FIELD
 #ifndef WSK_NO_MEMO
-	     && w->kind != WSK_MEMO
+	     && !wsk__lined(w->kind)
 #endif
 	    ) || t->buf == 0 || w->sub < 0 || w->sub >= t->bufs)
 		return 0;
@@ -2790,10 +2878,11 @@ static inline int wsk__vis(const wsk_tree_t *t, wsk_rect_t r)
  * and for one that does not, so many that a row is a whole line as typed.
  */
 #define WSK_NOWRAP 32767
-static inline int wsk__mroom(const wsk_tree_t *t, wsk_rect_t r, const wsk_buf_t *b)
+static inline int wsk__mroom(const wsk_tree_t *t, const wsk_widget_t *w, wsk_rect_t r,
+                              const wsk_buf_t *b)
 {
 	int room = (r.w - 2 * WSK_FIELD_PAD - WSK_CARET_W) / wsk_advance(t->font);
-	if (b == 0 || !b->wrap) return WSK_NOWRAP;
+	if (b == 0 || !b->wrap || w->kind != WSK_MEMO) return WSK_NOWRAP;   /* source never wraps */
 	return (room < 1) ? 1 : room;
 }
 
@@ -2867,6 +2956,66 @@ static inline int wsk__left(const wsk_tree_t *t, wsk_rect_t r, int col)
 	return (col > room) ? col - room : 0;
 }
 
+#ifndef WSK_NO_SOURCE
+/*
+ * A source widget's gutter: room for its last line's number, two digits at
+ * least, and one character between it and the text -- so it widens only
+ * when a file passes 99 lines, 999, and so on.
+ */
+static inline int wsk__gutter(const wsk_tree_t *t, const char *txt, int len)
+{
+	int lines = 1, d = 1;
+	for (int i = 0; i < len; i++) if (txt[i] == '\n') lines++;
+	for (int v = lines; v >= 10; v /= 10) d++;
+	if (d < 2) d = 2;
+	return (d + 1) * wsk_advance(t->font);
+}
+
+/* A line's number, its last digit ending at xr. */
+static inline void wsk__lineno(wsk_sink_t *s, const wsk_tree_t *t, int num, int xr, int y)
+{
+	char d[12];
+	int n = 0;
+	for (int v = num; v > 0 || n == 0; v /= 10) n++;
+	for (int k = n - 1, v = num; k >= 0; k--, v /= 10) d[k] = (char)('0' + v % 10);
+	wsk__textel(s, 1, xr - n * wsk_advance(t->font), wsk_baseline_of(y, t->font),
+	            WSK_INHERIT, d, n);
+}
+
+/*
+ * Characters from..from+n of a row, in the program's colour runs (§5v rule
+ * 4): each run a <text> of its own at its column -- monospace makes the
+ * column the position, and every substrate draws a <text>. The gaps between
+ * runs are the widget's ink; spaces that open a piece are not sent, since
+ * its x already says where it starts.
+ */
+static inline void wsk__inked(wsk_sink_t *s, const wsk_tree_t *t, const wsk_widget_t *w,
+                              const wsk_buf_t *b, const char *txt, int from, int n,
+                              int x, int y)
+{
+	const wsk_ink_t *ik = (b != 0) ? b->inks : 0;
+	int ni = (b != 0 && ik != 0) ? b->ninks : 0;
+	int adv = wsk_advance(t->font), base = wsk_baseline_of(y, t->font);
+	int pos = from, stop = from + n, lo = 0, hi = ni;
+
+	/* the first run that ends after `from` */
+	while (lo < hi) {
+		int mid = (lo + hi) / 2;
+		if (ik[mid].at + ik[mid].len <= from) lo = mid + 1; else hi = mid;
+	}
+	while (pos < stop) {
+		unsigned int ink = w->ink;
+		int e, p;
+		if (lo < ni && ik[lo].at <= pos) { e = ik[lo].at + ik[lo].len; ink = ik[lo].ink; lo++; }
+		else e = (lo < ni) ? ik[lo].at : stop;
+		if (e > stop) e = stop;
+		for (p = pos; p < e && txt[p] == ' '; p++) ;
+		if (p < e) wsk__textel(s, 1, x + (p - from) * adv, base, ink, txt + p, e - p);
+		if (e > pos) pos = e;
+	}
+}
+#endif
+
 /*
  * A memo's lines, each from the same column, and its caret. Every line is
  * whole or not drawn (§5e), as a field's one line is.
@@ -2879,28 +3028,54 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 	int len = (b != 0) ? b->len : wsk__len(w->text);
 	int caret = (b != 0) ? b->caret : len;
 	int adv = wsk_advance(t->font), pitch = wsk__pitch(t), vis = wsk__vis(t, r);
-	int room = (r.w - 2 * WSK_FIELD_PAD - WSK_CARET_W) / adv;
-	int line = 0, col = 0, lines = 1, top, left;
+	int room, line = 0, col = 0, lines = 1, top, left, at, end;
 	int show = (w->mark == WSK_MARK_CARET);
+	int wr = wsk__mroom(t, w, r, b), gut = 0;
+	wsk_rect_t tr = r;               /* where the text goes: past a gutter */
 	wsk_buf_t none;
 
+#ifndef WSK_NO_SOURCE
+	if (w->kind == WSK_SOURCE) {
+		wsk_rect_t g = r;
+		gut = wsk__gutter(t, txt, len);
+		tr.x = (short)(r.x + gut);
+		tr.w = (short)(r.w - gut);
+		g.w = (short)gut;
+		if (wsk__cut(t, &g)) wsk__box(s, 0, g, t->bg);
+	}
+#endif
+	(void)gut;
+	room = (tr.w - 2 * WSK_FIELD_PAD - WSK_CARET_W) / adv;
 	if (room < 1) room = 1;
-	int wr = wsk__mroom(t, r, b);
 	wsk__where(txt, len, caret, wr, &line, &col, &lines);
 	none.top = 0;
 	top = wsk__top((b != 0) ? b : &none, vis, line, lines);
-	left = wsk__left(t, r, col);
+	left = wsk__left(t, tr, col);
+	/* the first row shown, found once; each after it from the one before --
+	   a 300 KB buffer is walked once a picture, not once a row (§5v) */
+	at = wsk__line(txt, len, top, wr, &end);
 	for (int k = top; k < top + vis && k < lines; k++) {
-		int end, at = wsk__line(txt, len, k, wr, &end), y = r.y + WSK_FIELD_PAD + (k - top) * pitch;
+		int y = r.y + WSK_FIELD_PAD + (k - top) * pitch, next = wsk__vrow(txt, len, at, wr, &end);
 		int from = at + left, n = end - from;
-		if (!wsk__shows(t, r.x, r.x + r.w, y)) continue;
-		if (n > room) n = room;
-#ifndef WSK_NO_TEXTSEL
-		if (n > 0) wsk__selbox(s, t, w, b, from, n, r.x + WSK_FIELD_PAD, y);
+		if (wsk__shows(t, r.x, r.x + r.w, y)) {
+			if (n > room) n = room;
+#ifndef WSK_NO_SOURCE
+			if (gut > 0) wsk__lineno(s, t, k + 1, r.x + gut - adv / 2, y);
 #endif
-		if (n > 0)
-			wsk__textel(s, 1, r.x + WSK_FIELD_PAD, wsk_baseline_of(y, t->font),
-			            w->ink, txt + from, n);
+#ifndef WSK_NO_TEXTSEL
+			if (n > 0) wsk__selbox(s, t, w, b, from, n, tr.x + WSK_FIELD_PAD, y);
+#endif
+#ifndef WSK_NO_SOURCE
+			if (n > 0 && gut > 0)
+				wsk__inked(s, t, w, b, txt, from, n, tr.x + WSK_FIELD_PAD, y);
+			else
+#endif
+			if (n > 0)
+				wsk__textel(s, 1, tr.x + WSK_FIELD_PAD, wsk_baseline_of(y, t->font),
+				            w->ink, txt + from, n);
+		}
+		if (next > len) break;
+		at = next;
 	}
 #ifndef WSK_NO_INPUT
 	if ((const void *)w == t->focus) show = 1;
@@ -2909,7 +3084,7 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 		wsk_rect_t c;
 		int y = r.y + WSK_FIELD_PAD + (line - top) * pitch;
 		if (wsk__shows(t, r.x, r.x + r.w, y)) {
-			c.x = (short)(r.x + WSK_FIELD_PAD + (col - left) * adv);
+			c.x = (short)(tr.x + WSK_FIELD_PAD + (col - left) * adv);
 			c.y = (short)(y + t->font / 8);
 			c.w = WSK_CARET_W;
 			c.h = (short)(t->font - t->font / 4);
@@ -3278,7 +3453,7 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 #else
 		if (w->kind == WSK_BUTTON || w->kind == WSK_FIELD
 #ifndef WSK_NO_MEMO
-		    || w->kind == WSK_MEMO
+		    || wsk__lined(w->kind)
 #endif
 		    ) wsk__rect(s, t, w, v);
 #endif
@@ -3324,7 +3499,7 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 		else
 #endif
 #ifndef WSK_NO_MEMO
-		if (w->kind == WSK_MEMO) wsk__memo(s, t, w, r);
+		if (wsk__lined(w->kind)) wsk__memo(s, t, w, r);
 		else
 #endif
 		wsk__text(s, t, w, wsk__say(t, t, i), r);
@@ -3570,7 +3745,8 @@ enum { WSK_NOTE_CLICK = 1, WSK_NOTE_SCROLL, WSK_NOTE_TEXT, WSK_NOTE_ENTER,
        WSK_NOTE_MENU,             /* asked for a context menu: the widget, or -1 */
        WSK_NOTE_KEY,              /* a chord no widget used: value is the key */
        WSK_NOTE_COPY,             /* the selection is in ui.clip: value, its length */
-       WSK_NOTE_PASTE };          /* Ctrl-V in a field: hand wsk_ui_paste the text */
+       WSK_NOTE_PASTE,            /* Ctrl-V in a field: hand wsk_ui_paste the text */
+       WSK_NOTE_GUTTER };         /* a source's gutter clicked: value, the line (§5v) */
 
 /* The keys that mean something to a field (§5j). A character typed is TEXT,
    not a key, so that a keyboard layout stays the host's business. */
@@ -3624,6 +3800,9 @@ typedef struct {
 	int               anchor;    /* a drag's selection: the end it started at */
 	unsigned char     selecting; /* a press in the focused field, selecting */
 #endif
+#ifndef WSK_NO_SOURCE
+	int               gline;     /* a press in a source's gutter: its line, or -1 */
+#endif
 } wsk_ui_t;
 
 static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
@@ -3640,6 +3819,9 @@ static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
 	ui->focus_b = 0;
 	root->held = 0;
 	root->focus = 0;
+#ifndef WSK_NO_SOURCE
+	ui->gline = -1;
+#endif
 #ifndef WSK_NO_TEXTSEL
 	ui->clip = 0;
 	ui->clipcap = 0;
@@ -4017,10 +4199,15 @@ static inline int wsk__char_at(const wsk_tree_t *lay, int k, wsk_buf_t *b,
 {
 	int adv = wsk_advance(lay->font), from, c;
 #ifndef WSK_NO_MEMO
-	if (lay->item[k].kind == WSK_MEMO) {
+	if (wsk__lined(lay->item[k].kind)) {
 		/* the line under the finger, then the column on it */
+#ifndef WSK_NO_SOURCE
+		int gut = (lay->item[k].kind == WSK_SOURCE) ? wsk__gutter(lay, b->b, b->len) : 0;
+		whole.x = (short)(whole.x + gut);
+		whole.w = (short)(whole.w - gut);
+#endif
 		int line = 0, col = 0, lines = 1, top, left, at, end, vis = wsk__vis(lay, whole);
-		int wr = wsk__mroom(lay, whole, b);
+		int wr = wsk__mroom(lay, &lay->item[k], whole, b);
 		wsk__where(b->b, b->len, b->caret, wr, &line, &col, &lines);
 		top = wsk__top(b, vis, line, lines);
 		left = wsk__left(lay, whole, col);
@@ -4080,8 +4267,9 @@ static inline void wsk__follow(wsk_ui_t *ui)
 {
 	wsk_buf_t *b = ui->focus_b;
 	int line = 0, col = 0, lines = 1;
-	if (ui->focus_in->item[ui->focus_item].kind != WSK_MEMO) return;
-	wsk__where(b->b, b->len, b->caret, wsk__mroom(ui->focus_in, ui->focus_r, b),
+	if (!wsk__lined(ui->focus_in->item[ui->focus_item].kind)) return;
+	wsk__where(b->b, b->len, b->caret,
+	           wsk__mroom(ui->focus_in, &ui->focus_in->item[ui->focus_item], ui->focus_r, b),
 	           &line, &col, &lines);
 	b->top = wsk__top(b, wsk__vis(ui->focus_in, ui->focus_r), line, lines);
 }
@@ -4153,12 +4341,12 @@ static inline int wsk_ui_paste(wsk_ui_t *ui, const char *text, int len,
 	wsk__focus_now(ui);
 	if ((b = ui->focus_b) == 0) return WSK_E_NOTFOUND;
 #ifndef WSK_NO_MEMO
-	memo = (ui->focus_in->item[ui->focus_item].kind == WSK_MEMO);
+	memo = wsk__lined(ui->focus_in->item[ui->focus_item].kind);
 #endif
 	for (int i = 0; i < len; i++) {
 		char c = text[i];
 		if (c == '\n' && memo) continue;
-		if (c < 32 || c > 126 || c == '<' || c == '&' || c == '>') return WSK_E_TEXT;
+		if (c < 32 || c > 126 || wsk__markup(c, ui->root->caps)) return WSK_E_TEXT;
 	}
 	sel = wsk__selr(b, &s0, &s1);
 	if (b->len - sel + len >= b->cap) return WSK_E_BUDGET;
@@ -4328,6 +4516,19 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			n = wsk__press_field(ui, in, k, lay, rect, x, y, ev->key & WSK_MOD_SHIFT,
 			                     &lo, &hi, note, max, n);
 #endif
+#ifndef WSK_NO_SOURCE
+		/* in a source's gutter: the press put the caret at its line's
+		   start; the release will say which line (§5v rule 5) */
+		ui->gline = -1;
+		if (k >= 0 && lay->item[k].kind == WSK_SOURCE && wsk__fbuf(lay, &lay->item[k]) != 0) {
+			wsk_buf_t *gb = wsk__fbuf(lay, &lay->item[k]);
+			if (x < wsk_rect(lay, k).x + wsk__gutter(lay, gb->b, gb->len)) {
+				int line = 0, col = 0, lines = 1;
+				wsk__where(gb->b, gb->len, gb->caret, WSK_NOWRAP, &line, &col, &lines);
+				ui->gline = line;
+			}
+		}
+#endif
 #ifndef WSK_NO_SCROLL
 		ui->drag = wsk__scroller(r, r, x, y, &ui->drag_at, 0);
 #ifdef WSK_NO_NEST
@@ -4407,6 +4608,10 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			int word = -1, k = wsk__ui_hit(r, x, y, &in, &rect, &word, &at, &lay);
 			if (k == ui->hit && in == ui->hit_in) {
 				n = wsk__note(note, max, n, WSK_NOTE_CLICK, in, k, ui->word);
+#ifndef WSK_NO_SOURCE
+				if (ui->gline >= 0)
+					n = wsk__note(note, max, n, WSK_NOTE_GUTTER, in, k, ui->gline);
+#endif
 #ifndef WSK_NO_CHECK
 				/* a check toggles (§5m rule 2) */
 				if (in->item[k].kind == WSK_CHECK && wsk__toggle(r, &in->item[k]) >= 0) {
@@ -4503,7 +4708,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		wsk__focus_now(ui);
 		b = ui->focus_b;
 #ifndef WSK_NO_MEMO
-		memo = (ui->focus_in->item[ui->focus_item].kind == WSK_MEMO);
+		memo = wsk__lined(ui->focus_in->item[ui->focus_item].kind);
 #else
 		(void)memo;
 #endif
@@ -4524,7 +4729,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			int m = 0, ok = 1;
 			while (m < (int)sizeof ev->text && ev->text[m] != '\0') {
 				char c = ev->text[m];
-				if (c < 32 || c > 126 || c == '<' || c == '&' || c == '>') ok = 0;
+				if (c < 32 || c > 126 || wsk__markup(c, r->caps)) ok = 0;
 				m++;
 			}
 			if (ok && m > 0 && b->len - sel + m < b->cap) {
@@ -4589,7 +4794,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		} else if (memo && (key == WSK_KEY_UP || key == WSK_KEY_DOWN ||
 		                    key == WSK_KEY_HOME || key == WSK_KEY_END)) {
 			int line = 0, col = 0, lines = 1, at, end, to = b->caret;
-			int wr = wsk__mroom(ui->focus_in, ui->focus_r, b);
+			int wr = wsk__mroom(ui->focus_in, &ui->focus_in->item[ui->focus_item], ui->focus_r, b);
 			wsk__where(b->b, b->len, b->caret, wr, &line, &col, &lines);
 			if (key == WSK_KEY_UP && line > 0) line--;
 			else if (key == WSK_KEY_DOWN && line < lines - 1) line++;

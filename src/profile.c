@@ -12,7 +12,7 @@
  * and D2's "one implementation, not a specification and two" would be gone
  * the moment somebody shipped a host on the small profile.
  *
- * So this prints one of ten things and `run.sh` compares the builds:
+ * So this prints one of eleven things and `run.sh` compares the builds:
  *
  *     ./profile panel    the shared panel, which must be byte-identical
  *     ./profile field    a tree with a field  -- full draws, minimal refuses
@@ -24,6 +24,7 @@
  *     ./profile check    a checkbox              -- full draws, minimal refuses
  *     ./profile memo     a memo                  -- full draws, minimal refuses
  *     ./profile arrow    a tree's arrow (§5t)    -- full draws, minimal refuses
+ *     ./profile source   a code editor (§5v)     -- full draws, minimal refuses
  *
  * The refusals are the control. Without them a minimal build could satisfy
  * `panel` by drawing a field as a label, and the diff would still pass.
@@ -80,6 +81,9 @@ int main(int argc, char **argv)
 		t.str = strs; t.strs = 1;
 	} else if (strcmp(what, "memo") == 0) {
 		live[1].kind = WSK_MEMO;
+		live[1].text[0] = '\0';
+	} else if (strcmp(what, "source") == 0) {
+		live[1].kind = WSK_SOURCE;
 		live[1].text[0] = '\0';
 	} else if (strcmp(what, "arrow") == 0) {
 		live[1].mark = WSK_MARK_SHUT;
