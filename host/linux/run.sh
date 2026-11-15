@@ -22,6 +22,20 @@ cp "$RV9/components/rv9_io/src"/{raster.c,raster.h,drv_svgwin.c,font.c,font.h} "
 INC=(-I"$RV9/tools/hosttest/stub" -I"$OUT" -I"$HERE" -I"$HERE/../../src")
 
 if [[ "${1:-}" == "--test" ]]; then
+	# every demo program opens and keeps running: one that refuses its own
+	# panel exits at once -- demo.c did, unnoticed, from 2026-10-24 to 11-15
+	for P in demo input edit code floor; do
+		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-$P" \
+			"$HERE/$P.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+			"${INC[@]}" $(pkg-config --cflags --libs sdl2)
+		A=(); [[ $P == code ]] && A=("$HERE/sample.bas")   # < > in it: RV-9 decodes them
+		set +e
+		SDL_VIDEODRIVER=dummy timeout 1 "$OUT/whisker-$P" "${A[@]}" >/dev/null 2>"$OUT/$P.err"
+		rc=$?
+		set -e
+		if [[ $rc == 124 ]]; then echo "ok    $P.c opens its window and keeps running"
+		else echo "FAIL  $P.c exited ($rc): $(head -1 "$OUT/$P.err")"; exit 1; fi
+	done
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/selftest" \
 		"$HERE/selftest.c" "$OUT/raster.c" "$OUT/font.c" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)

@@ -148,26 +148,30 @@ try {
   console.log(`      ${blue} pixels in the keyword colour, ${green} in the comment colour`);
   ok(blue > 200 && green > 200, 'keywords and comments drawn in the colours the program gave them');
 
-  // §5v step 3: line 3 holds an em dash -- three bytes, one character. Its
-  // text must end where its characters say, 55 + n x 9, or every column
-  // after a character beyond ASCII would drift from where whisker put it
+  // §5v step 3, typed rather than read (sample.bas is ASCII again, so the
+  // desktop window can open it): at the end of line 3, an em dash -- three
+  // bytes -- and an e-acute -- two -- are one column each, 9 px, or every
+  // column after them would drift; two Backspaces take both back whole
   const line3 = readFileSync(sample, 'utf8').split('\n')[2];
-  const chars3 = [...line3].length, bytes3 = Buffer.byteLength(line3);
   const end3 = await lastLight(rowY(3));
-  console.log(`      line 3: ${chars3} characters, ${bytes3} bytes, ends at x ${end3}`);
-  ok(bytes3 > chars3 && Math.abs(end3 - (55 + chars3 * 9)) <= 6,
-     `a line with an em dash ends at its characters' width, near ${55 + chars3 * 9} -- not its bytes', ${55 + bytes3 * 9}`);
-  // typed: one character, one column; Backspace takes it back whole
+  ok(Math.abs(end3 - (55 + line3.length * 9)) <= 6,
+     `CONTROL: an ASCII line ends at its characters' width, near ${55 + line3.length * 9}: ${end3}`);
   await click(1000, rowY(3) + 8);
+  await settle(); await sleep(200);
+  const base = await lastLight(rowY(3));
+  await type('\u2014');
+  await settle(); await sleep(300);
+  const endD = await lastLight(rowY(3));
   await type('\u00e9');
   await settle(); await sleep(300);
-  const end3e = await lastLight(rowY(3));
+  const endE = await lastLight(rowY(3));
+  await key('Backspace', 'Backspace');
   await key('Backspace', 'Backspace');
   await settle(); await sleep(300);
-  const end3b = await lastLight(rowY(3));
-  console.log(`      after typing \u00e9 it ends at x ${end3e}; after Backspace, ${end3b}`);
-  // both measured with the caret at the line's end, which is what lights last
-  ok(end3e - end3b === 9, 'an \u00e9 typed at its end is one column, 9 px, and Backspace takes it back whole');
+  const endB = await lastLight(rowY(3));
+  console.log(`      line 3 ends (caret) at ${base}; with an em dash ${endD}; and an e-acute ${endE}; after two Backspaces ${endB}`);
+  ok(endD - base === 9, 'an em dash typed, three bytes, is one column: 9 px, not 27');
+  ok(endE - endD === 9 && endB === base, 'an e-acute, one more; and two Backspaces take both back whole');
 
   // §5w: a real double-click on "powers" in line 9, "function powers(n)" --
   // the browser counts the clicks, the page sends the count, whisker

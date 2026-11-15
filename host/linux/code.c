@@ -183,14 +183,13 @@ int main(int argc, char **argv)
 	/* whisker refuses what its host cannot draw, and says so: a tab, a
 	   character beyond ASCII on a host that draws none (the SDL window --
 	   /w0's font is ASCII), or < > & on a host that does not decode
-	   entities -- RV-9's /w0, and so the SDL window, until RV-9 does
-	   (docs/rv9-request-entities.md) */
+	   entities (the boards, until they are flashed with RV-9 8e0ef96) */
 	if ((e = wsk_check_in(&win, &which, &in)) != WSK_OK) {
 		fprintf(stderr, "code: %s was refused (%d): %s\n", path, e,
 		        e != WSK_E_TEXT ? "see design.md"
 		        : (win.caps & WH_CAP_ENTITY) ? "it holds a tab, a control character or malformed UTF-8"
 		        : "it holds a tab, a character beyond ASCII, or < > & -- which this host "
-		          "cannot draw until RV-9 decodes &lt; &gt; &amp;");
+		          "cannot draw");
 		return 1;
 	}
 	{

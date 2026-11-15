@@ -309,7 +309,10 @@ int wh_paste(char *b, int cap)
 
 /* RV-9's own rasteriser draws the pixels here, so this host can draw exactly
    what /w0 can, and says nothing more (§5r). */
-int wh_caps(void) { return 0; }
+/* RV-9's /w0 decodes &lt; &gt; &amp; since its 8e0ef96 (2026-11-15), and
+   this window compiles its drv_svgwin.c from that tree; nothing else yet --
+   its font is ASCII, it draws no image and does not clip (§5r) */
+int wh_caps(void) { return WH_CAP_ENTITY; }
 
 void wh_close(void)
 {

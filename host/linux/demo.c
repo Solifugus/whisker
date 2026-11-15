@@ -20,10 +20,13 @@
 
 static const wsk_widget_t PANEL[] = {
 	{ .kind = WSK_LABEL,  .id = "title",  .text = "whisker" },
-	{ .kind = WSK_BUTTON, .id = "pump",   .text = "Pump" },
-	{ .kind = WSK_BUTTON, .id = "valve",  .text = "Valve" },
-	{ .kind = WSK_BUTTON, .id = "heater", .text = "Heater" },
-	{ .kind = WSK_BUTTON, .id = "stop",   .text = "STOP", .fill = 0x8f2a2au },
+	/* sized: unsized buttons are 64 rows each, and four of them and a
+	   title do not fit 172 -- refused since D10 (2026-10-24), which this
+	   demo went three weeks without anyone running it to notice */
+	{ .kind = WSK_BUTTON, .id = "pump",   .text = "Pump", .size = 30 },
+	{ .kind = WSK_BUTTON, .id = "valve",  .text = "Valve", .size = 30 },
+	{ .kind = WSK_BUTTON, .id = "heater", .text = "Heater", .size = 30 },
+	{ .kind = WSK_BUTTON, .id = "stop",   .text = "STOP", .fill = 0x8f2a2au, .size = 30 },
 };
 
 static void to_window(wsk_sink_t *s, const char *b, int n)

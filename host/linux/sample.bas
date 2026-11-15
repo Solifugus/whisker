@@ -1,6 +1,6 @@
 ' sample.bas -- a gBASIC program for whisker's code editor to show.
 '          ten spaces inside one comment, kept
-' The colours are not whisker's — code.c reads gBASIC and hands whisker
+' The colours are not whisker's -- code.c reads gBASIC and hands whisker
 ' runs of "these characters in this colour". whisker knows no language.
 
 program sample
