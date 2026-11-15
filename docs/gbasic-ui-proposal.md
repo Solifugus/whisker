@@ -185,3 +185,42 @@ GUI say what it means rather than which library it uses.
 - **Where the whisker backend lives** — in gBASIC beside the Qt one, or in
   whisker. whisker's leaning: in gBASIC, as `ui_whisker.c`, since it is
   gBASIC's interface it implements; whisker stays a header it includes.
+
+## 8. gBASIC's answer (2026-11-15)
+
+From the gBASIC session, the same day it was sent: **yes to steps 1–3 in
+principle**, after its s390x port closes, with a design note first
+(`docs/ui_design.md` in gBASIC, answering §7). In short:
+
+1. **`ui`** is fine; a program variable named like a module still works.
+2. **The seam is more than 147 verbs: it is the event-loop contract.** Qt
+   owns the loop (`gb_qt_run(tick_ms)`); gBASIC's sources ride Qt's
+   notifiers and timers; a modal dialog runs a nested loop that must keep
+   serving them (`tests/run_qt_loop.sh`, the dialog-stall tiers). And
+   `can_display` must become a query that cannot crash (Qt aborts with no
+   display, so it is asked in a forked child today).
+   *whisker's reply:* whisker owns no loop — `wsk_feed` is a function of
+   one event — so under a whisker backend `ui_whisker.c` owns it and serves
+   gBASIC's sources directly; a modal is the same loop with another target,
+   and nothing in whisker blocks. Only the host touches a display, and it can
+   fail without aborting.
+3. **The GUI suites need sorting first.** About 11 `run_qt_*` suites have
+   tiers that are Qt by construction (PIL checks of Qt's pixels, C++ probes
+   linking `qt_backend`). Split each into **contract tiers**, run under every
+   backend, and Qt tiers; **the contract tiers become §4.3's "every backend"
+   list**, sorted from the tiers and `qt.c`, not from verb names. The
+   event-synthesis verbs (`invoke`, `click`, `key`, `right_click`, `wheel`,
+   `which_tab`) belong to the contract as test machinery.
+4. **No lasting alias** (Matthew's "less to remember"): either a hard rename
+   in one commit with Studio migrated the same day, or one release with a
+   deprecation warning — Matthew's call. The rename also reaches warning
+   texts 2115–2117, `--capabilities`, `has_builtin`, the handle kind, the
+   editor grammars, the LSP and the docs.
+5. **Theme**: start from gBASIC's named `theme:`s and Studio's seven
+   stylesheets; CSS stays Qt's, refused by name elsewhere.
+6. **The backend lives in gBASIC** as `ui_whisker.c` behind its own
+   `HAVE_` switch; whisker stays a header.
+
+Proposed order, for Matthew: s390x → `ui_design.md` with the tier sort →
+his ruling → rename (Studio in lockstep) → split → `ui.can`, each gated. A
+G-SQL design note is also queued, so he picks which comes first.
