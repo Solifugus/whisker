@@ -3654,6 +3654,92 @@ int main(void)
 #undef S_
 	}
 
+	/* ---- §5v step 4. marks in a source's gutter ---- */
+	printf("\n-- §5v  gutter marks\n");
+	{
+		static const wsk_widget_t FM[] = {
+			{ .kind = WSK_SOURCE, .id = "src", .sub = 0, .size = 120 },
+		};
+		char sb[128] = "", sd[4096];
+		wsk_gmark_t gm[4];
+		wsk_buf_t buf[1];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int n, y0 = 0, y1 = 0, which = -2;
+
+		/* as §5v's source: 320 wide, rows 20 apart from y 10, the gutter 24
+		   for three characters -- and 16 more, a font, for the marks */
+		memset(buf, 0, sizeof buf);
+		buf[0].b = sb; buf[0].cap = sizeof sb;
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.pad = 4; w.gap = 4; w.item = FM; w.n = 1; w.buf = buf; w.bufs = 1;
+#define SET(S, C) (snprintf(sb, sizeof sb, "%s", (S)), buf[0].len = (int)strlen(sb), \
+                   buf[0].caret = (C), buf[0].top = 0, buf[0].span = 0)
+		SET("a\nb\nc\nd\ne", 0);
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(has(sd, "<rect x=\"4\" y=\"4\" width=\"24\" height=\"120\"") && has(sd, "x=\"34\" y=\"22\">a</text>"),
+		   "CONTROL: with no marks pointer, the gutter is 24 and the text at 34, as before");
+		buf[0].marks = gm; buf[0].nmarks = 0;
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(has(sd, "<rect x=\"4\" y=\"4\" width=\"40\" height=\"120\"") && has(sd, "x=\"50\" y=\"22\">a</text>") &&
+		   has(sd, "x=\"32\" y=\"22\">1</text>"),
+		   "given marks, even none: the gutter 40, a font wider -- the text at 50, the numbers still end at 40");
+
+		gm[0].line = 0; gm[0].shape = WSK_GM_DOT;   gm[0].ink = 0xe51400u;
+		gm[1].line = 1; gm[1].shape = WSK_GM_BAR;   gm[1].ink = 0x404000u;
+		gm[2].line = 3; gm[2].shape = WSK_GM_ARROW; gm[2].ink = 0x60a917u;
+		buf[0].nmarks = 3;
+		ok(wsk_check(&w, 0) == WSK_OK, "three marks: a dot on line 0, a bar on 1, an arrow on 3");
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(has(sd, "<rect x=\"8\" y=\"14\" width=\"8\" height=\"8\" fill=\"#e51400\""),
+		   "the dot: a square half the font, centred in the mark column, at line 0");
+		ok(has(sd, "<rect x=\"4\" y=\"28\" width=\"40\" height=\"20\" fill=\"#404000\"") &&
+		   strstr(sd, "fill=\"#404000\"") < strstr(sd, ">2</text>"),
+		   "the bar: line 1's whole gutter cell, a pitch high so bars touch -- drawn before its number, which is over it");
+		ok(has(sd, "<path d=\"M9 74L9 82L16 78Z\" fill=\"#60a917\"/>"),
+		   "the arrow: §5t's closed-folder triangle, at line 3");
+		ok(count(sd, "width=\"8\" height=\"8\"") == 1 && count(sd, "<path") == 1,
+		   "CONTROL: and nothing on lines 2 and 4, which have no mark");
+
+		gm[1].line = 0;
+		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 0, "two marks on one line are refused: which wins is the program's");
+		gm[1].line = 4; gm[2].line = 3;
+		ok(wsk_check(&w, 0) == WSK_E_TEXT, "and marks out of order");
+		gm[1].line = 1; gm[0].line = -1;
+		ok(wsk_check(&w, 0) == WSK_E_TEXT, "and a line before 0");
+		gm[0].line = 0; gm[0].shape = 4;
+		ok(wsk_check(&w, 0) == WSK_E_TEXT, "and a shape whisker does not draw");
+		gm[0].shape = WSK_GM_DOT; gm[2].line = 40;
+		ok(wsk_check(&w, 0) == WSK_OK && render_into(&w, sd, sizeof sd, 4096) > 0 && count(sd, "<path") == 0,
+		   "a mark past the last line is ignored, not refused: the text may just have shrunk");
+
+		/* scrolled: only the lines in view are marked, each in its row */
+		SET("0\n1\n2\n3\n4\n5\n6\n7\n8\n9", 18);    /* the caret on line 9: lines 5..9 shown */
+		gm[0].line = 2; gm[1].line = 7; gm[1].shape = WSK_GM_DOT; buf[0].nmarks = 2;
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(count(sd, "width=\"8\" height=\"8\"") == 1 && has(sd, "<rect x=\"8\" y=\"54\" width=\"8\" height=\"8\""),
+		   "scrolled to lines 5..9: line 7's dot in the third row (y 54), line 2's not drawn");
+
+		/* a press in the mark column is the gutter's */
+		SET("a\nb\nc\nd\ne", 0);
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 8; ev.y = 50 + 8;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 2 && nt[1].kind == WSK_NOTE_GUTTER && nt[1].value == 2 && buf[0].caret == 4,
+		   "a press in the mark column by line 2: GUTTER, line 2 -- setting a breakpoint is the program's");
+		ev.kind = WSK_EV_DOWN; ev.x = 50 + 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK, "CONTROL: at x 50, the text's first column, a click and no GUTTER");
+#undef SET
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

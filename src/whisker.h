@@ -365,15 +365,29 @@ typedef struct {
 } wsk_undo_t;
 
 /*
- * A colour run (§5v): `len` characters from `at` in `ink` -- the PROGRAM's
+ * A colour run (§5v): `len` bytes from `at` in `ink` -- the PROGRAM's
  * colouring of its own text, since whisker knows no language's syntax. An
- * array of them, sorted and not overlapping; characters none covers are in
- * the widget's ink.
+ * array of them, sorted and not overlapping, never starting or ending inside
+ * a character; characters none covers are in the widget's ink.
  */
 typedef struct {
 	int          at, len;
 	unsigned int ink;
 } wsk_ink_t;
+
+/*
+ * A mark in a source's gutter (§5v step 4): one shape on one line, from 0.
+ * Which mark a line shows -- a breakpoint over an error, say -- is the
+ * program's to decide, as colours are; whisker is given one per line.
+ */
+enum { WSK_GM_DOT = 1,            /* a filled square: a breakpoint */
+       WSK_GM_ARROW,              /* §5t's triangle, pointing right: a section */
+       WSK_GM_BAR };              /* the line's gutter cell filled: where it stopped */
+typedef struct {
+	int           line;
+	unsigned int  ink;
+	unsigned char shape;
+} wsk_gmark_t;
 
 typedef struct {
 	char  *b;
@@ -391,6 +405,9 @@ typedef struct {
 #ifndef WSK_NO_SOURCE
 	const wsk_ink_t *inks;       /* source: its colour runs, or 0 (§5v) */
 	int           ninks;
+	const wsk_gmark_t *marks;    /* source: its gutter's marks, by line; set,
+	                                even to none, it reserves their column */
+	int           nmarks;
 #endif
 } wsk_buf_t;
 
@@ -1092,6 +1109,18 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 					    !wsk__starts(b->b, b->len, b->inks[k].at) ||
 					    !wsk__starts(b->b, b->len, b->inks[k].at + b->inks[k].len))
 						good = 0;      /* nor through a character */
+			}
+			/* marks: by line, one a line, a shape whisker draws (step 4) */
+			if (t->item[i].kind == WSK_SOURCE && b->nmarks > 0) {
+				if (b->marks == 0) good = 0;
+				for (int k = 0; good && k < b->nmarks; k++)
+					if (b->marks[k].line < 0 || (k > 0 && b->marks[k].line <= b->marks[k - 1].line) ||
+					    b->marks[k].shape < WSK_GM_DOT || b->marks[k].shape > WSK_GM_BAR
+#ifdef WSK_NO_MARKS
+					    || b->marks[k].shape == WSK_GM_ARROW    /* no triangle to draw it */
+#endif
+					   )
+						good = 0;
 			}
 #endif
 			if (!good) {
@@ -2649,16 +2678,16 @@ static inline void wsk__marks(wsk_sink_t *s, const wsk_tree_t *t,
  * font high, in the widget's ink, one <path> of three points.
  */
 static inline void wsk__arrow(wsk_sink_t *s, const wsk_tree_t *t,
-                              const wsk_widget_t *w, int x, int top)
+                              int mark, unsigned int ink, int x, int top)
 {
 	int a = t->font / 2, bx = x + (t->font - a) / 2, by = top + (t->font - a) / 2;
 	int px[3], py[3];
 
-	if (w->mark == WSK_MARK_SHUT) {
+	if (mark == WSK_MARK_SHUT) {
 		px[0] = bx + a / 8; py[0] = by;
 		px[1] = bx + a / 8; py[1] = by + a;
 		px[2] = bx + a;     py[2] = by + a / 2;
-	} else if (w->mark == WSK_MARK_OPEN) {
+	} else if (mark == WSK_MARK_OPEN) {
 		px[0] = bx;         py[0] = by + a / 8;
 		px[1] = bx + a;     py[1] = by + a / 8;
 		px[2] = bx + a / 2; py[2] = by + a;
@@ -2672,9 +2701,9 @@ static inline void wsk__arrow(wsk_sink_t *s, const wsk_tree_t *t,
 		wsk__n(s, py[k]);
 	}
 	wsk__s(s, "Z\"");
-	if (w->ink != WSK_INHERIT) {
+	if (ink != WSK_INHERIT) {
 		wsk__s(s, " fill=\"");
-		wsk__col(s, w->ink);
+		wsk__col(s, ink);
 		wsk__s(s, "\"");
 	}
 	wsk__s(s, "/>");
@@ -2774,7 +2803,7 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
 		if (!wsk__shows(t, x0, x0 + g + tw, top)) return;
 #ifndef WSK_NO_MARKS
 		if (g > 0) {
-			wsk__arrow(s, t, w, x0, top);
+			wsk__arrow(s, t, w->mark, w->ink, x0, top);
 			wsk__textel(s, 1, x0 + g, wsk_baseline_of(top, t->font), w->ink, txt,
 			            wsk__byte_of(txt, bytes, chars));
 			return;
@@ -3040,13 +3069,35 @@ static inline int wsk__left(const wsk_tree_t *t, wsk_rect_t r, int col)
  * least, and one character between it and the text -- so it widens only
  * when a file passes 99 lines, 999, and so on.
  */
-static inline int wsk__gutter(const wsk_tree_t *t, const char *txt, int len)
+static inline int wsk__gutter(const wsk_tree_t *t, const wsk_buf_t *b, const char *txt, int len)
 {
 	int lines = 1, d = 1;
 	for (int i = 0; i < len; i++) if (txt[i] == '\n') lines++;
 	for (int v = lines; v >= 10; v /= 10) d++;
 	if (d < 2) d = 2;
-	return (d + 1) * wsk_advance(t->font);
+	/* and a column for marks, one font wide, whenever the program has
+	   given it marks -- even none, so the first does not move the text */
+	return (d + 1) * wsk_advance(t->font) + ((b != 0 && b->marks != 0) ? t->font : 0);
+}
+
+/* A line's mark, in the gutter's mark column from x (step 4). */
+static inline void wsk__gmark(wsk_sink_t *s, const wsk_tree_t *t, const wsk_gmark_t *m,
+                              int x, int y, int gut)
+{
+	wsk_rect_t r;
+	int a = t->font / 2, p = wsk__pitch(t);
+	if (m->shape == WSK_GM_BAR) {        /* the whole cell, the rows touching */
+		r.x = (short)x; r.y = (short)(y - (p - t->font) / 2); r.w = (short)gut; r.h = (short)p;
+	} else if (m->shape == WSK_GM_DOT) {
+		r.x = (short)(x + (t->font - a) / 2); r.y = (short)(y + (t->font - a) / 2);
+		r.w = (short)a; r.h = (short)a;
+	} else {
+#ifndef WSK_NO_MARKS
+		wsk__arrow(s, t, WSK_MARK_SHUT, m->ink, x, y);
+#endif
+		return;
+	}
+	wsk__box(s, 0, r, m->ink);
 }
 
 /* A line's number, its last digit ending at xr. */
@@ -3109,21 +3160,21 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 	int adv = wsk_advance(t->font), pitch = wsk__pitch(t), vis = wsk__vis(t, r);
 	int room, line = 0, col = 0, lines = 1, top, left, at, end;
 	int show = (w->mark == WSK_MARK_CARET);
-	int wr = wsk__mroom(t, w, r, b), gut = 0;
+	int wr = wsk__mroom(t, w, r, b), gut = 0, mk = 0;
 	wsk_rect_t tr = r;               /* where the text goes: past a gutter */
 	wsk_buf_t none;
 
 #ifndef WSK_NO_SOURCE
 	if (w->kind == WSK_SOURCE) {
 		wsk_rect_t g = r;
-		gut = wsk__gutter(t, txt, len);
+		gut = wsk__gutter(t, b, txt, len);
 		tr.x = (short)(r.x + gut);
 		tr.w = (short)(r.w - gut);
 		g.w = (short)gut;
 		if (wsk__cut(t, &g)) wsk__box(s, 0, g, t->bg);
 	}
 #endif
-	(void)gut;
+	(void)gut; (void)mk;
 	room = (tr.w - 2 * WSK_FIELD_PAD - WSK_CARET_W) / adv;
 	if (room < 1) room = 1;
 	wsk__where(txt, len, caret, wr, &line, &col, &lines);
@@ -3133,6 +3184,16 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 	/* the first row shown, found once; each after it from the one before --
 	   a 300 KB buffer is walked once a picture, not once a row (§5v) */
 	at = wsk__line(txt, len, top, wr, &end);
+#ifndef WSK_NO_SOURCE
+	/* the first mark at or after the first line shown */
+	if (gut > 0 && b != 0 && b->marks != 0) {
+		int hi = b->nmarks;
+		while (mk < hi) {
+			int mid = (mk + hi) / 2;
+			if (b->marks[mid].line < top) mk = mid + 1; else hi = mid;
+		}
+	}
+#endif
 	for (int k = top; k < top + vis && k < lines; k++) {
 		int y = r.y + WSK_FIELD_PAD + (k - top) * pitch, next = wsk__vrow(txt, len, at, wr, &end);
 		/* columns are characters: `left` and `room` count them (§5v step 3) */
@@ -3140,7 +3201,14 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 		if (wsk__shows(t, r.x, r.x + r.w, y)) {
 			n = wsk__byte_of(txt + from, n, room);
 #ifndef WSK_NO_SOURCE
+			const wsk_gmark_t *m = 0;
+			if (gut > 0 && b != 0 && b->marks != 0) {
+				while (mk < b->nmarks && b->marks[mk].line < k) mk++;
+				if (mk < b->nmarks && b->marks[mk].line == k) m = &b->marks[mk];
+			}
+			if (m != 0 && m->shape == WSK_GM_BAR) wsk__gmark(s, t, m, r.x, y, gut);
 			if (gut > 0) wsk__lineno(s, t, k + 1, r.x + gut - adv / 2, y);
+			if (m != 0 && m->shape != WSK_GM_BAR) wsk__gmark(s, t, m, r.x, y, gut);
 #endif
 #ifndef WSK_NO_TEXTSEL
 			if (n > 0) wsk__selbox(s, t, w, b, from, n, tr.x + WSK_FIELD_PAD, y);
@@ -4284,7 +4352,7 @@ static inline int wsk__char_at(const wsk_tree_t *lay, int k, wsk_buf_t *b,
 	if (wsk__lined(lay->item[k].kind)) {
 		/* the line under the finger, then the column on it */
 #ifndef WSK_NO_SOURCE
-		int gut = (lay->item[k].kind == WSK_SOURCE) ? wsk__gutter(lay, b->b, b->len) : 0;
+		int gut = (lay->item[k].kind == WSK_SOURCE) ? wsk__gutter(lay, b, b->b, b->len) : 0;
 		whole.x = (short)(whole.x + gut);
 		whole.w = (short)(whole.w - gut);
 #endif
@@ -4599,7 +4667,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		ui->gline = -1;
 		if (k >= 0 && lay->item[k].kind == WSK_SOURCE && wsk__fbuf(lay, &lay->item[k]) != 0) {
 			wsk_buf_t *gb = wsk__fbuf(lay, &lay->item[k]);
-			if (x < wsk_rect(lay, k).x + wsk__gutter(lay, gb->b, gb->len)) {
+			if (x < wsk_rect(lay, k).x + wsk__gutter(lay, gb, gb->b, gb->len)) {
 				int line = 0, col = 0, lines = 1;
 				wsk__where(gb->b, gb->len, gb->caret, WSK_NOWRAP, &line, &col, &lines);
 				ui->gline = line;

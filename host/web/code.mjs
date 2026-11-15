@@ -117,7 +117,7 @@ try {
   const rowY = k => 4 + 32 + 6 + (k - 1) * 22;
   const lightAt = y0 => js(`(()=>{const g=whisker.canvas.getContext("2d");
     const d=g.getImageData(0,${y0},1024,18).data;
-    for(let x=40;x<1024;x++)for(let y=0;y<18;y++){const i=(y*1024+x)*4;
+    for(let x=50;x<1024;x++)for(let y=0;y<18;y++){const i=(y*1024+x)*4;
       if(d[i]+d[i+1]+d[i+2]>300)return x;}return -1;})()`);
   const kw = await lightAt(rowY(9)), body = await lightAt(rowY(10));
   console.log(`      line 9 starts at x ${kw}, line 10 at x ${body}`);
@@ -127,28 +127,29 @@ try {
     let n=0;for(let i=0;i<c.length;i+=4)if(Math.abs(c[i]-${r})<8&&Math.abs(c[i+1]-${g})<8&&Math.abs(c[i+2]-${b})<8)n++;return n;})()`);
   // inside ONE piece of text -- a comment -- a run of spaces is the page's
   // to keep: line 2 is a quote, ten spaces and 35 characters, 46 in all,
-  // from x 4 + 27 + 6 = 37: its last letter ends near 37 + 46 x 9 = 451,
-  // and collapsed it would end 81 sooner, near 370 -- measured both ways
+  // from x 4 + 27 + 18 + 6 = 55 (numbers, then the mark column, §5v step 4):
+  // its last letter ends near 55 + 46 x 9 = 469, and collapsed it would end
+  // 81 sooner, near 388 -- measured both ways (at 37, before marks: 450, 369)
   const lastLight = y0 => js(`(()=>{const g=whisker.canvas.getContext("2d");
     const d=g.getImageData(0,${y0},1024,18).data;
     for(let x=1023;x>=0;x--)for(let y=0;y<18;y++){const i=(y*1024+x)*4;
       if(d[i]+d[i+1]+d[i+2]>200)return x;}return -1;})()`);
   const end2 = await lastLight(rowY(2));
   console.log(`      line 2 ends at x ${end2}`);
-  ok(end2 > 400, 'a run of spaces inside one comment kept, not collapsed to one');
+  ok(end2 > 420, 'a run of spaces inside one comment kept, not collapsed to one');
   const blue = await near(0x56, 0x9c, 0xd6), green = await near(0x6a, 0x99, 0x55);
   console.log(`      ${blue} pixels in the keyword colour, ${green} in the comment colour`);
   ok(blue > 200 && green > 200, 'keywords and comments drawn in the colours the program gave them');
 
   // §5v step 3: line 3 holds an em dash -- three bytes, one character. Its
-  // text must end where its characters say, 37 + n x 9, or every column
+  // text must end where its characters say, 55 + n x 9, or every column
   // after a character beyond ASCII would drift from where whisker put it
   const line3 = readFileSync(sample, 'utf8').split('\n')[2];
   const chars3 = [...line3].length, bytes3 = Buffer.byteLength(line3);
   const end3 = await lastLight(rowY(3));
   console.log(`      line 3: ${chars3} characters, ${bytes3} bytes, ends at x ${end3}`);
-  ok(bytes3 > chars3 && Math.abs(end3 - (37 + chars3 * 9)) <= 6,
-     `a line with an em dash ends at its characters' width, near ${37 + chars3 * 9} -- not its bytes', ${37 + bytes3 * 9}`);
+  ok(bytes3 > chars3 && Math.abs(end3 - (55 + chars3 * 9)) <= 6,
+     `a line with an em dash ends at its characters' width, near ${55 + chars3 * 9} -- not its bytes', ${55 + bytes3 * 9}`);
   // typed: one character, one column; Backspace takes it back whole
   await click(1000, rowY(3) + 8);
   await type('\u00e9');
@@ -165,6 +166,16 @@ try {
   await click(10, rowY(10) + 8);
   await settle(); await sleep(300);
   ok(said.includes('breakpoint on  line 10'), 'a click in the gutter by line 10 reached the program: breakpoint on line 10');
+  // and is drawn: the program's red square in the mark column, x 4..22
+  const red = row => js(`(()=>{const d=whisker.canvas.getContext("2d").getImageData(4,${row},18,18).data;
+    let n=0;for(let i=0;i<d.length;i+=4)if(d[i]>200&&d[i+1]<60&&d[i+2]<60)n++;return n;})()`);
+  const r10 = await red(rowY(10)), r9 = await red(rowY(9));
+  console.log(`      red pixels in the mark column: line 10 ${r10}, line 9 ${r9}`);
+  ok(r10 >= 64 && r9 === 0, 'the breakpoint is drawn: a red square by line 10, and none by line 9 (the control)');
+  await click(10, rowY(10) + 8);
+  await settle(); await sleep(300);
+  ok(said.includes('breakpoint off line 10') && (await red(rowY(10))) === 0,
+     'clicked again, it goes: the program cleared it and whisker drew the line unmarked');
 
   // type at the end of line 1, a comment: still green, and the banded rule
   await click(1000, rowY(1) + 8);

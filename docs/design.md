@@ -3488,6 +3488,86 @@ columns after the wide characters drift by a cell each — the next step if
 Studio ever has to show those files. Breakpoint marks in the gutter are
 still the program's to print.
 
+### Step 4, written before its code (2026-11-14): marks in the gutter
+
+The last thing §5v named. Studio's gutter is not a ruler: gBASIC's Qt
+backend (its `docs/qt_gui_design.md` §0.29) gives it **five categories** —
+`break`, `error`, `warning`, `section` (a `▶` at each runnable section),
+`note` — with a priority, so a line with two shows the higher, and a
+breakpoint, the one mark a person set, wins. Read as whisker must read it:
+**the categories and their priority are the program's, as colours are.**
+whisker draws a mark; it does not know what a breakpoint is.
+
+1. **A buffer may point to marks**: `wsk_gmark_t { int line; unsigned int
+   ink; unsigned char shape; }`, sorted by line, **one per line** — the
+   program has already applied its priority, so whisker never chooses
+   between two. Lines count from 0, as the GUTTER notice's do and as every
+   index in whisker does; gBASIC's lines count from 1, and the one
+   conversion belongs in its backend, next to the notice it already
+   converts.
+2. **Three shapes, all in what every substrate draws**: `WSK_GM_DOT`, a
+   filled square half the font high (a breakpoint — no circles: a
+   rectangle is what `/w0` is sure of, and §5t's triangle is on purpose the
+   only other shape); `WSK_GM_ARROW`, §5t's right-pointing triangle (a
+   section's `▶`); `WSK_GM_BAR`, the line's whole gutter cell filled (the
+   line a debugger stopped on), its number drawn over it.
+3. **The column is reserved by the pointer, not by the count**: a buffer
+   whose `marks` is set has a mark column one font wide at the gutter's
+   left even with none in it, so the first breakpoint does not shift every
+   character of the text sideways. (gBASIC's `marks: true`, for the same
+   reason.)
+4. **Refused**: marks out of order, two on one line, a line below 0, a
+   shape whisker does not know — `WSK_E_TEXT`, as colour runs are.
+   **Ignored**: a mark past the last line, since the text may just have
+   shrunk (gBASIC's `qt.marks` keeps what was set for the same reason).
+5. A press anywhere in the gutter, the mark column included, is still the
+   GUTTER notice with its line: setting a breakpoint is the program's.
+
+Done when: each shape drawn in its cell at its line and none elsewhere (the
+control: an unmarked line has nothing in the column), the column reserved
+with no marks, the refusals, a mark past the end ignored, every earlier
+output byte-identical, the pixels through RV-9's rasteriser, and `code.c`
+toggling a red breakpoint on a gutter click on both hosts.
+
+### What the fourth step came to, 2026-11-14: marks
+
+**714 checks** (694 before): 15 in the suite, 5 at the pixels. Every
+earlier output — 37 files — byte-identical; the new picture is
+`source_marks.ppm`. In headless Chrome, **2 more** (`code.mjs`, 11 now).
+
+- As written, nothing changed in the building. Each shape lands in its cell
+  at its line, and the unmarked lines' cells are empty (the control); the
+  column is reserved by the pointer, so the text moves from x 34 to 50 when
+  the program first gives marks and never again; two on a line, out of
+  order, below 0, or an unknown shape refused; past the end ignored;
+  scrolled, only the lines in view are marked, found by one binary search a
+  picture, as colour runs are.
+- **At the pixels through RV-9's rasteriser**: the breakpoint's square is
+  all 64 of its pixels red — a rectangle, so exact colour is a fair check
+  here, unlike glyphs; the arrow green by hue; the bar 750 of its 800
+  pixels, the rest the line number drawn over it. Looked at, zoomed: the
+  picture reads as an editor's gutter. Looking found a fault, in the
+  picture's own program: it had overwritten the `!` the test typed rather
+  than removed it, so every colour run sat a character early — "function"
+  drawn with its `n` uncoloured. Every check passed on that picture; the
+  checks look at runs' starts, and the fault was at their ends.
+- §5t's triangle now takes a mark and an ink, not a widget, so the tree's
+  arrow and the gutter's are one function.
+- **`code.c` draws its breakpoints**: a gutter click toggles a red square
+  (and still prints it). In Chrome: 81 red pixels by line 10 after the
+  click, none by line 9, none by line 10 after a second click.
+  Breakpoints stay on their line numbers as text is inserted above them —
+  following the text is the program's job, and that demo does not do it.
+
+**§7's question**: marks cost **408 bytes** in the default (15,004 for a
+small panel; source is 1,296 in all). `WSK_PANEL` 10,340 and `WSK_MINIMAL`
+3,788, unchanged — neither has source.
+
+**`source` is now everything §5v's done criteria named.** Not done, and not
+asked yet: a whole-line highlight in the text (a debugger's current line is
+a gutter bar here), wide characters (step 3's note), and marks that follow
+edits.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

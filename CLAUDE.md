@@ -214,6 +214,10 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
   columns are characters — the caret, Backspace and Delete step over whole
   characters; the check refuses a caret or a colour run inside one. For a
   host that claims `WSK_CAP_UTF8` (the browser). 744 bytes, default only.
+- **§5v step 4 — gutter marks** (2026-11-14): `wsk_gmark_t` in the buffer,
+  one per line, a dot, §5t's arrow or a bar in the program's ink — which
+  mark wins on a line (gBASIC's five categories) is the program's. A set
+  `marks` pointer reserves the column. `code.c` draws breakpoints. 408 bytes.
 
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
@@ -222,12 +226,12 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **694 checks**, including a step
+`src/run.sh --module` is the whole of it: **714 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 39, including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
-`host/web/run.sh --test` adds 31 over HTTP, 18 in headless Chrome, and 9 for
+`host/web/run.sh --test` adds 31 over HTTP, 18 in headless Chrome, and 11 for
 the code editor (`code.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**

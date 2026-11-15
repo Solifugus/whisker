@@ -12,9 +12,11 @@
  * colour is never on the screen.
  *
  * Typing, the arrows, Shift to select, Ctrl-A/C/X/V, Ctrl-Z/Y, the wheel.
- * A click in the gutter sets or clears a breakpoint on that line (printed:
- * drawing one is a later iteration). The file is never written: Ctrl-S
- * says so. Close the window to quit.
+ * A click in the gutter sets or clears a breakpoint on that line: a red mark
+ * in the gutter (§5v step 4), and printed. Breakpoints stay on their line
+ * numbers as the text changes -- moving them with it is a program's job, and
+ * this one does not. The file is never written: Ctrl-S says so. Close the
+ * window to quit.
  */
 #include "host.h"
 #include "whisker.h"
@@ -35,6 +37,7 @@ static const wsk_widget_t WIN[] = {
 static char text[CAP], clip[CAP], undo_b[256 * 1024];
 static wsk_ink_t inks[INKS];
 static unsigned char brk[65536];        /* breakpoints, by line */
+static wsk_gmark_t marks[4096];         /* ...as whisker draws them, in order */
 static wsk_widget_t win_items[2];
 static wsk_buf_t buf[1];
 static wsk_undo_t undo;
@@ -94,6 +97,16 @@ static int colour(void)
 	return n;
 }
 
+/* The breakpoints as gutter marks: one a line, in order (§5v step 4). */
+static void remark(void)
+{
+	int n = 0;
+	for (int l = 0; l < (int)sizeof brk && n < (int)(sizeof marks / sizeof marks[0]); l++)
+		if (brk[l]) { marks[n].line = l; marks[n].ink = 0xe51400u; marks[n].shape = WSK_GM_DOT; n++; }
+	buf[0].marks = marks;               /* set even with none: the column is kept */
+	buf[0].nmarks = n;
+}
+
 /* Where the caret is, for the status line. */
 static void status(void)
 {
@@ -128,6 +141,7 @@ int main(int argc, char **argv)
 	undo.b = undo_b; undo.cap = sizeof undo_b;
 	buf[0].undo = &undo;
 	colour();
+	remark();
 
 	memcpy(win_items, WIN, sizeof WIN);
 	wsk_init(&win, WSK_COL, w, h);
@@ -186,6 +200,8 @@ int main(int argc, char **argv)
 			else if (t->kind == WSK_NOTE_GUTTER && t->value < (int)sizeof brk) {
 				brk[t->value] = (unsigned char)!brk[t->value];
 				printf("breakpoint %s line %d\n", brk[t->value] ? "on " : "off", t->value + 1);
+				remark();
+				y0 = 0; y1 = h;                 /* the gutter: the widget's height */
 			} else if (t->kind == WSK_NOTE_COPY)
 				wh_copy(clip, t->value);
 			else if (t->kind == WSK_NOTE_PASTE) {

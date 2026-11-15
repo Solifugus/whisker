@@ -1667,6 +1667,45 @@ int main(void)
 		ok(y1 > y0 && sb[0] == '!' && memcmp(screen, want, sizeof screen) == 0,
 		   "a keystroke typed, and its rows, repainted alone, equal a full redraw");
 		shot("source.ppm");
+
+		/*
+		 * And its gutter's marks (§5v step 4), on the same listing: a
+		 * section's arrow on line 1, a breakpoint on 2, the line a debugger
+		 * stopped on, 3, as a bar. The gutter is a font wider: 40.
+		 */
+		{
+			wsk_gmark_t gm[3] = {
+				{ .line = 0, .ink = 0x60a917u, .shape = WSK_GM_ARROW },
+				{ .line = 1, .ink = 0xe51400u, .shape = WSK_GM_DOT },
+				{ .line = 2, .ink = 0x5a5a10u, .shape = WSK_GM_BAR },
+			};
+			/* row k at 10 + 20k; the mark column 4..20, its square 8..16 */
+			wsk_rect_t dot = { 8, 10 + 20 + 4, 8, 8 }, none = { 8, 10 + 60 + 4, 8, 8 };
+			wsk_rect_t arrow = { 8, 10 + 4, 8, 8 }, bar = { 4, 50 - 2, 40, 20 }, num = { 32, 50, 8, 16 };
+			int lit = 0;
+			memmove(sb, sb + 1, (size_t)buf[0].len);   /* the '!' typed above, taken out */
+			buf[0].len--;
+			buf[0].marks = gm; buf[0].nmarks = 3;
+			buf[0].caret = 0; buf[0].top = 0;
+			ok(wsk_check(&w, 0) == WSK_OK, "three marks, as a program resolving its categories would give them");
+			v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+			s.len = 0; wsk_render(&w, &s, 4096);
+			ok(span(dot, pix565(0xe51400u), &lo, &hi) == 64,
+			   "the breakpoint on line 2: its 8x8 square, every pixel red");
+			ok(span(none, pix565(0xe51400u), &lo, &hi) == 0 && hue(none, 'g') == 0,
+			   "CONTROL: line 4's mark cell holds nothing");
+			ok(hue(arrow, 'g') > 10, "the section's arrow on line 1 is green");
+			for (int y = num.y; y < num.y + num.h; y++)
+				for (int x = num.x; x < num.x + num.w; x++) {
+					uint16_t p = at(x, y);
+					if (((p >> 11) & 0x1F) + ((p >> 6) & 0x1F) + (p & 0x1F) > 60) lit++;
+				}
+			printf("    the bar: %d of 800 pixels its colour; line 3's number, %d bright pixels over it\n",
+			       span(bar, pix565(0x5a5a10u), &lo, &hi), lit);
+			ok(span(bar, pix565(0x5a5a10u), &lo, &hi) > 600 && lit > 5,
+			   "the stopped line's bar fills its gutter cell, and its number is drawn over it");
+			shot("source_marks.ppm");
+		}
 	}
 
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
