@@ -142,6 +142,13 @@ So the first whisker backend would answer **every-backend verbs** for the
 programs most people write — forms, tables, trees, menus, a memo — and refuse
 the rest by name, which §4.3 makes a sentence rather than a failure.
 
+*Later the same day (whisker §5s):* right-click, shortcuts, selection in a
+field and the clipboard are built — a right-click is reported to the program
+with the widget under it, a chord no widget used is the program's, and the
+clipboard is the host's (the system's under SDL, the browser's in a page).
+So `right_click`, `clipboard`, `copy` and `shortcuts` move from §4.3's
+second list toward the first for a whisker backend; Qt answers them already.
+
 ## 6. Who does what, and in what order
 
 1. **gBASIC: the rename** (§4.1). No behaviour changes; every suite must pass

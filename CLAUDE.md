@@ -55,7 +55,7 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
 
 ## Status
 
-**Seventeen iterations are built, and two of them have now run on the C5.**
+**Eighteen iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -174,6 +174,18 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
   `WSK_E_HOST`. **caps = 0 is byte for byte what whisker always drew.**
   SDL/RV-9 claim nothing; the browser claims UTF-8, images, clipping.
 
+- **§5s — a desktop's plumbing** (2026-11-14). Right-click is its own event
+  (`WSK_EV_MENU` → `WSK_NOTE_MENU`; the program opens a menu with
+  `wsk_ui_open_at`). Modifiers ride on `ev.key` (`WSK_MOD_*`; a chord is a
+  lower-case character, Ctrl-S = `'s' | WSK_MOD_CTRL`), and **a chord no
+  widget used is the program's** (`WSK_NOTE_KEY`) — that is all shortcuts
+  are. Selection is the caret and a `span` in the caller's buffer, drawn
+  only in the focused field. **The clipboard is the host's** (`wh_copy`,
+  `wh_paste`): Ctrl-C copies into caller memory (`ui.clip`) and notes COPY;
+  Ctrl-V notes PASTE and the program calls `wsk_ui_paste`, all or nothing.
+  `WSK_NO_TEXTSEL` (844 bytes), set by `WSK_PANEL`. Escape is a key on SDL
+  now, not a quit.
+
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
 very nice sounds". It found two rules for any board program: **draw little,
@@ -181,12 +193,12 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **523 checks**, including a step
+`src/run.sh --module` is the whole of it: **578 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
-RV-9's own rasteriser, seventeen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 26, including the
-typing loop end to end and the real keyboard path; `--input` is the same loop with a person in it.
-`host/web/run.sh --test` adds 12 over HTTP and 10 in headless Chrome.
+RV-9's own rasteriser, eighteen module builds with the double-link, and a person
+looking at the pictures. `host/linux/run.sh --test` adds 39, including the
+typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
+`host/web/run.sh --test` adds 28 over HTTP and 18 in headless Chrome.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

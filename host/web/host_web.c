@@ -12,8 +12,15 @@
  *           the device -- the board's banded repaint, kept by the page, so a
  *           clipped document paints its rows over what was there exactly as
  *           /w0 does.
- *     in    the page POSTs events to /ev, a line each: "D x y", "M x y",
- *           "U x y", "W x y d", "K key", "T text", "X" (draw it all again).
+ *     in    the page POSTs events to /ev, a line each: "D x y [mods]",
+ *           "M x y", "U x y", "W x y d", "K key", "T text", "R x y" (a
+ *           context menu asked for, §5s), "P text" (pasted), "X" (draw it
+ *           all again).
+ *     clip  what the program copies goes to every page as "C text". Text is
+ *           escaped both ways, \n for a line break and \\ for a backslash,
+ *           so that a line is still one line. A page may read the clipboard
+ *           only when it is pasted into, so a paste comes to the host as
+ *           "P", which keeps it and turns it into Ctrl-V (§5s rule 7).
  *
  * Plain HTTP both ways: no WebSocket handshake, no library, no thread. One
  * poll() over the sockets, run whenever the program polls or waits. A page
@@ -76,7 +83,23 @@ static const char PAGE[] =
 "    img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);\n"
 "  }));\n"
 "}\n"
+/* what the program copied (§5s), escaped -- \n a line break, \\ a
+   backslash -- onto the system clipboard where the browser lets a page
+   write it: a secure origin, or failing that the old way, or a warning */
+"const unesc=t=>t.replace(/\\\\(.)/g,(m,ch)=>ch==='n'?'\\n':ch);\n"
+"const esc=t=>t.replace(/\\\\/g,'\\\\\\\\').replace(/\\r/g,'').replace(/\\n/g,'\\\\n');\n"
+"let clip=null,copied=null;\n"
+"function copy(t){\n"
+"  clip=t;\n"
+"  const old=()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);\n"
+"    a.select();let r=false;try{r=document.execCommand('copy');}catch(x){}a.remove();c.focus();\n"
+"    copied=r?'execCommand':'refused';if(!r)console.warn('whisker: the browser would not take the copy');};\n"
+"  if(navigator.clipboard&&navigator.clipboard.writeText)\n"
+"    navigator.clipboard.writeText(t).then(()=>{copied='clipboard';},old);\n"
+"  else old();\n"
+"}\n"
 "new EventSource('/events').onmessage=e=>{\n"
+"  if(e.data.startsWith('C ')){copy(unesc(e.data.slice(2)));return;}\n"
 "  const m=/^(\\d+) (\\d+) (\\d+) (\\d+) /.exec(e.data);\n"
 "  if(m) draw(+m[1],+m[2],+m[3],+m[4],e.data.slice(m[0].length));\n"
 "};\n"
@@ -84,24 +107,48 @@ static const char PAGE[] =
 "function send(line){sent=sent.then(()=>fetch('/ev',{method:'POST',body:line}).catch(()=>{}));}\n"
 "function pt(e){const r=c.getBoundingClientRect();\n"
 "  return Math.floor((e.clientX-r.left)*W/r.width)+' '+Math.floor((e.clientY-r.top)*H/r.height);}\n"
-"c.addEventListener('pointerdown',e=>{c.focus();c.setPointerCapture(e.pointerId);send('D '+pt(e));});\n"
-"c.addEventListener('pointermove',e=>{if(e.buttons)send('M '+pt(e));});\n"
-"c.addEventListener('pointerup',e=>send('U '+pt(e)));\n"
+/* the primary button presses; the secondary asks for a context menu, which
+   is the platform's contextmenu event -- a right-click, or a long press on a
+   phone. A page may read the clipboard only when it is pasted into (§5s). */
+"c.addEventListener('pointerdown',e=>{if(e.button!==0)return;c.focus();c.setPointerCapture(e.pointerId);\n"
+"  send('D '+pt(e)+(e.shiftKey?' 256':''));});\n"
+"c.addEventListener('pointermove',e=>{if(e.buttons&1)send('M '+pt(e));});\n"
+"c.addEventListener('pointerup',e=>{if(e.button===0)send('U '+pt(e));});\n"
+"c.addEventListener('contextmenu',e=>{e.preventDefault();send('R '+pt(e));});\n"
+"document.addEventListener('paste',e=>{const t=e.clipboardData&&e.clipboardData.getData('text');\n"
+"  e.preventDefault();if(t)send('P '+esc(t));});\n"
 "c.addEventListener('wheel',e=>{e.preventDefault();send('W '+pt(e)+' '+Math.round(e.deltaY));},{passive:false});\n"
-"const KEYS={ArrowLeft:1,ArrowRight:2,Home:3,End:4,Backspace:5,Delete:6,Enter:7,Escape:10,ArrowUp:11,ArrowDown:12};\n"
+/* keys with their modifiers (§5s): Shift only where it means something --
+   a key that moves the caret, and a chord -- and a chord a printable key
+   with Ctrl (or Command) or Alt, lower-case. Ctrl-V is left to the
+   browser, whose paste event brings the text. */
+"const KEYS={ArrowLeft:1,ArrowRight:2,Home:3,End:4,Backspace:5,Delete:6,Enter:7,Escape:10,ArrowUp:11,ArrowDown:12,ContextMenu:13};\n"
+"const MOVES={1:1,2:1,3:1,4:1,11:1,12:1};\n"
 "c.addEventListener('keydown',e=>{\n"
-"  let k=KEYS[e.key]; if(e.key==='Tab')k=e.shiftKey?9:8;\n"
-"  if(k){e.preventDefault();send('K '+k);return;}\n"
-"  if(e.key.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();send('T '+e.key);}\n"
+"  const ctl=e.ctrlKey||e.metaKey;\n"
+"  let k=KEYS[e.key],m=(ctl?0x200:0)|(e.altKey?0x400:0);\n"
+"  if(e.key==='Tab')k=e.shiftKey?9:8;\n"
+"  if(e.key==='F10'&&e.shiftKey)k=13;\n"
+"  if(!k&&m&&e.key.length===1&&e.key>' '&&e.key<='~'){\n"
+"    if(ctl&&!e.altKey&&e.key.toLowerCase()==='v')return;\n"
+"    k=e.key.toLowerCase().charCodeAt(0);\n"
+"  }\n"
+"  if(k){\n"
+"    if(e.shiftKey&&(m||MOVES[k]))m|=0x100;\n"
+"    if(k===13)m=0;\n"
+"    e.preventDefault();send('K '+(k|m));return;\n"
+"  }\n"
+"  if(e.key.length===1&&!m){e.preventDefault();send('T '+e.key);}\n"
 "});\n"
-"window.whisker={send,canvas:c,drawn:()=>drawn,idle:()=>chain,images:()=>Object.keys(IMG).filter(k=>IMG[k]).length};\n"
+"window.whisker={send,canvas:c,drawn:()=>drawn,idle:()=>chain,images:()=>Object.keys(IMG).filter(k=>IMG[k]).length,\n"
+"  clip:()=>clip,copied:()=>copied};\n"
 "c.focus();\n"
 "</script></body></html>\n";
 
 typedef struct {
 	int  fd;
 	int  sub;                /* subscribed to /events */
-	char req[2048];
+	char req[8192];          /* a paste comes in one: room for a few KB */
 	int  got;
 } client_t;
 
@@ -114,6 +161,8 @@ static struct {
 	int       llen, lcap;
 	wh_event_t q[64];
 	int       qh, qt;
+	char     *clip;          /* the clipboard: the last copied or pasted */
+	int       clen;
 } S;
 
 static void grow(char **b, int *cap, int need)
@@ -152,13 +201,42 @@ static void drop(int i)
 	S.c[i].got = 0;
 }
 
-/* One line of /ev: a pointer, a key, text, or "draw it all again". */
+/* The clipboard's text, kept: the host's copy of what the page has. */
+static void keep(const char *t, int n)
+{
+	free(S.clip);
+	S.clip = (char *)malloc((size_t)n + 1);
+	S.clen = 0;
+	if (S.clip == 0) return;
+	memcpy(S.clip, t, (size_t)n);
+	S.clip[n] = '\0';
+	S.clen = n;
+}
+
+/* One line of /ev: a pointer, a key, text, a paste, or "draw it all again". */
 static void event_line(const char *l)
 {
 	wh_event_t e;
 	memset(&e, 0, sizeof e);
 	switch (l[0]) {
-	case 'D': e.kind = WH_PRESS;   sscanf(l + 1, "%d %d", &e.x, &e.y); break;
+	case 'D': e.kind = WH_PRESS;   sscanf(l + 1, "%d %d %d", &e.x, &e.y, &e.key); break;
+	case 'R': e.kind = WH_MENU;    sscanf(l + 1, "%d %d", &e.x, &e.y); break;
+	case 'P': {
+		/* pasted: unescaped into the host's clipboard, then Ctrl-V */
+		const char *p = l + ((l[1] == ' ') ? 2 : 1);
+		char *t = (char *)malloc(strlen(p) + 1);
+		int n = 0;
+		if (t == 0) return;
+		for (; *p != '\0' && *p != '\r'; p++) {
+			if (*p == '\\' && p[1] != '\0') { p++; t[n++] = (*p == 'n') ? '\n' : *p; }
+			else t[n++] = *p;
+		}
+		keep(t, n);
+		free(t);
+		e.kind = WH_KEY;
+		e.key = 'v' | WH_MOD_CTRL;
+		break;
+	}
 	case 'M': e.kind = WH_MOVE;    sscanf(l + 1, "%d %d", &e.x, &e.y); break;
 	case 'U': e.kind = WH_RELEASE; sscanf(l + 1, "%d %d", &e.x, &e.y); break;
 	case 'W': e.kind = WH_WHEEL;   sscanf(l + 1, "%d %d %d", &e.x, &e.y, &e.d); break;
@@ -370,11 +448,42 @@ int wh_poll(wh_event_t *out)
 
 void wh_wait(int ms) { if (S.qh == S.qt) service(ms); }
 
+/* Copy: kept here, and sent to every page to put on the system clipboard,
+   escaped so that it is one line of an event. Not added to the log a late
+   page is sent: a copy is something that happened, not part of the picture. */
+int wh_copy(const char *s, int n)
+{
+	char *m = (char *)malloc((size_t)n * 2 + 16);
+	int k;
+	if (m == 0) return -1;
+	keep(s, n);
+	k = snprintf(m, 16, "data: C ");
+	for (int i = 0; i < n; i++) {
+		if (s[i] == '\n') { m[k++] = '\\'; m[k++] = 'n'; }
+		else if (s[i] == '\\') { m[k++] = '\\'; m[k++] = '\\'; }
+		else if (s[i] != '\r') m[k++] = s[i];
+	}
+	m[k++] = '\n'; m[k++] = '\n';
+	for (int i = 0; i < MAXC; i++)
+		if (S.c[i].fd >= 0 && S.c[i].sub && send_all(S.c[i].fd, m, k) < 0) drop(i);
+	free(m);
+	return 0;
+}
+
+/* Paste: what the page last pasted, or this program last copied -- whole,
+   or -1. */
+int wh_paste(char *b, int cap)
+{
+	if (S.clip == 0 || S.clen == 0 || S.clen >= cap) return -1;
+	memcpy(b, S.clip, (size_t)S.clen + 1);
+	return S.clen;
+}
+
 void wh_close(void)
 {
 	if (!S.open) return;
 	for (int i = 0; i < MAXC; i++) if (S.c[i].fd >= 0) drop(i);
 	close(S.lfd);
-	free(S.doc); free(S.log);
+	free(S.doc); free(S.log); free(S.clip);
 	S.open = 0;
 }

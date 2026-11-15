@@ -12,15 +12,16 @@ two pure functions, a widget tree to SVG and a point to a widget. Above it
 comes a **toolkit** — input events in, widget state updated, *what changed*
 out — for the devices that have input, and below both a **host** per
 platform. A device with nothing to press compiles the toolkit out. Designed
-in `design.md` §8; nothing of it is built yet.
+in `design.md` §8, and built since, iteration by iteration (§5i onward).
 
 **Status of the drawing layer.** `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p, §5r and §7 — **523 checks** plus the profile gate,
-the pixels through RV-9's own rasteriser, seventeen module builds with the
+`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p, §5r, §5s and §7 — **578 checks** plus the profile gate,
+the pixels through RV-9's own rasteriser, eighteen module builds with the
 double-link, and a person looking at the pictures. `host/linux/run.sh --test`
-adds **19** more.
+adds **39** more, and `host/web/run.sh --test` 28 over HTTP and 18 in
+headless Chrome.
 
 **And any stack can scroll** (§5e, 2026-10-24) — the first step toward
 gBASIC's Qt-era `window` and a desktop. `overflow = WSK_SCROLL` and an offset
@@ -77,6 +78,11 @@ sent exactly what it always was.
 
 **And trees** (§5p): rows indented by depth, as Studio's are — the program
 keeps the tree and hands over the rows it shows.
+
+**And a desktop's plumbing** (§5s): select text with Shift or a drag, Cut,
+Copy and Paste with the system's clipboard, right-click for a context menu,
+and keyboard shortcuts that are the program's to define. In a browser the
+copy really reaches the clipboard, and a real Ctrl-V really pastes.
 
 **And the P4 has a piano** (`wpiano`): two octaves to play with your
 fingers, chords and all, through its speaker.

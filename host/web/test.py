@@ -6,7 +6,7 @@ Starts edit.c linked against host_web.c, then speaks to it as a page would:
 fetch the page, subscribe to /events, POST events, and read back the
 documents the program sends. Standard library only.
 """
-import http.client, os, socket, subprocess, sys, time
+import http.client, os, re, socket, subprocess, sys, time
 
 BIN = sys.argv[1]
 PORT = 18090
@@ -18,6 +18,16 @@ def ok(cond, what):
     print(("ok    " if cond else "FAIL  ") + what)
     if not cond:
         fails += 1
+
+
+def box(doc, wid):
+    """Where a widget was drawn: its rect's x, y, width, height, from the SVG."""
+    m = re.search(r'<rect id="%s"(?: x="(\d+)")? y="(\d+)" width="(\d+)" height="(\d+)"' % wid, doc or "")
+    return None if m is None else (int(m.group(1) or 0), int(m.group(2)), int(m.group(3)), int(m.group(4)))
+
+
+def middle(b):
+    return "%d %d" % (b[0] + b[2] // 2, b[1] + b[3] // 2)
 
 
 def post(body):
@@ -124,17 +134,51 @@ try:
     m = ev.until(">two</text>")
     ok(m is not None and ">one</text>" in m,
        "a memo: two lines typed with Enter between come back as two lines")
+
+    # §5s: a right-click on the name field opens the context menu there; its
+    # items are keys fed to the toolkit, and copies go to the page.
+    name = box(first, "name")
+    post("R %d %d" % (name[0] + 20, name[1] + 10))
+    m = ev.until(">Cut</text>")
+    ok(m is not None and ">Select all</text>" in m,
+       "a right-click on a field (R) opens the program's context menu: Cut, Copy, Paste, Select all")
+    post("D %s\nU %s" % (middle(box(m, "cx-all")), middle(box(m, "cx-all"))))
+    post("R %d %d" % (name[0] + 20, name[1] + 10))
+    m = ev.until(">Copy</text>")
+    post("D %s\nU %s" % (middle(box(m, "cx-copy")), middle(box(m, "cx-copy"))))
+    c = ev.until("data: C ")
+    ok(c == 'data: C hi', "Select all, then Copy, from the menu: \"hi\" sent to the page as C, for the clipboard")
+    post("K 4")                       # End: the selection collapses
+    post("P  there")                  # what the page's paste event sends
+    m = ev.until(">hi there</text>")
+    ok(m is not None, "a paste (P) arrives as Ctrl-V, and the program pastes the host's copy: \"hi there\"")
+    post("P a\\nb")                  # a line break, escaped, into a one-line field
+    post("K %d" % (ord("s") | 0x200))  # Ctrl-S
+    m = ev.until(">Save now</text>")
+    ok(m is not None, "Ctrl-S, the program's own shortcut, opens the Save menu")
+    post("K 10")                      # Escape closes it
+    post("K %d" % (ord("z") | 0x200))  # a chord nobody uses
+    time.sleep(0.3)
     second = Events()
     replay = second.next()
     ok(replay is not None and replay.startswith("data: 0 0 "),
        "a page that subscribes late is sent the picture from the last full document")
-    full = second.until(">hi</text>", 3)
+    full = second.until(">hi there</text>", 3)
     ok(full is not None, "and the late page sees what was typed before it came")
+    ok(full is not None and "data: C " not in replay + full,
+       "CONTROL: but not the copy -- a copy is something that happened, not part of the picture")
 finally:
     p.terminate()
     out, err = p.communicate(timeout=5)
 
 ok("enter  city = \"Paris\"" in out, "Enter on the second field printed it: city = \"Paris\"")
 ok("select it" in out, "the click in the table reached the program: a cell clicked, its row chosen")
+ok('menu   name' in out and 'click  cx-all' in out and 'copy   name "hi"' in out,
+   "the program was told: MENU on name, Select all and Copy chosen, \"hi\" copied")
+ok('paste  name "hi there"' in out, "and the paste went into name")
+ok("paste  refused (-1)" in out, "a line break pasted into a one-line field is refused, not trimmed")
+ok("shortcut save" in out and out.find("close  the menu", out.find("shortcut save")) > 0,
+   "Ctrl-S was the program's; Escape, after it, closed what it opened")
+ok("key    0x27a, not ours" in out, "and an unused chord, Ctrl-Z, reached the program as a KEY notice")
 print(("\n%d web check(s) failed" % fails) if fails else "\nall web checks passed")
 sys.exit(1 if fails else 0)

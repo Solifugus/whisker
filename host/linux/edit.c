@@ -10,8 +10,14 @@
  * the check (Enter presses a focused button or ticks the check); the
  * arrows, Home, End, Backspace and Delete edit; Enter prints the field. Drag
  * the list, or use the wheel over it. Save opens a menu (§5l): choose from
- * it, or tap anywhere else to close it. Escape quits -- or, in a browser,
- * closes the menu.
+ * it, or tap anywhere else to close it; Escape closes it too.
+ *
+ * And a desktop's plumbing (§5s): Shift with the arrows, or a drag, selects
+ * in a field; Ctrl-A, C, X and V are the clipboard -- the system's, through
+ * the host. A right-click on a field opens a menu of the same four, each of
+ * which feeds the toolkit the same key, so a menu command and its shortcut
+ * cannot disagree. Ctrl-S is Save, the program's own shortcut. Close the
+ * window to quit.
  *
  * Compare input.c, which is §5d's loop: there the APPLICATION found the
  * key, appended the character and worked out the rows. Here every event goes
@@ -46,6 +52,18 @@ static const wsk_widget_t FORM[] = {
 	{ .kind = WSK_CHECK,  .id = "remember", .text = "Remember me", .sub = 0, .size = 36 },
 	{ .kind = WSK_IMAGE,  .id = "logo", .sub = 1, .size = 56 },   /* only where a host can (§5r) */
 };
+
+/* the menu a right-click on a field opens (§5s): each item is a key */
+static const wsk_widget_t CTXMENU[] = {
+	{ .kind = WSK_BUTTON, .id = "cx-cut",   .text = "Cut",        .size = 40 },
+	{ .kind = WSK_BUTTON, .id = "cx-copy",  .text = "Copy",       .size = 40 },
+	{ .kind = WSK_BUTTON, .id = "cx-paste", .text = "Paste",      .size = 40 },
+	{ .kind = WSK_BUTTON, .id = "cx-all",   .text = "Select all", .size = 40 },
+};
+static const unsigned short CTXKEY[] = {
+	'x' | WSK_MOD_CTRL, 'c' | WSK_MOD_CTRL, 'v' | WSK_MOD_CTRL, 'a' | WSK_MOD_CTRL,
+};
+#define CTX 36                          /* its index in nest */
 
 static const wsk_widget_t SAVEMENU[] = {
 	{ .kind = WSK_BUTTON, .id = "save-now", .text = "Save now", .size = 44 },
@@ -120,12 +138,104 @@ static int tree_rows(void)
 }
 static char name[40], city[40], note[80];
 static unsigned char state[1];          /* Remember me, ticked or not (§5m) */
-static const char *strs[2] = { "Tab between fields, Enter prints a field, Esc quits",
+static const char *strs[2] = { "Tab between fields, Enter prints a field, right-click a field for Copy and Paste",
                                "/static/logo.svg" };
 static wsk_buf_t buf[3];
-static wsk_tree_t win, nest[6 + 30];
+static wsk_tree_t win, nest[6 + 30 + 1];
+static wsk_ui_t ui;
+static char clip[128];                  /* the toolkit's copy, for the host (§5s) */
+static int H;
 
 static void to_window(wsk_sink_t *s, const char *b, int n) { (void)s; wh_write(b, n); }
+
+/* Rows a..b joined to those already to repaint. */
+static void also(int *y0, int *y1, int a, int b)
+{
+	if (b <= a) return;
+	if (*y1 <= *y0) { *y0 = a; *y1 = b; return; }
+	if (a < *y0) *y0 = a;
+	if (b > *y1) *y1 = b;
+}
+
+static int is_field(const wsk_note_t *t)
+{
+	return t->item >= 0 && (t->in->item[t->item].kind == WSK_FIELD ||
+	                        t->in->item[t->item].kind == WSK_MEMO);
+}
+
+/*
+ * One event to the toolkit, and what it says changed, acted on: printed, a
+ * menu opened, the clipboard used. A menu's command feeds its key back in
+ * here, so it is handled exactly as the key would be.
+ */
+static void feed(const wsk_event_t *ev, int *y0, int *y1)
+{
+	wsk_note_t note_[4];
+	int n = wsk_feed(&ui, ev, note_, 4, y0, y1), m0, m1;
+
+	for (int i = 0; i < n && i < 4; i++) {
+		const wsk_note_t *t = &note_[i];
+		const char *id = (t->item >= 0) ? t->in->item[t->item].id : "nothing";
+		if (t->kind == WSK_NOTE_CLICK) {
+			printf("click  %s\n", id);
+			/* Save opens its menu; the menu's own buttons close it */
+			if (strcmp(id, "save") == 0 && wsk_ui_open(&ui, 3, "save", &m0, &m1) == WSK_OK)
+				also(y0, y1, m0, m1);
+			for (int c = 0; c < 4; c++)
+				if (t->in == &nest[CTX] && t->item == c) {
+					wsk_event_t k;
+					memset(&k, 0, sizeof k);
+					k.kind = WSK_EV_KEY;
+					k.key = CTXKEY[c];
+					feed(&k, &m0, &m1);
+					also(y0, y1, m0, m1);
+				}
+		} else if (t->kind == WSK_NOTE_CLOSE)
+			printf("close  the menu\n");
+		else if (t->kind == WSK_NOTE_CHANGE)
+			printf("change %s = %d\n", id, t->value);
+		else if (t->kind == WSK_NOTE_SELECT && t->in == &nest[5] &&
+		         NODES[rownode[t->value]].kids) {
+			/* a folder: open or close it, and hand the rows over again */
+			node_t *f = &NODES[rownode[t->value]];
+			f->open = !f->open;
+			printf("%s  %s\n", f->open ? "open " : "close", f->name);
+			nest[5].n = tree_rows();
+			/* fewer rows may now end above where the list was scrolled to,
+			   and an offset past the end is refused (D11): back to the top */
+			nest[5].scroll = 0;
+			*y0 = 0; *y1 = H;                     /* the rows all moved */
+		} else if (t->kind == WSK_NOTE_MENU) {
+			/* a context menu: on a field, Cut/Copy/Paste/Select all, hung
+			   from the pointer -- or, from the Menu key, from the field */
+			printf("menu   %s\n", id);
+			if (is_field(t) && ((ev->kind == WSK_EV_MENU)
+			                    ? wsk_ui_open_at(&ui, CTX, ev->x, ev->y, &m0, &m1)
+			                    : wsk_ui_open(&ui, CTX, id, &m0, &m1)) == WSK_OK)
+				also(y0, y1, m0, m1);
+		} else if (t->kind == WSK_NOTE_KEY) {
+			if (t->value == ('s' | WSK_MOD_CTRL)) {     /* our own shortcut */
+				printf("shortcut save\n");
+				if (wsk_ui_open(&ui, 3, "save", &m0, &m1) == WSK_OK) also(y0, y1, m0, m1);
+			} else
+				printf("key    0x%x, not ours\n", t->value);
+		} else if (t->kind == WSK_NOTE_COPY) {
+			printf("copy   %s \"%s\"%s\n", id, clip, wh_copy(clip, t->value) == 0 ? "" : ", the host refused it");
+		} else if (t->kind == WSK_NOTE_PASTE) {
+			char pb[128];
+			wsk_note_t pn[2];
+			int k = wh_paste(pb, sizeof pb), e = (k > 0) ? wsk_ui_paste(&ui, pb, k, pn, 2, &m0, &m1) : k;
+			if (e >= 0) { printf("paste  %s \"%s\"\n", id, buf[t->in->item[t->item].sub].b); also(y0, y1, m0, m1); }
+			else printf("paste  refused (%d)\n", e);
+		}
+		if (t->kind == WSK_NOTE_SELECT)
+			printf("select %s\n", id);
+		else if (t->kind == WSK_NOTE_ENTER)
+			printf("enter  %s = \"%s\"\n", id, buf[t->in->item[t->item].sub].b);
+		else if (t->kind == WSK_NOTE_FOCUS)
+			printf("focus  %s\n", id);
+	}
+}
 
 int main(int argc, char **argv)
 {
@@ -133,7 +243,6 @@ int main(int argc, char **argv)
 	int h = (argc > 2) ? atoi(argv[2]) : 600;
 	int scale = (argc > 3) ? atoi(argv[3]) : 1;
 	wsk_sink_t s;
-	wsk_ui_t ui;
 	int y0, y1, which = -1, e;
 	const wsk_tree_t *in = 0;
 
@@ -156,7 +265,7 @@ int main(int argc, char **argv)
 	wsk_init(&win, WSK_COL, w, h);
 	win.pad = 0; win.gap = 0; win.font = 20; win.ids = 1;
 	win.item = WIN; win.n = 3;
-	win.nest = nest; win.nests = 6 + 30;
+	win.nest = nest; win.nests = 6 + 30 + 1;
 	win.buf = buf; win.bufs = 3;
 	win.str = strs; win.strs = 2;
 	win.caps = (unsigned char)caps;
@@ -186,6 +295,10 @@ int main(int argc, char **argv)
 	wsk_nest_init(&nest[3], &win, WSK_COL);    /* the menu Save opens */
 	nest[3].pad = 6; nest[3].gap = 4; nest[3].bg = 0x2a3a4au;
 	nest[3].item = SAVEMENU; nest[3].n = 3;
+	wsk_nest_init(&nest[CTX], &win, WSK_COL);  /* the menu a right-click opens */
+	nest[CTX].pad = 6; nest[CTX].gap = 4; nest[CTX].bg = 0x2a3a4au;
+	nest[CTX].item = CTXMENU; nest[CTX].n = 4;
+	H = h;
 
 	if ((e = wsk_check_in(&win, &which, &in)) != WSK_OK) {
 		fprintf(stderr, "edit: the window was refused, %d at %s\n", e,
@@ -195,6 +308,7 @@ int main(int argc, char **argv)
 	if (wh_open(w, h, scale, "whisker -- edit") != 0) return 1;
 	s.put = to_window; s.ctx = 0; s.len = 0;
 	wsk_ui_init(&ui, &win);
+	ui.clip = clip; ui.clipcap = sizeof clip;
 	wsk_ui_focus(&ui, "name", &y0, &y1);
 	wh_clip(0, 0);
 	wsk_render(&win, &s, 0);
@@ -202,8 +316,7 @@ int main(int argc, char **argv)
 	for (;;) {
 		wh_event_t he;
 		wsk_event_t ev;
-		wsk_note_t note_[4];
-		int k = wh_poll(&he), n;
+		int k = wh_poll(&he);
 
 		if (k == WH_QUIT) break;
 		if (k == WH_NOTHING) { wh_wait(20); continue; }
@@ -214,51 +327,16 @@ int main(int argc, char **argv)
 		}
 		memset(&ev, 0, sizeof ev);
 		ev.x = (short)he.x; ev.y = (short)he.y;
-		if (k == WH_PRESS) ev.kind = WSK_EV_DOWN;
+		if (k == WH_PRESS) { ev.kind = WSK_EV_DOWN; ev.key = (unsigned short)he.key; }
 		else if (k == WH_RELEASE) ev.kind = WSK_EV_UP;
 		else if (k == WH_MOVE) ev.kind = WSK_EV_MOVE;
+		else if (k == WH_MENU) ev.kind = WSK_EV_MENU;
 		else if (k == WH_WHEEL) { ev.kind = WSK_EV_WHEEL; ev.d = (short)he.d; }
 		else if (k == WH_KEY) { ev.kind = WSK_EV_KEY; ev.key = (unsigned short)he.key; }
 		else if (k == WH_TEXT) { ev.kind = WSK_EV_TEXT; memcpy(ev.text, he.text, sizeof ev.text); }
 		else continue;
 
-		n = wsk_feed(&ui, &ev, note_, 4, &y0, &y1);
-		for (int i = 0; i < n && i < 4; i++) {
-			const wsk_note_t *t = &note_[i];
-			if (t->kind == WSK_NOTE_CLICK) {
-				int m0, m1;
-				printf("click  %s\n", t->in->item[t->item].id);
-				/* Save opens its menu; the menu's own buttons close it */
-				if (strcmp(t->in->item[t->item].id, "save") == 0 &&
-				    wsk_ui_open(&ui, 3, "save", &m0, &m1) == WSK_OK) {
-					if (y1 <= y0) { y0 = m0; y1 = m1; }
-					if (m0 < y0) y0 = m0;
-					if (m1 > y1) y1 = m1;
-				}
-			} else if (t->kind == WSK_NOTE_CLOSE)
-				printf("close  the menu\n");
-			else if (t->kind == WSK_NOTE_CHANGE)
-				printf("change %s = %d\n", t->in->item[t->item].id, t->value);
-			else if (t->kind == WSK_NOTE_SELECT && t->in == &nest[5] &&
-			         NODES[rownode[t->value]].kids) {
-				/* a folder: open or close it, and hand the rows over again */
-				node_t *f = &NODES[rownode[t->value]];
-				f->open = !f->open;
-				printf("%s  %s\n", f->open ? "open " : "close", f->name);
-				nest[5].n = tree_rows();
-				/* fewer rows may now end above where the list was scrolled to,
-				   and an offset past the end is refused (D11): back to the top */
-				nest[5].scroll = 0;
-				y0 = 0; y1 = h;                       /* the rows all moved */
-			}
-			if (t->kind == WSK_NOTE_SELECT)
-				printf("select %s\n", t->in->item[t->item].id);
-			else if (t->kind == WSK_NOTE_ENTER)
-				printf("enter  %s = \"%s\"\n", t->in->item[t->item].id,
-				       buf[t->in->item[t->item].sub].b);
-			else if (t->kind == WSK_NOTE_FOCUS)
-				printf("focus  %s\n", t->in->item[t->item].id);
-		}
+		feed(&ev, &y0, &y1);
 		fflush(stdout);
 		if (y1 > y0) {
 			wh_clip(y0, y1);

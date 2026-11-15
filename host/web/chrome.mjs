@@ -64,9 +64,16 @@ async function type(text) {
     await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: ch });
   }
 }
-async function key(name, code) {
-  await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: name, code, windowsVirtualKeyCode: { Enter: 13, Tab: 9 }[name] });
-  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code });
+async function key(name, code, modifiers = 0, commands) {   // CDP: Alt 1, Ctrl 2, Shift 8
+  const vk = { Enter: 13, Tab: 9, Home: 36, End: 35 }[name] ?? name.toUpperCase().charCodeAt(0);
+  await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: name, code, modifiers,
+                                        windowsVirtualKeyCode: vk, ...(commands ? { commands } : {}) });
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code, modifiers });
+}
+async function rightClick(x, y) {
+  const [px, py] = await at(x, y);
+  await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: px, y: py, button: 'right', buttons: 2, clickCount: 1 });
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: px, y: py, button: 'right', buttons: 0, clickCount: 1 });
 }
 async function snap(name) {
   const url = await js('whisker.canvas.toDataURL("image/png")');
@@ -90,6 +97,11 @@ try {
   });
   await cdp('Page.enable');
   await cdp('Runtime.enable');
+  // the clipboard, as a person who allowed it (§5s); said, if refused
+  const perm = await cdp('Browser.grantPermissions', { origin: `http://127.0.0.1:${PORT}`,
+    permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
+  const granted = !(perm && perm.error);
+  if (!granted) console.log(`      clipboard permission not granted: ${JSON.stringify(perm.error)}`);
   await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
   await sleep(500);
   const n0 = await settle();
@@ -140,6 +152,46 @@ try {
   await sleep(300);
   ok(said.includes('open   docs'), 'a tap on a folder opens it -- the program owns expansion (§5p)');
   await snap('web_check.png');
+
+  // §5s, with real keys and a real right-click. Name holds "Hello web": End,
+  // then Shift-Home selects it all; Ctrl-C copies it, through the program,
+  // to the system clipboard.
+  await click(100, 118);              // name: 48 + 8 + 32 + 6 = 94..142
+  await key('End', 'End');
+  await key('Home', 'Home', 8);
+  await settle();
+  await snap('web_select.png');
+  await key('c', 'KeyC', 2);
+  await settle();
+  await sleep(300);
+  ok(said.includes('copy   name "Hello web"'), 'Shift-Home and Ctrl-C, real keys: the program copied "Hello web"');
+  ok(await js('whisker.clip()') === 'Hello web', 'and the page was sent it');
+  const how = await js('whisker.copied()');
+  const sys = granted ? await js('navigator.clipboard.readText().catch(e=>"refused: "+e)') : '(no permission)';
+  ok(how === 'clipboard' && sys === 'Hello web',
+     `and put it on the system clipboard: ${how}, which reads back "${sys}"`);
+
+  // A right-click past the end of city's "Paris": the menu, there; Paste.
+  await rightClick(300, 210);
+  await settle();
+  await sleep(200);
+  ok(said.includes('menu   city'), 'a real right-click: the browser\'s contextmenu, MENU on city');
+  await snap('web_context.png');
+  await click(320, 210 + 6 + 2 * 44 + 20);   // Paste: the third item, 44 apart
+  await settle();
+  await sleep(300);
+  ok(said.includes('click  cx-paste') && said.includes('paste  city "ParisHello web"'),
+     'Paste from the menu: the host\'s copy, at the caret the right-click put there');
+
+  // And the browser's own paste: Ctrl-A, then Ctrl-V with the editor's
+  // paste command, which reads the system clipboard and fires the page's
+  // paste event.
+  await key('a', 'KeyA', 2);
+  await key('v', 'KeyV', 2, ['paste']);
+  await settle();
+  await sleep(400);
+  ok(said.includes('paste  city "Hello web"'),
+     'a real Ctrl-V: the browser\'s paste event, P to the host, Ctrl-V to the program, the selection replaced');
 
   // The banded rule: everything above was clipped repaints. Keep that canvas,
   // ask the program to draw it all again, and compare.

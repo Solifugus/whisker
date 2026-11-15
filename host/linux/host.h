@@ -10,7 +10,9 @@
  * and, since §5j, what a desktop has that a panel does not: the pointer
  * moving while pressed, the wheel, a key that means something to a field,
  * and text typed. Still input, still no widget: the toolkit turns these into
- * what changed, on whisker's side of the seam.
+ * what changed, on whisker's side of the seam. Since §5s, a right-click, the
+ * modifiers on a key, and the system clipboard -- which is the host's, since
+ * whisker has none and no way to reach one.
  *
  * On RV-9 that is four operations on a path: open /w0, setstat
  * RV9_SVG_SS_ROWS, write, and read a point from whatever device supplies one.
@@ -32,9 +34,11 @@ enum {
 	WH_WHEEL,                /* d: pixels, positive scrolls toward the end */
 	WH_KEY,                  /* key: one of WH_KEY_* */
 	WH_TEXT,                 /* text: what was typed, UTF-8, NUL-ended */
-	WH_EXPOSE                /* draw everything again: a screen has come
+	WH_EXPOSE,               /* draw everything again: a screen has come
 	                            that has not seen the picture (§5k) -- X's
 	                            Expose, for the same reason */
+	WH_MENU                  /* a right-click, or what the platform calls
+	                            asking for a context menu: at x, y (§5s) */
 };
 
 /* The keys a field cares about. The same numbers as whisker's WSK_KEY_*, so
@@ -43,15 +47,21 @@ enum {
 enum {
 	WH_KEY_LEFT = 1, WH_KEY_RIGHT, WH_KEY_HOME, WH_KEY_END,
 	WH_KEY_BACKSPACE, WH_KEY_DELETE, WH_KEY_ENTER, WH_KEY_TAB, WH_KEY_BACKTAB,
-	WH_KEY_ESCAPE,           /* the web host sends it; SDL's Escape quits */
-	WH_KEY_UP, WH_KEY_DOWN   /* a memo's lines (§5o) */
+	WH_KEY_ESCAPE,           /* closes a menu; both hosts send it (§5s) */
+	WH_KEY_UP, WH_KEY_DOWN,  /* a memo's lines (§5o) */
+	WH_KEY_MENU              /* the Menu key, Shift-F10 (§5s) */
 };
+
+/* Modifiers on `key` (§5s), whisker's WSK_MOD_* numbers: on a named key, or
+   on a printable character, lower-case, for a chord -- Ctrl-S is
+   's' | WH_MOD_CTRL. On a press, whether Shift was held. */
+enum { WH_MOD_SHIFT = 0x100, WH_MOD_CTRL = 0x200, WH_MOD_ALT = 0x400 };
 
 typedef struct {
 	int  kind;               /* WH_* */
 	int  x, y;               /* device pixels, as the panel reports them */
 	int  d;                  /* WH_WHEEL */
-	int  key;                /* WH_KEY */
+	int  key;                /* WH_KEY; on WH_PRESS, WH_MOD_SHIFT or 0 */
 	char text[8];            /* WH_TEXT */
 } wh_event_t;
 
@@ -84,6 +94,15 @@ void wh_write(const void *bytes, int n);
  * test polls in a loop.
  */
 int  wh_poll(wh_event_t *out);
+
+/*
+ * The system clipboard (§5s). wh_copy puts n bytes on it: 0, or -1 if the
+ * host could not. wh_paste copies what it holds into b, NUL-ended: its
+ * length, or -1 if it is empty, is not text, or would not fit in cap --
+ * never a part of it.
+ */
+int  wh_copy(const char *s, int n);
+int  wh_paste(char *b, int cap);
 
 /* Wait up to this long for something to happen, so a loop need not spin. */
 void wh_wait(int ms);

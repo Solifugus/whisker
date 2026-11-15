@@ -120,6 +120,7 @@ int main(void)
 		wsk_rect_t r = wsk_rect(&t, 1);
 		memset(&e, 0, sizeof e);
 		e.type = SDL_MOUSEBUTTONDOWN;
+		e.button.button = SDL_BUTTON_LEFT;      /* as a real click says */
 		e.button.x = (r.x + 10) * SCALE;
 		e.button.y = (r.y + 10) * SCALE;
 		SDL_PushEvent(&e);
@@ -135,6 +136,7 @@ int main(void)
 		wsk_rect_t r = wsk_rect(&t, 1);
 		memset(&e, 0, sizeof e);
 		e.type = SDL_MOUSEBUTTONDOWN;
+		e.button.button = SDL_BUTTON_LEFT;      /* as a real click says */
 		e.button.x = (W / 2) * SCALE;
 		e.button.y = (r.y + r.h + 1) * SCALE;
 		memset(&ev, 0, sizeof ev);
@@ -192,6 +194,7 @@ int main(void)
 		kr = wsk_rect(&PART2[1], 1);
 		memset(&e, 0, sizeof e);
 		e.type = SDL_MOUSEBUTTONDOWN;
+		e.button.button = SDL_BUTTON_LEFT;      /* as a real click says */
 		e.button.x = (kr.x + kr.w / 2) * SCALE;
 		e.button.y = (kr.y + kr.h / 2) * SCALE;
 		memset(&ev, 0, sizeof ev);
@@ -279,11 +282,94 @@ int main(void)
 		e.key.keysym.sym = SDLK_BACKSPACE;
 		SDL_PushEvent(&e);
 		ok(poll_until(&ev, 20) == WH_KEY && ev.key == WH_KEY_BACKSPACE &&
-		   WH_KEY_BACKSPACE == WSK_KEY_BACKSPACE,
+		   (int)WH_KEY_BACKSPACE == (int)WSK_KEY_BACKSPACE,
 		   "Backspace arrives as the same number whisker uses");
 		e.key.keysym.sym = SDLK_q;
 		SDL_PushEvent(&e);
 		ok(poll_until(&ev, 20) != WH_QUIT, "q no longer quits: it is a letter now");
+	}
+
+	/* §5s: a desktop's plumbing through the host -- right-click, chords,
+	   Shift where it means something, and the clipboard. */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_FIELD, .id = "a", .sub = 0, .size = 40 },
+		};
+		char ab[16] = "", clip[16], pb[16];
+		wsk_buf_t buf[1];
+		wsk_tree_t t3;
+		wsk_ui_t ui;
+		wsk_note_t nt[2];
+		wsk_event_t we;
+		wh_event_t ev;
+		SDL_Event e;
+		int y0, y1, got, pn;
+
+		memset(buf, 0, sizeof buf);
+		buf[0].b = ab; buf[0].cap = 16;
+		wsk_init(&t3, WSK_COL, W, H);
+		t3.item = F; t3.n = 1; t3.buf = buf; t3.bufs = 1;
+		wsk_ui_init(&ui, &t3);
+		ui.clip = clip; ui.clipcap = sizeof clip;
+		wsk_ui_focus(&ui, "a", &y0, &y1);
+		snprintf(ab, sizeof ab, "copy me"); buf[0].len = 7; buf[0].caret = 7;
+
+		memset(&e, 0, sizeof e);
+		e.type = SDL_MOUSEBUTTONDOWN;
+		e.button.button = SDL_BUTTON_RIGHT;
+		e.button.x = 30 * SCALE; e.button.y = 20 * SCALE;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_MENU && ev.x == 30 && ev.y == 20,
+		   "a right-click arrives as WH_MENU, at the point -- not as a press");
+		e.type = SDL_MOUSEBUTTONUP;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 5) == WH_NOTHING, "CONTROL: and its release is nothing at all");
+
+		memset(&e, 0, sizeof e);
+		e.type = SDL_KEYDOWN;
+		e.key.keysym.sym = SDLK_LEFT;
+		e.key.keysym.mod = KMOD_LSHIFT;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_KEY && ev.key == (WH_KEY_LEFT | WH_MOD_SHIFT),
+		   "Shift-Left arrives with its Shift");
+		we.kind = WSK_EV_KEY; we.key = (unsigned short)ev.key;
+		wsk_feed(&ui, &we, nt, 2, &y0, &y1);
+		wsk_feed(&ui, &we, nt, 2, &y0, &y1);
+		ok(buf[0].span == 2, "and through the toolkit, twice, selects \"me\"");
+		e.key.keysym.sym = SDLK_RETURN;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_KEY && ev.key == WH_KEY_ENTER,
+		   "Shift-Enter is Enter: Shift means nothing to it");
+		e.key.keysym.sym = SDLK_c;
+		e.key.keysym.mod = KMOD_LCTRL;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_KEY && ev.key == ('c' | WH_MOD_CTRL) && (int)WH_MOD_CTRL == (int)WSK_MOD_CTRL,
+		   "Ctrl-C arrives as a chord, 'c' | WH_MOD_CTRL, whisker's numbers");
+		we.key = (unsigned short)ev.key;
+		got = wsk_feed(&ui, &we, nt, 2, &y0, &y1);
+		ok(got == 1 && nt[0].kind == WSK_NOTE_COPY && wh_copy(clip, nt[0].value) == 0,
+		   "the toolkit copies the selection, and the host puts it on the clipboard");
+		pn = wh_paste(pb, sizeof pb);
+		ok(pn == 2 && strcmp(pb, "me") == 0, "and the host's clipboard gives \"me\" back");
+		ok(wh_paste(pb, 2) == -1, "CONTROL: into two bytes it does not fit with its NUL: -1, not a part");
+		e.key.keysym.sym = SDLK_ESCAPE;
+		e.key.keysym.mod = 0;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_KEY && ev.key == WH_KEY_ESCAPE,
+		   "Escape is a key now, for a menu to close -- not a quit");
+		e.key.keysym.sym = SDLK_APPLICATION;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_KEY && ev.key == WH_KEY_MENU && (int)WH_KEY_MENU == (int)WSK_KEY_MENU,
+		   "the Menu key arrives as WH_KEY_MENU");
+		SDL_SetModState(KMOD_LALT);
+		memset(&e, 0, sizeof e);
+		e.type = SDL_TEXTINPUT;
+		snprintf(e.text.text, sizeof e.text.text, "x");
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 5) == WH_NOTHING, "with Alt held, typed text is not text: Alt-x is a chord");
+		SDL_SetModState(KMOD_NONE);
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_TEXT, "CONTROL: without it, the same x is");
 	}
 
 	wh_close();

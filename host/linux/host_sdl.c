@@ -173,12 +173,19 @@ int wh_poll(wh_event_t *out)
 			out->kind = WH_QUIT;
 			return WH_QUIT;
 		case SDL_KEYDOWN: {
-			/* Escape quits. `q` used to as well, until a field could be
-			   typed into (§5j) and q became a letter. */
+			/* Escape is a key, as in a browser: it closes a menu, and a
+			   program with none open may take it to mean quit. It used to
+			   quit here, until right-click opened menus (§5s); `q` used to,
+			   until a field could be typed into (§5j). */
 			SDL_Keycode k = e.key.keysym.sym;
-			int key = 0;
-			if (k == SDLK_ESCAPE) { out->kind = WH_QUIT; return WH_QUIT; }
-			if (k == SDLK_LEFT) key = WH_KEY_LEFT;
+			Uint16 m = e.key.keysym.mod;
+			int key = 0, mods = ((m & KMOD_SHIFT) ? WH_MOD_SHIFT : 0) |
+			                    ((m & KMOD_CTRL) ? WH_MOD_CTRL : 0) |
+			                    ((m & KMOD_LALT) ? WH_MOD_ALT : 0);
+			if (k == SDLK_ESCAPE) key = WH_KEY_ESCAPE;
+			else if (k == SDLK_APPLICATION || (k == SDLK_F10 && (m & KMOD_SHIFT)))
+				{ key = WH_KEY_MENU; mods = 0; }
+			else if (k == SDLK_LEFT) key = WH_KEY_LEFT;
 			else if (k == SDLK_RIGHT) key = WH_KEY_RIGHT;
 			else if (k == SDLK_HOME) key = WH_KEY_HOME;
 			else if (k == SDLK_UP) key = WH_KEY_UP;
@@ -187,13 +194,28 @@ int wh_poll(wh_event_t *out)
 			else if (k == SDLK_BACKSPACE) key = WH_KEY_BACKSPACE;
 			else if (k == SDLK_DELETE) key = WH_KEY_DELETE;
 			else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) key = WH_KEY_ENTER;
-			else if (k == SDLK_TAB)
-				key = (e.key.keysym.mod & KMOD_SHIFT) ? WH_KEY_BACKTAB : WH_KEY_TAB;
-			if (key != 0) { out->kind = WH_KEY; out->key = key; return WH_KEY; }
+			else if (k == SDLK_TAB) {
+				key = (m & KMOD_SHIFT) ? WH_KEY_BACKTAB : WH_KEY_TAB;
+				mods &= ~WH_MOD_SHIFT;
+			}
+			/* a chord: a printable key with Ctrl or Alt -- SDL's keycode for
+			   one is the character, lower-case, as the contract wants */
+			else if ((mods & (WH_MOD_CTRL | WH_MOD_ALT)) && k > 32 && k < 127)
+				key = (int)k;
+			/* Shift means something only to a key that moves the caret,
+			   and to a chord; Shift-Enter is Enter */
+			if (!(mods & (WH_MOD_CTRL | WH_MOD_ALT)) && key != WH_KEY_LEFT && key != WH_KEY_RIGHT &&
+			    key != WH_KEY_HOME && key != WH_KEY_END && key != WH_KEY_UP && key != WH_KEY_DOWN)
+				mods &= ~WH_MOD_SHIFT;
+			if (key != 0) { out->kind = WH_KEY; out->key = key | mods; return WH_KEY; }
 			break;
 		}
 		case SDL_TEXTINPUT: {
 			int i = 0;
+			/* a chord is a key, not text: SDL drops Ctrl's control
+			   characters itself, but Alt-x would type an x as well */
+			if ((SDL_GetModState() & (KMOD_CTRL | KMOD_LALT)) &&
+			    !(SDL_GetModState() & (KMOD_RALT | KMOD_MODE))) break;
 			while (i < (int)sizeof out->text - 1 && e.text.text[i] != '\0') {
 				out->text[i] = e.text.text[i];
 				i++;
@@ -225,15 +247,24 @@ int wh_poll(wh_event_t *out)
 		   wants a point, and does not care which produced it. The panel
 		   reports five and whisker uses one (§2.6). */
 		case SDL_MOUSEBUTTONDOWN:
-			if (point_of(e.button.x, e.button.y, out)) { out->kind = WH_PRESS; return WH_PRESS; }
+			/* the right button asks for a context menu (§5s); the middle
+			   one means nothing here */
+			if (e.button.button == SDL_BUTTON_RIGHT && point_of(e.button.x, e.button.y, out))
+				{ out->kind = WH_MENU; return WH_MENU; }
+			if (e.button.button == SDL_BUTTON_LEFT && point_of(e.button.x, e.button.y, out)) {
+				out->kind = WH_PRESS;
+				out->key = (SDL_GetModState() & KMOD_SHIFT) ? WH_MOD_SHIFT : 0;
+				return WH_PRESS;
+			}
 			break;
 		case SDL_MOUSEBUTTONUP:
-			if (point_of(e.button.x, e.button.y, out)) { out->kind = WH_RELEASE; return WH_RELEASE; }
+			if (e.button.button == SDL_BUTTON_LEFT && point_of(e.button.x, e.button.y, out))
+				{ out->kind = WH_RELEASE; return WH_RELEASE; }
 			break;
 		case SDL_FINGERDOWN:
 			if (point_of((int)(e.tfinger.x * S.w * S.scale),
 			             (int)(e.tfinger.y * S.h * S.scale), out))
-				{ out->kind = WH_PRESS; return WH_PRESS; }
+				{ out->kind = WH_PRESS; out->key = 0; return WH_PRESS; }
 			break;
 		case SDL_FINGERUP:
 			if (point_of((int)(e.tfinger.x * S.w * S.scale),
@@ -248,6 +279,32 @@ int wh_poll(wh_event_t *out)
 }
 
 void wh_wait(int ms) { SDL_WaitEventTimeout(NULL, ms); }
+
+/* The clipboard is SDL's: the desktop's under X11 or Wayland, and SDL's own
+   copy under its dummy driver, which is what the self test runs on. */
+int wh_copy(const char *s, int n)
+{
+	char *t = (char *)malloc((size_t)n + 1);
+	int e;
+	if (t == NULL) return -1;
+	memcpy(t, s, (size_t)n);
+	t[n] = '\0';
+	e = SDL_SetClipboardText(t);
+	free(t);
+	return (e == 0) ? 0 : -1;
+}
+
+int wh_paste(char *b, int cap)
+{
+	char *t;
+	int n;
+	if (!SDL_HasClipboardText() || (t = SDL_GetClipboardText()) == NULL) return -1;
+	n = (int)strlen(t);
+	if (n == 0 || n >= cap) { SDL_free(t); return -1; }
+	memcpy(b, t, (size_t)n + 1);
+	SDL_free(t);
+	return n;
+}
 
 /* RV-9's own rasteriser draws the pixels here, so this host can draw exactly
    what /w0 can, and says nothing more (§5r). */

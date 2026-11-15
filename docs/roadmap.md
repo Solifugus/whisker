@@ -52,6 +52,7 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **Trees** (§5p) | built 2026-11-14: depths over a flat list, the program owns expansion, as Studio's `window` does |
 | **World** (§5q) | designed 2026-11-14, not built: placed children over a larger space, view and zoom, bounded/open/toroidal, per-item scale and fade -- games, diagrams, Matthew's virtual conference |
 | **Capabilities** (§5r) | built 2026-11-14: a host declares UTF-8, images, clipping; caps 0 byte-identical; the browser draws Studio's arrows and images |
+| **Desktop plumbing** (§5s) | built 2026-11-14: right-click (MENU), modifiers and shortcuts (KEY), selection in fields and memos, the clipboard through the host; real round trip in headless Chrome; 844 bytes, `WSK_NO_TEXTSEL`, left out of `WSK_PANEL` |
 | **Profiles** (§7, D8) | built; the C5 pays for nothing it cannot use |
 | **On the board** | `wflick` and `wcompose` run on the C5, committed in RV-9 |
 | **On a desk** | `host/linux`, typing loop closed with a mouse (D7) |

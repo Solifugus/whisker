@@ -1381,6 +1381,95 @@ int main(void)
 		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
 	}
 
+	/*
+	 * Selection, at the pixels (design.md §5s): a drag across a field, then
+	 * Shift-Down across a memo's lines -- each event's rows repainted alone,
+	 * against a full redraw -- and the selected text still readable over its
+	 * box.
+	 */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_FIELD, .id = "f", .sub = 0, .size = 32 },
+			{ .kind = WSK_MEMO,  .id = "m", .sub = 1, .weight = 1 },
+		};
+		static uint16_t want[PW * PH];
+		char fb[40] = "select me, then copy", mb[96] = "first line\nsecond line\nthird";
+		wsk_buf_t buf[2];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[2];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		wsk_rect_t fr, mr;
+		uint32_t v;
+		int y0, y1, good = 1, lo, hi;
+		/* the events: press on "me", drag to "then"; then the memo, Shift-Down twice */
+		int step = 0;
+
+		memset(buf, 0, sizeof buf);
+		buf[0].b = fb; buf[0].cap = 40; buf[0].len = (short)strlen(fb);
+		buf[1].b = mb; buf[1].cap = 96; buf[1].len = (short)strlen(mb); buf[1].caret = 6;
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 8; w.gap = 8; w.bg = 0x10203au; w.item = F; w.n = 2; w.buf = buf; w.bufs = 2;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		s.put = to_window; s.ctx = &dev;
+		fr = wsk_rect(&w, 0);
+		mr = wsk_rect(&w, 1);
+
+		printf("\n  selection (§5s)\n");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		for (step = 0; step < 6; step++) {
+			int adv = wsk_advance(w.font), tx = fr.x + WSK_FIELD_PAD;
+			if (step == 0) { ev.kind = WSK_EV_DOWN; ev.x = (short)(tx + 7 * adv + 1); ev.y = (short)(fr.y + 10); }
+			else if (step == 1) { ev.kind = WSK_EV_MOVE; ev.x = (short)(tx + 15 * adv + 1); }
+			else if (step == 2) { ev.kind = WSK_EV_UP; }
+			else if (step == 3) { ev.kind = WSK_EV_DOWN; ev.x = (short)(mr.x + 40); ev.y = (short)(mr.y + 10); }
+			else if (step == 4) { ev.kind = WSK_EV_UP; }
+			else { ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_DOWN | WSK_MOD_SHIFT; }
+			wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+			if (y1 <= y0) continue;
+			v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+			svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+			s.len = 0; wsk_render_rows(&w, y0, y1, &s, 4096);
+			memcpy(want, screen, sizeof screen);
+			v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+			s.len = 0; wsk_render(&w, &s, 4096);
+			if (memcmp(screen, want, sizeof screen) != 0) { good = 0; printf("    differs after event %d\n", step); }
+		}
+		ok(buf[1].span != 0 && buf[0].span == -8, "a field's drag chose \"me, then\"; the memo has a selection of its own");
+		ok(good, "every event's rows, repainted alone, equal a full redraw");
+		/* the memo is focused, so ITS selection is drawn and the field's is not */
+		ok(span(fr, pix565(w.selfill), &lo, &hi) == 0,
+		   "the field, no longer focused, draws no selection");
+		ok(span(mr, pix565(w.selfill), &lo, &hi) > 0, "the memo, focused, draws its own");
+		{
+			wsk_rect_t line0 = { (short)(mr.x + WSK_FIELD_PAD + 5 * wsk_advance(w.font)),
+			                     (short)(mr.y + WSK_FIELD_PAD), (short)(5 * wsk_advance(w.font)), w.font };
+			/* the letters are anti-aliased, so no pixel is the ink exactly:
+			   ask for what the eye sees -- pixels far lighter than the box */
+			int light = 0;
+			for (int y = line0.y; y < line0.y + line0.h; y++)
+				for (int x = line0.x; x < line0.x + line0.w; x++)
+					if ((((at(x, y) >> 5) & 0x3F) * 255 / 63) > 160) light++;
+			printf("    in the box over \" line\": %d pixels far lighter than it\n", light);
+			ok(span(line0, pix565(w.selfill), &lo, &hi) > 0 && light > 20,
+			   "and inside its box, letters much lighter than it: the text is over the box, readable");
+		}
+		shot("selection_memo.ppm");
+		/* the same, the field focused again: its "me, then" drawn */
+		ui.selecting = 0;
+		wsk_ui_focus(&ui, "f", &y0, &y1);
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		ok(span(fr, pix565(w.selfill), &lo, &hi) > 0 &&
+		   lo == fr.x + WSK_FIELD_PAD + 7 * wsk_advance(w.font) &&
+		   hi == fr.x + WSK_FIELD_PAD + 15 * wsk_advance(w.font) - 1,
+		   "focused again, the field draws its selection: exactly characters 7 to 14");
+		shot("selection_field.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

@@ -2838,6 +2838,229 @@ int main(void)
 		   "hit still cuts by arithmetic: above the pane is nothing, inside it row 0");
 	}
 
+	/* ---- §5s. a desktop's plumbing: right-click, selection, clipboard, shortcuts ---- */
+	printf("\n-- §5s  right-click, selection, the clipboard, shortcuts\n");
+	{
+		static const wsk_widget_t SW[] = {
+			{ .kind = WSK_FIELD,  .id = "f",    .sub = 0, .size = 32 },    /*   4..36  */
+			{ .kind = WSK_MEMO,   .id = "m",    .sub = 1, .size = 80 },    /*  40..120 */
+			{ .kind = WSK_BUTTON, .id = "b",    .text = "Go", .size = 32 },/* 124..156 */
+			{ .kind = WSK_STACK,  .id = "list", .sub = 0, .size = 100 },   /* 160..260 */
+		};
+		static const wsk_widget_t SL[] = {
+			{ .kind = WSK_FIELD, .id = "lf", .sub = 2, .size = 40 },
+			{ .kind = WSK_LABEL, .id = "la", .text = "a", .size = 40 },
+			{ .kind = WSK_LABEL, .id = "lb", .text = "b", .size = 40 },
+			{ .kind = WSK_LABEL, .id = "lc", .text = "c", .size = 40 },
+		};
+		static const wsk_widget_t SM[] = {
+			{ .kind = WSK_BUTTON, .id = "cut",  .text = "Cut",  .size = 32 },
+			{ .kind = WSK_BUTTON, .id = "copy", .text = "Copy", .size = 32 },
+		};
+		char fb[16] = "", mb[64] = "", lb[16] = "", clip[8] = "";
+		wsk_buf_t buf[3];
+		wsk_tree_t w, k[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char sd[4096];
+		int n, y0 = 0, y1 = 0;
+		const char *SEL = "fill=\"#b06a2a\"";
+
+		memset(buf, 0, sizeof buf);
+		buf[0].b = fb; buf[0].cap = 16;
+		buf[1].b = mb; buf[1].cap = 64;
+		buf[2].b = lb; buf[2].cap = 16;
+		buf[0].span = 7;                        /* stale: a program's leftover */
+		wsk_init(&w, WSK_COL, 320, 300);
+		w.pad = 4; w.gap = 4; w.item = SW; w.n = 4; w.nest = k; w.nests = 2;
+		w.buf = buf; w.bufs = 3;
+		wsk_nest_init(&k[0], &w, WSK_COL);
+		k[0].pad = 0; k[0].gap = 4; k[0].item = SL; k[0].n = 4; k[0].overflow = WSK_SCROLL;
+		wsk_nest_init(&k[1], &w, WSK_COL);
+		k[1].pad = 4; k[1].gap = 4; k[1].item = SM; k[1].n = 2;
+		ok(wsk_check(&w, 0) == WSK_OK, "a field, a memo, a button, and a scrolling list with a field in it");
+		wsk_ui_init(&ui, &w);
+		ok(buf[0].span == 0, "wsk_ui_init clears every buffer's selection, whatever it held");
+		memset(&ev, 0, sizeof ev);
+
+#define TYPE(T) (ev.kind = WSK_EV_TEXT, snprintf(ev.text, sizeof ev.text, "%s", (T)), \
+                 n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define KEY(K)  (ev.kind = WSK_EV_KEY, ev.key = (unsigned short)(K), n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define PT(E, X, Y, K) (ev.kind = (E), ev.x = (X), ev.y = (Y), ev.key = (unsigned short)(K), \
+                        n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define SET(S, C) (snprintf(fb, sizeof fb, "%s", (S)), buf[0].len = (short)strlen(fb), \
+                   buf[0].caret = (short)(C), buf[0].span = 0)
+
+		/* The field: x 4, text from 10, 8 a character; its text's top at 12. */
+		wsk_ui_focus(&ui, "f", &y0, &y1);
+		TYPE("hello");
+		KEY(WSK_KEY_LEFT | WSK_MOD_SHIFT); KEY(WSK_KEY_LEFT | WSK_MOD_SHIFT);
+		ok(buf[0].caret == 3 && buf[0].span == 2 && n == 0 && y0 == 0 && y1 == 40,
+		   "Shift-Left twice: the caret at 3, the selection two on (\"lo\"), the field's rows, no notice");
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(count(sd, SEL) == 1 && has(sd, "<rect x=\"34\" y=\"12\" width=\"16\" height=\"16\" fill=\"#b06a2a\"/>"),
+		   "drawn: one box of selfill behind characters 3 and 4 -- x 34, 16 wide, the text's height");
+		ok(strstr(sd, "fill=\"#b06a2a\"") < strstr(sd, ">hello</text>"), "and behind the text, not over it");
+		KEY(WSK_KEY_RIGHT);
+		ok(buf[0].caret == 5 && buf[0].span == 0, "Right, unshifted: the selection collapses to its end");
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(count(sd, SEL) == 0, "CONTROL: and no box is drawn without one");
+		KEY(WSK_KEY_HOME | WSK_MOD_SHIFT);
+		ok(buf[0].caret == 0 && buf[0].span == 5, "Shift-Home: everything back to the start");
+		KEY(WSK_KEY_LEFT | WSK_MOD_SHIFT);
+		ok(buf[0].caret == 0 && buf[0].span == 5, "Shift-Left at the start: nothing moves, and the selection stays");
+		TYPE("J");
+		ok(n == 1 && nt[0].kind == WSK_NOTE_TEXT && strcmp(fb, "J") == 0 && buf[0].caret == 1 &&
+		   buf[0].span == 0, "typing replaces the selection: \"J\", one TEXT notice");
+		SET("hello world", 11);
+		KEY('a' | WSK_MOD_CTRL);
+		ok(n == 0 && buf[0].caret == 11 && buf[0].span == -11, "Ctrl-A selects all, and is the field's: no notice");
+		KEY(WSK_KEY_BACKSPACE);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_TEXT && fb[0] == '\0' && buf[0].len == 0 && buf[0].caret == 0,
+		   "Backspace deletes the selection, all of it");
+		SET("hello world", 0);
+		KEY(WSK_KEY_END | WSK_MOD_SHIFT); KEY(WSK_KEY_LEFT | WSK_MOD_SHIFT);
+		KEY(WSK_KEY_DELETE);
+		ok(strcmp(fb, "d") == 0 && buf[0].caret == 0, "Delete deletes it too: \"hello worl\" gone, \"d\" left");
+
+		/* The clipboard. */
+		SET("hello world", 11);
+		for (int i = 0; i < 5; i++) KEY(WSK_KEY_LEFT | WSK_MOD_SHIFT);
+		KEY('c' | WSK_MOD_CTRL);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_KEY && nt[0].value == ('c' | WSK_MOD_CTRL),
+		   "with no clip buffer, Ctrl-C is not the field's: a KEY notice, for the program");
+		ui.clip = clip; ui.clipcap = sizeof clip;
+		KEY('c' | WSK_MOD_CTRL);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_COPY && nt[0].value == 5 && strcmp(clip, "world") == 0 &&
+		   strcmp(fb, "hello world") == 0 && buf[0].caret == 6 && buf[0].span == 5,
+		   "with one, Ctrl-C: \"world\" copied into it, a COPY notice of 5, the text and selection as they were");
+		KEY('a' | WSK_MOD_CTRL);
+		KEY('c' | WSK_MOD_CTRL);
+		ok(n == 0 && strcmp(clip, "world") == 0,
+		   "eleven characters into a buffer of 8: nothing copied, not even a part, and no notice");
+		SET("hello world", 11);
+		for (int i = 0; i < 5; i++) KEY(WSK_KEY_LEFT | WSK_MOD_SHIFT);
+		KEY('x' | WSK_MOD_CTRL);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_COPY && nt[1].kind == WSK_NOTE_TEXT && nt[1].value == 6 &&
+		   strcmp(fb, "hello ") == 0 && strcmp(clip, "world") == 0,
+		   "Ctrl-X: COPY, then TEXT -- \"world\" copied before it was deleted");
+		KEY('v' | WSK_MOD_CTRL);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_PASTE && nt[0].item == 0, "Ctrl-V: a PASTE notice, naming the field");
+		ok(wsk_ui_paste(&ui, "a<b", 3, nt, 4, &y0, &y1) == WSK_E_TEXT && strcmp(fb, "hello ") == 0,
+		   "pasting a character the window cannot draw is refused, the field as it was");
+		ok(wsk_ui_paste(&ui, "x\ny", 3, nt, 4, &y0, &y1) == WSK_E_TEXT,
+		   "and a line break, in a one-line field");
+		ok(wsk_ui_paste(&ui, "0123456789", 10, nt, 4, &y0, &y1) == WSK_E_BUDGET && strcmp(fb, "hello ") == 0,
+		   "and ten more than a buffer of 16 holds after six: refused whole, not trimmed");
+		ok(wsk_ui_paste(&ui, "012345678", 9, nt, 4, &y0, &y1) == 1 && nt[0].kind == WSK_NOTE_TEXT &&
+		   strcmp(fb, "hello 012345678") == 0 && buf[0].caret == 15 && y0 == 0 && y1 == 40,
+		   "nine fit: pasted at the caret, a TEXT notice, the field's rows");
+		KEY(WSK_KEY_HOME); KEY(WSK_KEY_END | WSK_MOD_SHIFT);
+		ok(wsk_ui_paste(&ui, "bye", 3, nt, 4, &y0, &y1) == 1 && strcmp(fb, "bye") == 0,
+		   "and in place of a selection: all fifteen selected, \"bye\" left");
+
+		/* The pointer: a press at a character, a drag to another. */
+		SET("hello world", 0);
+		PT(WSK_EV_DOWN, 10 + 2 * 8 + 1, 20, 0);
+		PT(WSK_EV_MOVE, 10 + 7 * 8 + 1, 20, 0);
+		ok(buf[0].caret == 7 && buf[0].span == -5 && y1 > y0, "press at 2, drag to 7: \"llo w\" selected");
+		PT(WSK_EV_UP, 10 + 7 * 8 + 1, 20, 0);
+		PT(WSK_EV_DOWN, 10 + 9 * 8 + 1, 20, WSK_MOD_SHIFT);
+		ok(buf[0].caret == 9 && buf[0].span == -7, "Shift-press at 9 extends from the anchor at 2");
+		PT(WSK_EV_UP, 10 + 9 * 8 + 1, 20, 0);
+		PT(WSK_EV_DOWN, 10 + 4 * 8 + 1, 20, 0);
+		ok(buf[0].caret == 4 && buf[0].span == 0, "a press without Shift lets it go: the caret at 4");
+		PT(WSK_EV_MOVE, 400, 20, 0);
+		ok(buf[0].caret == 11 && buf[0].span == -7, "a drag off the end of the field selects to its end");
+		PT(WSK_EV_UP, 400, 20, 0);
+
+		/* A memo's selection is a box on each line it covers: lines 20 apart
+		   from 46, characters from x 10. */
+		{
+			wsk_rect_t r = rect_of(&w, "m");
+			PT(WSK_EV_DOWN, r.x + 8, r.y + 8, 0);
+			PT(WSK_EV_UP, r.x + 8, r.y + 8, 0);
+		}
+		snprintf(mb, sizeof mb, "abc\ndef\nghi"); buf[1].len = 11; buf[1].caret = 1; buf[1].span = 0;
+		KEY(WSK_KEY_DOWN | WSK_MOD_SHIFT);
+		ok(buf[1].caret == 5 && buf[1].span == -4, "in a memo, Shift-Down: from line 0 column 1 to line 1 column 1");
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(count(sd, SEL) == 2 && has(sd, "<rect x=\"18\" y=\"46\" width=\"16\" height=\"16\" fill=\"#b06a2a\"/>") &&
+		   has(sd, "<rect x=\"10\" y=\"66\" width=\"8\" height=\"16\" fill=\"#b06a2a\"/>"),
+		   "drawn as two boxes: \"bc\" on line 0, \"d\" on line 1");
+		TYPE("-");
+		ok(strcmp(mb, "a-ef\nghi") == 0, "and typing replaces it, the line break with it");
+		buf[1].caret = 0; buf[1].span = 4;
+		buf[0].span = 0;
+		wsk_ui_focus(&ui, "f", &y0, &y1);
+		render_into(&w, sd, sizeof sd, 4096);
+		ok(count(sd, SEL) == 0, "a selection is drawn only in the focused field: the memo's is not");
+
+		/* A field in a scrolling list: lf at 160..200. A drag in its rows
+		   selects; out of them by the slop, it scrolls the list. */
+		snprintf(lb, sizeof lb, "abcdefgh"); buf[2].len = 8; buf[2].caret = 0;
+		PT(WSK_EV_DOWN, 20, 195, 0);
+		PT(WSK_EV_MOVE, 60, 162, 0);
+		ok(buf[2].caret == 6 && buf[2].span == -5 && k[0].scroll == 0,
+		   "33 rows up but still in the field: it selects, and the list does not move");
+		PT(WSK_EV_MOVE, 60, 130, 0);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_SCROLL && k[0].scroll == 65,
+		   "out of the field's rows by more than the slop: the drag is the list's again, scrolled 65");
+		PT(WSK_EV_UP, 60, 130, 0);
+		k[0].scroll = 0;
+
+		/* Right-click. */
+		PT(WSK_EV_MENU, 100, 140, 0);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_MENU && nt[0].in == &w && nt[0].item == 2 && nt[0].value == -1,
+		   "MENU on the button names it");
+		PT(WSK_EV_MENU, 100, 38, 0);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_MENU && nt[0].in == &w && nt[0].item == -1,
+		   "MENU in a gap names nothing: -1, the root");
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		SET("hello", 5);
+		PT(WSK_EV_MENU, 10 + 2 * 8 + 1, 20, 0);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_FOCUS && nt[1].kind == WSK_NOTE_MENU && nt[1].item == 0 &&
+		   w.focus == &SW[0] && buf[0].caret == 2, "MENU on a field without focus: FOCUS, the caret there, then MENU");
+		KEY(WSK_KEY_END | WSK_MOD_SHIFT);
+		PT(WSK_EV_MENU, 10 + 1, 20, 0);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_MENU && buf[0].caret == 5 && buf[0].span == -3,
+		   "MENU on the focused field leaves its caret and selection, for a Copy");
+		PT(WSK_EV_DOWN, 100, 140, 0);
+		ok(w.held == &SW[2], "a press holds the button");
+		PT(WSK_EV_MENU, 100, 140, 0);
+		ok(w.held == 0 && n == 1 && nt[0].kind == WSK_NOTE_MENU && y1 > y0,
+		   "a MENU during it -- a long press -- lets it go, and repaints it");
+		PT(WSK_EV_UP, 100, 140, 0);
+		ok(n == 0, "and the release is not a click");
+		KEY(WSK_KEY_MENU);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_MENU && nt[0].in == &w && nt[0].item == 0,
+		   "the Menu key: MENU on the focused widget");
+		ok(wsk_ui_open_at(&ui, 1, 100, 50, &y0, &y1) == WSK_OK && w.over == 1 && w.ox == 100 &&
+		   w.oy == 50 && y0 == 48 && y1 <= 136, "wsk_ui_open_at hangs a menu from the point");
+		PT(WSK_EV_MENU, 10, 280, 0);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_CLOSE && nt[1].kind == WSK_NOTE_MENU && w.over == WSK_NONE,
+		   "MENU off the open menu: CLOSE it, then MENU where the pointer is");
+
+		/* Shortcuts. */
+		KEY('s' | WSK_MOD_CTRL);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_KEY && nt[0].value == ('s' | WSK_MOD_CTRL) &&
+		   nt[0].in == &w && nt[0].item == -1, "Ctrl-S, a field focused: not the field's, so the program's -- a KEY notice");
+		KEY('q' | WSK_MOD_ALT);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_KEY && nt[0].value == ('q' | WSK_MOD_ALT), "and Alt-Q");
+		wsk_ui_init(&ui, &w);
+		KEY('s' | WSK_MOD_CTRL);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_KEY, "with nothing focused, the same");
+		KEY(WSK_KEY_LEFT);
+		ok(n == 0, "CONTROL: a plain key nobody used is still nothing");
+		KEY(WSK_KEY_LEFT | WSK_MOD_SHIFT);
+		ok(n == 0, "and Shift with it is not a chord");
+#undef TYPE
+#undef KEY
+#undef PT
+#undef SET
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

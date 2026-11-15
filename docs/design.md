@@ -2965,6 +2965,190 @@ ASCII.
 
 ---
 
+## 5s. Iteration 18 — a desktop's plumbing: right-click, selection, the clipboard, shortcuts
+
+**Written 2026-11-14, before any code.** Matthew: *"The tree looks great. go
+ahead next."* Next on the list agreed that morning was the host plumbing that
+§6.1's bar 2 names under items 2 and 3. Of those, this iteration takes the
+three that come up whenever a person sits at a desktop: **right-click**,
+**the clipboard** (which needs **selection** in a field before it has
+anything to copy), and **keyboard shortcuts**. File dialogs, a second
+window, a draggable divider, undo and input methods are not in it.
+
+### The rules
+
+1. **A secondary press is its own event, not a button number.**
+   `WSK_EV_MENU` at a point, which a host makes from a right-click (or, in a
+   browser, from whatever the platform calls asking for a context menu —
+   which on a phone is a long press). The toolkit answers with
+   **`WSK_NOTE_MENU`**, naming the widget under the point as CLICK does
+   (`in`, `item`, and `value` the word on a text item), or `item` = -1 over
+   nothing. It does not open a menu: **which menu, if any, is the
+   program's**, and it opens one where the pointer is with
+   **`wsk_ui_open_at`** — `wsk_ui_open` with a point for an anchor (§5l's
+   placing rule: below it, else above it, kept on screen). A MENU on a field
+   that has not got focus focuses it, caret where the pointer is, so that the
+   program's *Paste* goes there; on the focused field it leaves caret and
+   selection alone, so *Copy* copies what was selected. A MENU off an open
+   overlay closes it first (CLOSE, then MENU). A MENU while a press is held
+   lets the press go, so the release that follows is not a click.
+   The keyboard's way to the same thing is `WSK_KEY_MENU` (the Menu key,
+   Shift-F10): MENU on the focused widget.
+2. **Modifiers ride on the key.** `ev.key` gains three bits —
+   `WSK_MOD_SHIFT` 0x100, `WSK_MOD_CTRL` 0x200, `WSK_MOD_ALT` 0x400 — and
+   below them either a named key (1–13, as before) or **a printable
+   character, lower-case**, for a chord: Ctrl-S is `'s' | WSK_MOD_CTRL`. A
+   key without modifiers is exactly what it was, so every program and test
+   so far is untouched. On a pointer press the same bits say whether Shift
+   was held.
+3. **A chord no widget used is the program's.** A key with Ctrl or Alt that
+   the toolkit did not use comes out as **`WSK_NOTE_KEY`**, `value` the key.
+   That is the whole of shortcuts: the program says what Ctrl-S means, and no
+   table of them lives in whisker — §4.1 would forbid it anyway. Plain keys
+   nobody used still say nothing, as before, so an arrow with no focus is
+   not a notice.
+4. **Selection is the caret and a span, in the caller's buffer.**
+   `wsk_buf_t` gains `span`: the selection runs from the caret to caret +
+   span, either way, **0 meaning none — so a buffer zeroed, or initialised
+   as before, has no selection**. The anchor is the end the caret is not at.
+   Shift with Left, Right, Home, End, Up and Down moves the caret and keeps
+   the anchor; the same keys without Shift collapse the selection (Left to
+   its start, Right to its end). Ctrl-A selects all. Typing, Backspace,
+   Delete and Enter in a memo **replace** the selection. A press in a field
+   puts the caret there and drags select from it; Shift-press extends from
+   the anchor. `wsk_ui_init` clears every buffer's span, and **a selection is
+   drawn only in the focused field** — a box of the tree's `selfill` behind
+   its characters (the colour a chosen row already wears, §5m), on each line
+   of a memo — so a buffer a program wrote without clearing `span` is never
+   drawn wrong anywhere else.
+5. **A drag in a field selects; a drag that leaves it scrolls.** On a touch
+   panel a finger in a field inside a scrolling list must still scroll the
+   list. So a press in the focused field selects while the pointer stays in
+   the field's rows along the scrolling axis; once it is past them by the
+   slop the drag becomes the list's, as it was. Across the axis — off the end
+   of a one-line field — it keeps selecting, to the end.
+6. **The clipboard is the host's; the copy is caller memory.** whisker has
+   no clipboard and no way to reach one. The program gives the toolkit a
+   buffer — `ui.clip`, `ui.clipcap` — and **Ctrl-C** copies the selection
+   into it and notes **`WSK_NOTE_COPY`** (`value` its length), which the
+   program hands to its host (`wh_copy`). **Ctrl-X** is COPY and then the
+   selection deleted, a TEXT notice. A selection longer than the buffer is
+   not copied at all — no part of it, no notice. Without a buffer, Ctrl-C and
+   Ctrl-X are not used, and so come out as KEY (rule 3).
+   **Ctrl-V** in a field notes **`WSK_NOTE_PASTE`**; the program asks its
+   host for the clipboard (`wh_paste`) and gives it to
+   **`wsk_ui_paste(ui, text, n, ...)`**, which replaces the selection **all
+   or nothing**: a character the window cannot draw (§5j), or a line break
+   in a one-line field, is `WSK_E_TEXT`, and text that would not fit is
+   `WSK_E_BUDGET`, and the buffer is unchanged either way. Refused, not
+   trimmed (D8).
+7. **The host contract grows by one event and two calls.** `WH_MENU` at a
+   point; `WH_MOD_*` on `key` (and on a press); `WH_KEY_MENU`;
+   `int wh_copy(const char *s, int n)` and `int wh_paste(char *b, int cap)`
+   — SDL's clipboard on Linux; on the web, the page's. A browser does not let
+   a page read the clipboard when it likes, only in a `paste` event, so the
+   page posts what was pasted and the host keeps it and turns it into Ctrl-V;
+   and the host sends what is copied to the page, which writes it to the
+   system clipboard where the browser allows that (a secure origin; plain
+   http to a phone is not one, and is reported, not hidden).
+
+### Profiles (§7)
+
+Selection and the clipboard are **`WSK_NO_TEXTSEL`**, which **`WSK_PANEL`
+sets** — the P4's keyboard has no Shift-arrows and its finger in a field
+should scroll — and `WSK_MINIMAL` has no toolkit at all. MENU, the
+modifiers, KEY and `wsk_ui_open_at` are routing, small enough to stay in
+every build that has the toolkit, and are measured to say so.
+
+### Done criteria
+
+1. Every earlier output byte-identical; every earlier toolkit check passes
+   unchanged (rule 2's promise).
+2. MENU: on a button names it and is not a click; over nothing names
+   nothing; on an unfocused field focuses it; off an open overlay closes it
+   first; during a press, lets it go; `WSK_KEY_MENU` names the focused widget;
+   `wsk_ui_open_at` hangs a menu from the point.
+3. Shortcuts: an unused chord is KEY with its value, with a field focused or
+   not; a plain key nobody used is still nothing (the control).
+4. Selection: Shift-arrows, Home/End, Up/Down in a memo, Ctrl-A; collapse;
+   replace by typing, Backspace, Delete; drawn as `selfill` boxes behind the
+   right characters, on each line of a memo, only in the focused field; a
+   press-and-drag and a Shift-press; a drag that leaves a field in a
+   scrolling list scrolls it.
+5. Clipboard: Ctrl-C, Ctrl-X (COPY then TEXT), Ctrl-V (PASTE),
+   `wsk_ui_paste` and its refusals, each with the buffer unchanged; with no
+   clip buffer, Ctrl-C is KEY.
+6. Hosts: SDL right-click, Ctrl-chords and its clipboard; the browser's
+   context menu, chords, `paste` event and copy, checked in headless Chrome
+   with clipboard permission granted; `edit.c` gets a context menu — Cut,
+   Copy, Paste, Select all, each **the same key fed to the toolkit**, so a
+   menu command and its shortcut cannot disagree — and Ctrl-S for Save.
+7. Profiles build, `WSK_PANEL` refuses nothing it used to draw, and the cost
+   is measured.
+
+### What it came to, 2026-11-14 (night)
+
+Built the same night; criteria 1–7 met. **578 checks** in `src/run.sh
+--module` (523 before): 48 in the suite, 6 at the pixels, one cost link; the
+every-switch build covers **16** profiles and switches. Every output of the
+commit before — 31 files — byte-identical, and every earlier toolkit check
+passes unchanged, which is rule 2's promise kept: a key without modifiers is
+what it always was.
+
+- **Selection** is the caret and a `span` in the caller's buffer, drawn as
+  `selfill` boxes behind the characters — one on a field, one per line on a
+  memo — and only in the focused field (the control: the memo's selection is
+  not drawn once the field has focus). At the pixels, every event's rows
+  repainted alone equal a full redraw, and inside the box the letters are far
+  lighter than it: the text is over the box, readable, which is the check an
+  eye would make (the letters are anti-aliased, so no pixel is the ink
+  exactly; asking for the ink was the first, wrong, version of the check).
+- **The drag rule** (rule 5) is measured: a press in a field inside a
+  scrolling list, dragged 33 rows up but still in the field, selects and the
+  list does not move; out of its rows by more than the slop, the list
+  scrolls 65.
+- **The clipboard**: Ctrl-C, Ctrl-X (COPY *then* TEXT, so the copy is made
+  before the text goes), Ctrl-V (PASTE); `wsk_ui_paste` refuses a character
+  the window cannot draw, a line break in a one-line field, and text that
+  would not fit — whole, never trimmed — and a selection longer than the
+  clip buffer is not copied at all.
+- **Right-click and shortcuts**: MENU names the widget, or nothing; focuses
+  an unfocused field; leaves a focused one's selection for a Copy; lets a
+  held press go; closes an open menu first. An unused chord is KEY, with a
+  field focused or not; a plain key nobody used is still nothing.
+- **The hosts**: SDL — the right button is MENU, chords and Shift where it
+  means something (Shift-Enter is Enter), Alt-x is a chord and not an x, and
+  the clipboard is SDL's (its own copy under the dummy driver, which is what
+  the self test runs on). **Escape is now a key on SDL too**, for a menu to
+  close; close the window to quit. The browser — the platform's
+  `contextmenu` (a right-click, or a long press on a phone), chords, the
+  `paste` event, and copies sent to the page as `C` and written with the
+  Clipboard API. **In headless Chrome with clipboard permission granted, the
+  whole round trip is real**: Shift-Home and Ctrl-C with real keys put
+  "Hello web" on the system clipboard, read back; a real right-click opened
+  the menu and its Paste pasted; a real Ctrl-V fired the browser's own paste
+  event, which reached the program as Ctrl-V and replaced the selection —
+  and the canvas after all of it still equals a full redraw, 0 pixels.
+- **`edit.c`**: right-click a field for Cut, Copy, Paste, Select all, each
+  the same key fed back to the toolkit; Ctrl-S is Save, the program's own.
+
+**§7's question**: selection and the clipboard cost a toolkit program
+**844 bytes** (`module_nest.c`, by building without them); the routing —
+MENU, the modifiers, KEY — **16**, which is why it has no switch. The small
+panel is **12,672** in the default (+96: a field's branch draws a
+selection), **9,752** in `WSK_PANEL` (32 *less*, from folding the press
+into one helper), **3,784** in `WSK_MINIMAL`, unchanged.
+
+**Not done, and named**: undo; word-wise moves (Ctrl-Left is the program's
+for now, as a KEY); double-click to select a word; a long press on the P4
+(a touch program has no right button, and the toolkit has no timer — a host
+with one sends MENU); file dialogs, a second window, a draggable divider;
+and on a phone over plain http the browser will not let the page write the
+clipboard, which the page reports in its console rather than hides.
+
+
+---
+
 ## 6. What would have to be true before gBASIC took this
 
 Recorded so that the bar is set now, while nothing is invested, rather than
@@ -3012,8 +3196,13 @@ backend); whisker's part is a backend over the parts it has.
 2. **Text is complete on a desktop**: proportional fonts, Unicode (Studio's
    own `▾`/`▸` among it), selection with the pointer, the clipboard, undo,
    and input methods for scripts typed by composition.
+   *Since 2026-11-14: Unicode drawn where a host can (§5r — not yet edited
+   in a field); selection with the pointer and keys, and the clipboard
+   (§5s). Left: proportional fonts, undo, input methods, Unicode in fields.*
 3. **A desktop's plumbing**: right-click, shortcuts, file dialogs, more than
    one window, a draggable divider.
+   *Since 2026-11-14: right-click and shortcuts (§5s). Left: file dialogs,
+   more than one window, a draggable divider.*
 4. **Accessibility is decided** — screen readers, the one place Qt's decades
    are hardest to match: whisker grows it, or gBASIC decides in writing that
    its GUI programs can do without it.
@@ -3228,7 +3417,7 @@ One struct, the same on every host, so a host's whole job is translation:
 **Touch and the mouse are the same three events** — D7 already found a click
 and a tap are both one point, and the P4's five contacts are used as one.
 Right-click and multi-touch are left out of the first version and named as
-such, not forgotten. `_KEY` is a key that means something to a widget;
+such, not forgotten (right-click arrived in §5s, as an event of its own). `_KEY` is a key that means something to a widget;
 `_TEXT` is a character typed, so a host's keyboard layout stays the host's
 business (the reason `input.c` keeps its keymap outside whisker).
 
