@@ -149,6 +149,16 @@ clipboard is the host's (the system's under SDL, the browser's in a page).
 So `right_click`, `clipboard`, `copy` and `shortcuts` move from §4.3's
 second list toward the first for a whisker backend; Qt answers them already.
 
+*Since, to 2026-11-15 (sent to the gBASIC session that day; gBASIC was one
+commit past `76ca74a4`, so the counts above stand):* **`source` is built**
+(whisker §5v — a gutter of line numbers, the program's colour runs,
+breakpoint marks, undo, UTF-8 editing), and so are word moves and
+double/triple click (§5w), **a draggable divider** (§5x), the keyboard in a
+menu (§5y) and a list as one Tab stop (§5z). whisker now answers **all 25**
+of Studio's `window` words (`window-gap.md` §8). What §5's "lacks" still
+holds: proportional fonts, input methods, file dialogs, several windows,
+docking, accessibility.
+
 ## 6. Who does what, and in what order
 
 1. **gBASIC: the rename** (§4.1). No behaviour changes; every suite must pass
