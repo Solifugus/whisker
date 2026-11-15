@@ -3648,6 +3648,87 @@ take, and the board tiers carry none of it: `WSK_PANEL` 10,340,
 `WSK_MINIMAL` 3,788, both unchanged; the default's small panel, 15,004,
 unchanged too — it has no toolkit.
 
+## 5x. Iteration 24 — a divider a person can drag
+
+**Written 2026-11-15, before its code.** First of the three interactions
+`window-gap.md` §8 leaves: Studio's window *is* a split — navigator,
+editor, output — and whisker's panes are fixed by their weights.
+
+1. **The sizes are the caller's, beside the tree.** A stack may point to
+   `short *sizes`, one per item, writable, as `scroll` is (D5): an item
+   whose entry is above 0 is that many pixels along the axis, its `size`
+   and `weight` set aside. Zero, or no array, and nothing changes — the
+   widget, which may be in flash, is never written.
+2. **`WSK_DIVIDER` is a widget**, a thin bar between two items, drawn as
+   its fill (a separator that can be held). Its `size` is its thickness.
+3. **A drag on it moves the boundary.** The toolkit resizes the pane
+   *before* the divider — unless that pane is weighted and the one after
+   is fixed, when it resizes the one after (Studio's output pane under a
+   weighted editor). A weighted pane resized becomes fixed (its entry in
+   `sizes`), and the weighted rest takes up the difference; between two
+   fixed panes, one grows as the other shrinks.
+4. **Clamped, never refused**: a dragged pane is at least two lines of the
+   font high (or wide), and so is whatever a weight still shares; a drag
+   past that stops there. The divider follows the pointer up to the clamp.
+5. **What it tells**: `WSK_NOTE_SPLIT` on each change — the divider, and the
+   new extent of the pane it moved — so a program can keep a layout across
+   runs; the rows to repaint are the stack's. A press on a divider is not
+   a click, and is not a scroll.
+6. **Refused**: a divider at either end of a stack (nothing on one side),
+   in a wrapping stack or a table's row (their layout is not a list of
+   extents) — `WSK_E_KIND`. `WSK_NO_SPLIT`, set by `WSK_PANEL` and
+   `WSK_MINIMAL`; a divider refused by name there.
+
+Not here: the pointer changing shape over a divider (a host's cursor, and
+no host has a cursor call), and a divider moved from the keyboard.
+
+Done when: sizes moving layout, byte-identical with no array; each case of
+rule 3 by drag, the clamps both ways, the notice, the refusals, no click; a
+picture through RV-9's rasteriser; `edit.c` or `code.c` split by a divider a
+person can drag on both hosts, and in Chrome a real drag moving it.
+
+### What it came to, 2026-11-15
+
+**774 checks** (748 before): 23 in the suite, 3 at the pixels, and the
+`-DWSK_NO_SPLIT` link; **21** profiles and switches build. Every earlier
+output — 38 files — byte-identical, **after one fix the comparison
+forced**. In headless Chrome, one more (`code.mjs`, 15).
+
+- **As written, with one addition**: a divider in a stack with no `sizes`
+  is refused too (`WSK_E_KIND`) — it could not move anything, and a bar that
+  does nothing when held is the silent kind of wrong.
+- **Each case of rule 3 by drag**: a fixed pane before grows (30 px: 100 to
+  130, the divider at 134 under the pointer); a fixed pane after a weighted
+  one moves inversely; two weighted panes — the first becomes fixed at its
+  width; two fixed — one grows as the other shrinks, their total kept.
+  Clamps: 32 px (two lines of a 16-px font) for the pane and for what a
+  weight shares; past a clamp, no notice and nothing to repaint. The
+  release is not a click; a move after it moves nothing (the control).
+  Nested: SPLIT names the nested stack, as every notice names its tree.
+- **At the pixels through RV-9's rasteriser**: the bar every pixel its
+  colour at 88; dragged 60, every pixel at 148 and none left at 88; the rows
+  the drag named, repainted alone, equal a full redraw. Looked at.
+- **Found by the byte comparison, passed by every check: a dangling
+  `else`.** The divider's branch was first placed between the selection's
+  `} else` and the box it guards (§5m), so the `else` took the divider and
+  every chosen button's plain box was drawn over its selection fill.
+  `check_select.ppm` moved — 8,008 pixels, the "Third" row orange to blue —
+  and the picture's own check passed, because it compares a banded repaint
+  with a full redraw and both were wrong the same way. Fixed by placing the
+  branch before the selection, and **a check that fails on the broken
+  ordering** now guards it (measured both ways).
+- **`code.c`** has an output pane under the code with a divider between
+  (Studio's shape); what the program says goes there. In Chrome, a real
+  mouse drags it 100 px up: the output pane 220 high, the bar's colour at
+  y 373 and not at 473. The pane's size on each step goes to stdout, not
+  into the pane — every pixel of a drag would fill it.
+
+**§7's question**: dividers cost **852 bytes** in a toolkit program
+(`module_nest.c` — which has none, so this one is the layout's `sizes` and
+the drag together, not a floor like words' 44); the default's small panel
+**15,196** (+192, the layout's share); `WSK_PANEL` **10,344** (+4, the
+weight read through one helper); `WSK_MINIMAL` **3,788**, unchanged.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

@@ -205,6 +205,22 @@ try {
   ok(said.includes('breakpoint off line 10') && (await red(rowY(10))) === 0,
      'clicked again, it goes: the program cleared it and whisker drew the line unmarked');
 
+  // §5x: the divider over the output pane, 600 - 4 - 120 - 6 = 470..476,
+  // dragged 100 up by a real mouse: the output pane 220 high, the bar there
+  {
+    const [px, py] = await at(500, 473), [, qy] = await at(500, 373);
+    await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: px, y: py, button: 'left', buttons: 1, clickCount: 1 });
+    for (let k = 1; k <= 5; k++)
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: px, y: py + (qy - py) * k / 5, button: 'left', buttons: 1 });
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: px, y: qy, button: 'left', buttons: 0, clickCount: 1 });
+    await settle(); await sleep(300);
+    const bar = y => js(`(()=>{const d=whisker.canvas.getContext("2d").getImageData(500,${y},1,1).data;return [d[0],d[1],d[2]].join(",");})()`);
+    const at373 = await bar(373), at473 = await bar(473);
+    console.log(`      the bar's colour 0x3a5068 is 58,80,104; at y 373: ${at373}, at y 473: ${at473}`);
+    ok(said.includes('output pane 220 high') && at373 === '58,80,104' && at473 !== '58,80,104',
+       'a real drag of the divider: the output pane 220 high, the bar moved up 100 px');
+  }
+
   // type at the end of line 1, a comment: still green, and the banded rule
   await click(1000, rowY(1) + 8);
   await type(' -- typed');

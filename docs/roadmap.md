@@ -52,6 +52,7 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **Trees** (§5p) | built 2026-11-14: depths over a flat list, the program owns expansion, as Studio's `window` does |
 | **World** (§5q) | designed 2026-11-14, not built: placed children over a larger space, view and zoom, bounded/open/toroidal, per-item scale and fade -- games, diagrams, Matthew's virtual conference |
 | **Capabilities** (§5r) | built 2026-11-14: a host declares UTF-8, images, clipping; caps 0 byte-identical; the browser draws Studio's arrows and images |
+| **Dividers** (§5x) | built 2026-11-15: `WSK_DIVIDER` and the caller's `sizes`; a drag moves the boundary, clamped; `code.c`'s output pane; `WSK_NO_SPLIT`, out of both board tiers |
 | **Words** (§5w) | built 2026-11-15: Ctrl's word moves and deletions, Ctrl-Home/End, double-click a word, triple-click a line; the host counts clicks (`d` on a press); `WSK_NO_WORDS`, out of `WSK_PANEL` |
 | **`source`** (§5v, step 2) | built 2026-11-14: a code editor — gutter, GUTTER notice, colour runs from the program; `WSK_CAP_ENTITY` for `<` `>` `&`; SDL waits on RV-9 (`docs/rv9-request-entities.md`); step 3, UTF-8 editing, built the same day — columns in characters, positions in bytes; step 4, gutter marks (breakpoints), the same night |
 | **Undo** (§5v, step 1 of `source`) | built 2026-11-14: `int` buffer positions (Studio's files are 200–326 KB); undo/redo in caller memory for fields and memos |

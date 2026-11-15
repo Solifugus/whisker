@@ -3883,6 +3883,193 @@ int main(void)
 #undef CTRL
 	}
 
+	/* ---- §5x. a divider a person can drag ---- */
+	printf("\n-- §5x  dividers\n");
+	{
+		static const wsk_widget_t FIXW[] = {        /* a fixed pane, a weighted one */
+			{ .kind = WSK_LABEL,   .id = "nav", .text = "nav", .size = 100 },
+			{ .kind = WSK_DIVIDER, .id = "div", .size = 6 },
+			{ .kind = WSK_LABEL,   .id = "ed",  .text = "editor", .weight = 1 },
+		};
+		static const wsk_widget_t WFIX[] = {        /* weighted, then fixed */
+			{ .kind = WSK_LABEL,   .id = "ed",  .text = "editor", .weight = 1 },
+			{ .kind = WSK_DIVIDER, .id = "div", .size = 6 },
+			{ .kind = WSK_LABEL,   .id = "out", .text = "out", .size = 80 },
+		};
+		static const wsk_widget_t WW[] = {          /* two weighted */
+			{ .kind = WSK_LABEL,   .id = "a", .text = "a", .weight = 1 },
+			{ .kind = WSK_DIVIDER, .id = "div", .size = 6 },
+			{ .kind = WSK_LABEL,   .id = "b", .text = "b", .weight = 1 },
+		};
+		static const wsk_widget_t FF[] = {          /* two fixed */
+			{ .kind = WSK_LABEL,   .id = "a", .text = "a", .size = 100 },
+			{ .kind = WSK_DIVIDER, .id = "div", .size = 6 },
+			{ .kind = WSK_LABEL,   .id = "b", .text = "b", .size = 100 },
+		};
+		short sz[3];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int n, y0 = 0, y1 = 0, which = -2;
+		char sd[2048];
+
+		/* a row 320 wide, padding 4, no gap: 312 to share; the font 16, so
+		   no pane goes below 32 */
+		wsk_init(&w, WSK_ROW, 320, 200);
+		w.pad = 4; w.gap = 0; w.item = FIXW; w.n = 3;
+		ok(wsk_check(&w, &which) == WSK_E_KIND && which == 1,
+		   "a divider in a stack with no sizes array is refused: it could not move anything");
+		memset(sz, 0, sizeof sz);
+		w.sizes = sz;
+		ok(wsk_check(&w, 0) == WSK_OK && rect_is(wsk_rect(&w, 0), 4, 4, 100, 192) &&
+		   rect_is(wsk_rect(&w, 1), 104, 4, 6, 192) && rect_is(wsk_rect(&w, 2), 110, 4, 206, 192),
+		   "with one, all zero, the layout is the widgets': nav 100, the divider 6, the editor the rest, 206");
+		render_into(&w, sd, sizeof sd, 2048);
+		ok(has(sd, "<rect x=\"104\" y=\"4\" width=\"6\" height=\"192\" fill=\"#081620\"/>"),
+		   "the divider is drawn as its bar, in the trough's colour");
+		sz[0] = 150;
+		ok(rect_is(wsk_rect(&w, 0), 4, 4, 150, 192) && rect_is(wsk_rect(&w, 2), 160, 4, 156, 192),
+		   "an entry in sizes is that item's extent: nav 150, and the weighted editor takes up the difference");
+		sz[0] = 0;
+
+		/* drag it: the pane before, fixed, grows */
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 107; ev.y = 100;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0, "a press on the divider says nothing");
+		ev.kind = WSK_EV_MOVE; ev.x = 137;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_SPLIT && nt[0].item == 1 && nt[0].value == 130 && sz[0] == 130,
+		   "dragged 30 right: SPLIT, the divider, nav now 130 -- in the caller's sizes");
+		ok(y0 == 0 && y1 == 200 && rect_is(wsk_rect(&w, 1), 134, 4, 6, 192),
+		   "the stack's rows to repaint, and the divider at 134, under the pointer");
+		ev.x = 0;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(sz[0] == 32, "dragged far left: nav stops at 32, two lines of the font");
+		ev.x = 319;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(sz[0] == 312 - 6 - 56 - 32, "far right: nav stops where the editor keeps its natural 56 and 32 more -- 218");
+		ev.x = 320;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0 && y1 == 0, "past the clamp, nothing changes: no notice, nothing to repaint");
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0, "the release: no CLICK -- a divider is not a button");
+		ev.kind = WSK_EV_MOVE; ev.x = 100;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(sz[0] == 218, "CONTROL: after the release, a move moves nothing");
+
+		/* weighted, then fixed: the fixed pane after it moves, inversely */
+		memset(sz, 0, sizeof sz);
+		w.item = WFIX;
+		wsk_ui_init(&ui, &w);
+		ok(rect_is(wsk_rect(&w, 1), 4 + 312 - 80 - 6, 4, 6, 192), "the divider by a fixed output pane of 80, at 230");
+		ev.kind = WSK_EV_DOWN; ev.x = 233;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = 213;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && sz[2] == 100 && sz[0] == 0 && rect_is(wsk_rect(&w, 1), 210, 4, 6, 192),
+		   "dragged 20 left: the output pane after it grows to 100, the weighted editor before it gives way");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+
+		/* two weighted: the one before becomes fixed where it was */
+		memset(sz, 0, sizeof sz);
+		w.item = WW;
+		wsk_ui_init(&ui, &w);
+		{
+			int a = wsk_rect(&w, 0).w, dx = wsk_rect(&w, 1).x + 3;
+			ev.kind = WSK_EV_DOWN; ev.x = (short)dx;
+			wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			ev.kind = WSK_EV_MOVE; ev.x = (short)(dx + 10);
+			wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			ok(sz[0] == a + 10 && sz[2] == 0 && wsk_rect(&w, 2).x == 4 + a + 10 + 6 &&
+			   wsk_rect(&w, 2).x + wsk_rect(&w, 2).w == 316,
+			   "two weighted panes: the first becomes fixed at its width and 10 more; the second, weighted, fills to 316");
+			ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		}
+
+		/* two fixed: one grows as the other shrinks */
+		memset(sz, 0, sizeof sz);
+		w.item = FF;
+		wsk_ui_init(&ui, &w);
+		ev.kind = WSK_EV_DOWN; ev.x = 107;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = 127;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(sz[0] == 120 && sz[2] == 80, "two fixed panes of 100: dragged 20, 120 and 80 -- their total kept");
+		ev.x = 300;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(sz[0] == 168 && sz[2] == 32, "and the second stops at 32");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+
+		/* a column, nested: the same, along y */
+		{
+			static const wsk_widget_t TOP[] = {
+				{ .kind = WSK_LABEL, .id = "title", .text = "title", .size = 40 },
+				{ .kind = WSK_STACK, .id = "body", .sub = 0, .weight = 1 },
+			};
+			static const wsk_widget_t BODYW[] = {
+				{ .kind = WSK_LABEL,   .id = "ed",  .text = "editor", .weight = 1 },
+				{ .kind = WSK_DIVIDER, .id = "div", .size = 6 },
+				{ .kind = WSK_LABEL,   .id = "out", .text = "out", .size = 50 },
+			};
+			wsk_tree_t nest[1], root;
+			short bs[3] = { 0, 0, 0 };
+			wsk_rect_t d0;
+			wsk_init(&root, WSK_COL, 320, 200);
+			root.pad = 0; root.gap = 0; root.item = TOP; root.n = 2; root.nest = nest; root.nests = 1;
+			wsk_init(&nest[0], WSK_COL, 320, 200);
+			nest[0].pad = 0; nest[0].gap = 0; nest[0].item = BODYW; nest[0].n = 3; nest[0].sizes = bs;
+			ok(wsk_check(&root, 0) == WSK_OK, "a column nested in a column, its divider between an editor and output");
+			wsk_ui_init(&ui, &root);
+			d0 = rect_of(&root, "/body/div");
+			ev.kind = WSK_EV_DOWN; ev.x = 100; ev.y = (short)(d0.y + 3);
+			wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			ev.kind = WSK_EV_MOVE; ev.y = (short)(d0.y + 3 - 40);
+			n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			printf("      n %d, in %s, bs %d %d %d, divider at %d, was %d\n", n,
+			       n > 0 ? (nt[0].in == &nest[0] ? "nest" : nt[0].in == &root ? "root" : "?") : "-",
+			       bs[0], bs[1], bs[2], rect_of(&root, "/body/div").y, d0.y);
+			ok(n == 1 && nt[0].in == &nest[0] && bs[2] == 90 && rect_of(&root, "/body/div").y == d0.y - 40,
+			   "dragged 40 up: SPLIT names the nested stack, output is 90, the divider 40 higher");
+			ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		}
+
+		/* refused where it cannot work */
+		{
+			static const wsk_widget_t FIRST[] = {
+				{ .kind = WSK_DIVIDER, .id = "div", .size = 6 },
+				{ .kind = WSK_LABEL,   .id = "a", .text = "a", .weight = 1 },
+			};
+			w.item = FIRST; w.n = 2;
+			ok(wsk_check(&w, &which) == WSK_E_KIND && which == 0, "a divider first in its stack is refused: no pane before it");
+			w.item = FF; w.n = 3; w.overflow = WSK_WRAP;
+			ok(wsk_check(&w, &which) == WSK_E_KIND, "and sizes on a wrapping stack");
+			w.overflow = WSK_REFUSE;
+		}
+
+		/* the divider's branch was first written between the selection's
+		   `} else` and the box it guards, which drew every chosen button's
+		   plain box over its selection -- found by the byte comparison,
+		   passed by every check; this is the check */
+		{
+			static const wsk_widget_t CH[] = {
+				{ .kind = WSK_BUTTON, .id = "p", .text = "p", .size = 30 },
+				{ .kind = WSK_BUTTON, .id = "q", .text = "q", .size = 30 },
+			};
+			wsk_tree_t c;
+			wsk_init(&c, WSK_COL, 320, 200);
+			c.pad = 4; c.gap = 4; c.item = CH; c.n = 2; c.select = 1; c.sel = 1;
+			render_into(&c, sd, sizeof sd, 2048);
+			ok(has(sd, "<rect x=\"4\" y=\"38\" width=\"312\" height=\"30\" fill=\"#b06a2a\"/>") &&
+			   !has(sd, "<rect x=\"4\" y=\"38\" width=\"312\" height=\"30\" fill=\"#2a6b8f\"/>") &&
+			   has(sd, "<rect x=\"4\" y=\"4\" width=\"312\" height=\"30\" fill=\"#2a6b8f\"/>"),
+			   "a chosen button is drawn in the selection's fill and nothing over it; the other in the accent (the control)");
+		}
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

@@ -109,6 +109,7 @@
  *     -DWSK_NO_SOURCE   the code editor: a gutter, colour runs (§5v)
  *     -DWSK_NO_ENTITY   < > & in text, for a host that decodes entities (§5v)
  *     -DWSK_NO_WORDS    Ctrl's word moves, double- and triple-click (§5w)
+ *     -DWSK_NO_SPLIT    dividers a person drags, and the sizes they set (§5x)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -141,10 +142,16 @@
 #  ifndef WSK_NO_WORDS
 #    define WSK_NO_WORDS 1         /* no Ctrl on its keyboard (§5w) */
 #  endif
+#  ifndef WSK_NO_SPLIT
+#    define WSK_NO_SPLIT 1         /* panes the program sizes (§5x) */
+#  endif
 #endif
 #ifdef WSK_MINIMAL
 #  ifndef WSK_NO_INPUT
 #    define WSK_NO_INPUT 1
+#  endif
+#  ifndef WSK_NO_SPLIT
+#    define WSK_NO_SPLIT 1
 #  endif
 #  ifndef WSK_NO_OVER
 #    define WSK_NO_OVER 1
@@ -228,7 +235,8 @@
    build refuses WSK_FIELD, it does not renumber around it. A caller's panel,
    a golden and an id mean the same thing whatever this was compiled with. */
 enum { WSK_LABEL = 1, WSK_BUTTON, WSK_FIELD, WSK_STACK, WSK_TEXT, WSK_CHECK, WSK_MEMO,
-       WSK_IMAGE, WSK_SOURCE };
+       WSK_IMAGE, WSK_SOURCE,
+       WSK_DIVIDER };             /* a bar between two panes, dragged (§5x) */
 
 #ifndef WSK_NO_MEMO
 /* A widget of many lines: a memo, or source -- a memo for code (§5v). */
@@ -487,6 +495,15 @@ typedef struct wsk_tree {
 	 */
 	unsigned char overflow;      /* WSK_REFUSE, WSK_SCROLL or WSK_WRAP */
 	short         scroll;        /* pixels along the axis, from the start */
+#ifndef WSK_NO_SPLIT
+	/*
+	 * The caller's sizes for its items (§5x), one per item, or 0: an entry
+	 * above 0 is that item's extent along the axis, its size and weight set
+	 * aside. Writable, as `scroll` is -- a divider's drag writes it -- so
+	 * the widgets stay where they were declared, flash included.
+	 */
+	short        *sizes;
+#endif
 
 	/*
 	 * Between the lines of a wrapping stack (§5g), or WSK_SAME for `gap`.
@@ -1173,6 +1190,24 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 			}
 		}
 #endif
+#ifdef WSK_NO_SPLIT
+		if (t->item[i].kind == WSK_DIVIDER) {
+			if (which != 0) *which = i;
+			return WSK_E_KIND;
+		}
+#else
+		/* a divider has a pane on each side, in a stack laid out as a list
+		   of extents -- not a wrapping one, nor a table's row (§5x rule 6) */
+		if (t->item[i].kind == WSK_DIVIDER &&
+		    (i == 0 || i == t->n - 1 || t->sizes == 0 || t->overflow == WSK_WRAP
+#ifndef WSK_NO_NEST
+		     || t->ghead != 0
+#endif
+		    )) {
+			if (which != 0) *which = i;
+			return WSK_E_KIND;
+		}
+#endif
 #ifdef WSK_NO_MARKS
 		if (t->item[i].mark == WSK_MARK_CORNERS || t->item[i].mark >= WSK_MARK_SHUT) {
 			if (which != 0) *which = i;
@@ -1214,6 +1249,13 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 		int col = (t->axis == WSK_COL);
 		int span = (col ? t->ah : t->aw) - 2 * t->pad;
 		int deep = (col ? t->aw : t->ah) - 2 * t->pad;
+#ifndef WSK_NO_SPLIT
+		/* a wrapping stack's lines are not a list of extents to size */
+		if (t->sizes != 0) {
+			if (which != 0) *which = -1;
+			return WSK_E_KIND;
+		}
+#endif
 		/* Widths first: a unit no line can hold is the fault to name, even
 		   where the lines it forces would run out of depth sooner. A unit
 		   is an item or a word, and either way `which` is the item. */
@@ -1393,6 +1435,9 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->rdepth = 0;
 	t->rindent = 0;
 	t->caps = 0;
+#ifndef WSK_NO_SPLIT
+	t->sizes = 0;
+#endif
 	t->clipped = 0;
 	t->cx0 = t->cy0 = t->cx1 = t->cy1 = 0;
 }
@@ -1422,6 +1467,9 @@ static inline int wsk__round_band(int v)
 static inline int wsk__natural(const wsk_tree_t *t, int i)
 {
 	const wsk_widget_t *w = &t->item[i];
+#ifndef WSK_NO_SPLIT
+	if (t->sizes != 0 && t->sizes[i] > 0) return t->sizes[i];    /* the caller's (§5x) */
+#endif
 	if (w->size > 0) return w->size;
 	if (t->axis == WSK_ROW) {
 		const char *x = wsk__say(t, t, i);
@@ -1459,6 +1507,10 @@ static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
 {
 	const wsk_widget_t *w = &t->item[i];
 
+#ifndef WSK_NO_SPLIT
+	/* the caller's size for it, which a divider sets (§5x rule 1) */
+	if (axis == t->axis && t->sizes != 0 && t->sizes[i] > 0) return t->sizes[i];
+#endif
 	if (w->size > 0 && axis == t->axis) return w->size;
 	if (w->kind == WSK_STACK) {
 		const wsk_tree_t *c;
@@ -1769,6 +1821,15 @@ static inline wsk_rect_t wsk__cell(const wsk_tree_t *t, int idx)
 }
 #endif
 
+/* A widget's weight -- none once the caller has sized it (§5x rule 1). */
+static inline int wsk__wt(const wsk_tree_t *t, int i)
+{
+#ifndef WSK_NO_SPLIT
+	if (t->sizes != 0 && t->sizes[i] > 0) return 0;
+#endif
+	return t->item[i].weight;
+}
+
 static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 {
 	wsk_rect_t r;
@@ -1784,7 +1845,7 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 
 	for (int i = 0; i < t->n; i++) {
 		used += wsk__natural(t, i);
-		weights += t->item[i].weight;
+		weights += wsk__wt(t, i);
 	}
 	if (t->n > 1) used += (t->n - 1) * t->gap;
 	extra = span - used;
@@ -1801,8 +1862,8 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 #endif
 	for (int i = 0; i < idx; i++) {
 		int e = wsk__natural(t, i);
-		if (weights > 0 && t->item[i].weight > 0) {
-			int share = extra * t->item[i].weight / weights;
+		if (weights > 0 && wsk__wt(t, i) > 0) {
+			int share = extra * wsk__wt(t, i) / weights;
 			e += share;
 			given += share;
 		}
@@ -1811,13 +1872,13 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 
 	{
 		int e = wsk__natural(t, idx);
-		if (weights > 0 && t->item[idx].weight > 0) {
+		if (weights > 0 && wsk__wt(t, idx) > 0) {
 			/* the last weighted child takes the rounding, so the stack
 			   ends where the padding says it should */
 			int last = -1;
-			for (int i = 0; i < t->n; i++) if (t->item[i].weight > 0) last = i;
+			for (int i = 0; i < t->n; i++) if (wsk__wt(t, i) > 0) last = i;
 			e += (idx == last) ? (extra - given)
-			                   : (extra * t->item[idx].weight / weights);
+			                   : (extra * wsk__wt(t, idx) / weights);
 		}
 		if (t->axis == WSK_COL) {
 			int cw = t->aw - 2 * t->pad;
@@ -2628,6 +2689,9 @@ static inline void wsk__rect(wsk_sink_t *s, const wsk_tree_t *t,
 {
 	wsk__box(s, (w != 0 && t->ids) ? w->id : 0, r,
 	         (w->fill != WSK_INHERIT) ? w->fill
+#ifndef WSK_NO_SPLIT
+	         : (w->kind == WSK_DIVIDER) ? t->trough
+#endif
 #ifndef WSK_NO_FIELD
 	         : (w->kind == WSK_FIELD
 #ifndef WSK_NO_MEMO
@@ -3595,6 +3659,11 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 #if !defined(WSK_NO_TEXT) && !defined(WSK_NO_WRAP)
 		if (w->kind == WSK_TEXT && t->overflow == WSK_WRAP) { wsk__runs(d, t, i, s); continue; }
 #endif
+#ifndef WSK_NO_SPLIT
+		/* a divider is its bar, and nothing on it (§5x rule 2) -- here,
+		   before the selection's `} else`, which the box below hangs on */
+		if (w->kind == WSK_DIVIDER) { wsk__rect(s, t, w, v); continue; }
+#endif
 #ifndef WSK_NO_INPUT
 		/* the chosen item of a selecting stack, in its own fill (§5m) */
 		if (t->select && i == t->sel &&
@@ -3903,7 +3972,9 @@ enum { WSK_NOTE_CLICK = 1, WSK_NOTE_SCROLL, WSK_NOTE_TEXT, WSK_NOTE_ENTER,
        WSK_NOTE_KEY,              /* a chord no widget used: value is the key */
        WSK_NOTE_COPY,             /* the selection is in ui.clip: value, its length */
        WSK_NOTE_PASTE,            /* Ctrl-V in a field: hand wsk_ui_paste the text */
-       WSK_NOTE_GUTTER };         /* a source's gutter clicked: value, the line (§5v) */
+       WSK_NOTE_GUTTER,           /* a source's gutter clicked: value, the line (§5v) */
+       WSK_NOTE_SPLIT };          /* a divider dragged: item, the divider; value, the
+                                     new extent of the pane it moved (§5x) */
 
 /* The keys that mean something to a field (§5j). A character typed is TEXT,
    not a key, so that a keyboard layout stays the host's business. */
@@ -3964,6 +4035,12 @@ typedef struct {
 #ifndef WSK_NO_SOURCE
 	int               gline;     /* a press in a source's gutter: its line, or -1 */
 #endif
+#ifndef WSK_NO_SPLIT
+	const wsk_tree_t *split;     /* a divider held: its stack, or 0 (§5x) */
+	wsk_tree_t        split_at;  /* ... as laid out: its area */
+	short             split_k;   /* the divider */
+	short             split0[2]; /* the panes either side, as the press found them */
+#endif
 } wsk_ui_t;
 
 static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
@@ -3982,6 +4059,9 @@ static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
 	root->focus = 0;
 #ifndef WSK_NO_SOURCE
 	ui->gline = -1;
+#endif
+#ifndef WSK_NO_SPLIT
+	ui->split = 0;
 #endif
 #ifndef WSK_NO_TEXTSEL
 	ui->clip = 0;
@@ -4614,6 +4694,52 @@ static inline int wsk_ui_open_at(wsk_ui_t *ui, int sub, int x, int y, int *y0, i
 }
 #endif
 
+#ifndef WSK_NO_SPLIT
+/*
+ * A held divider moved `d` pixels along its stack (§5x rules 3 and 4): the
+ * pane it moves resized in the caller's `sizes`, clamped so it and any
+ * weighted rest keep two lines of the font. Returns the pane's new extent,
+ * or -1 if nothing changed; *pane is which pane.
+ */
+static inline int wsk__split_move(wsk_ui_t *ui, int d, int *pane)
+{
+	const wsk_tree_t *t = &ui->split_at;
+	int k = ui->split_k, a = k - 1, b = k + 1, min = 2 * t->font;
+	int fa = (wsk__wt(t, a) == 0), fb = (wsk__wt(t, b) == 0);
+	int span = (t->axis == WSK_COL ? t->ah : t->aw) - 2 * t->pad, others = 0, rest = 0;
+	int x, e, x0, lo, hi;
+
+	/* which pane: the one before, unless it shares by weight and the one
+	   after is fixed; between two fixed panes, both */
+	x = (!fa && fb) ? b : a;
+	x0 = ui->split0[x == a ? 0 : 1];
+	e = (x == a) ? x0 + d : x0 - d;
+	if (fa && fb) {
+		/* the boundary moves, the pair's total kept */
+		lo = min;
+		hi = ui->split0[0] + ui->split0[1] - min;
+	} else {
+		for (int i = 0; i < t->n; i++) {
+			if (i != x) others += wsk__natural(t, i);
+			if (i != x && wsk__wt(t, i) > 0) rest = 1;
+		}
+		if (t->n > 1) others += (t->n - 1) * t->gap;
+		lo = min;
+		hi = span - others - (rest ? min : 0);
+	}
+	if (e > hi) e = hi;
+	if (e < lo) e = lo;
+	if (t->sizes[x] == e) return -1;
+	if (fa && fb) {
+		t->sizes[a] = (short)e;
+		t->sizes[b] = (short)(ui->split0[0] + ui->split0[1] - e);
+	} else
+		t->sizes[x] = (short)e;
+	*pane = x;
+	return e;
+}
+#endif
+
 /*
  * One event in; the notices of what changed out, and the rows to repaint
  * (design.md §5i). Returns how many things changed -- more than `max` were
@@ -4765,8 +4891,42 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 #endif
 		if (ui->drag != 0) ui->scroll0 = ui->drag->scroll;
 #endif
+#ifndef WSK_NO_SPLIT
+		/* a divider held: not a click, not a scroll -- the panes' sizes,
+		   as the press found them, for the drag to move (§5x) */
+		ui->split = 0;
+		if (k >= 0 && lay->item[k].kind == WSK_DIVIDER) {
+			wsk_rect_t pa = wsk_rect(lay, k - 1), pb = wsk_rect(lay, k + 1);
+			int col = (lay->axis == WSK_COL);
+			ui->split = in;
+#ifndef WSK_NO_NEST
+			wsk__tcopy(&ui->split_at, lay);
+#else
+			ui->split_at = *lay;         /* as the scroll's drag_at is, here */
+#endif
+			ui->split_k = (short)k;
+			ui->split0[0] = col ? pa.h : pa.w;
+			ui->split0[1] = col ? pb.h : pb.w;
+			ui->hit = -1;
+#ifndef WSK_NO_SCROLL
+			ui->drag = 0;
+#endif
+		}
+#endif
 	} else if (ev->kind == WSK_EV_MOVE && ui->down) {
 		int took = 0;
+#ifndef WSK_NO_SPLIT
+		if (ui->split != 0) {
+			const wsk_tree_t *t = &ui->split_at;
+			int pane = -1, e = wsk__split_move(ui, (t->axis == WSK_COL) ? y - ui->y0 : x - ui->x0, &pane);
+			took = 1;
+			if (e >= 0) {
+				int a0, a1;
+				if (wsk_area_rows(t, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
+				n = wsk__note(note, max, n, WSK_NOTE_SPLIT, ui->split, ui->split_k, e);
+			}
+		}
+#endif
 #ifndef WSK_NO_TEXTSEL
 		/* A press in the focused field selects while the pointer stays in
 		   its rows along a scrolling stack's axis; past them by the slop,
@@ -4831,6 +4991,9 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		(void)took;
 	} else if (ev->kind == WSK_EV_UP && ui->down) {
 		ui->down = 0;
+#ifndef WSK_NO_SPLIT
+		ui->split = 0;
+#endif
 #ifndef WSK_NO_TEXTSEL
 		ui->selecting = 0;
 #endif

@@ -12,6 +12,10 @@
  * colour is never on the screen.
  *
  * Typing, the arrows, Shift to select, Ctrl-A/C/X/V, Ctrl-Z/Y, the wheel.
+ * Below the code, an output pane, and between them a divider to drag
+ * (§5x) -- Studio's window is split the same way. What the program says
+ * goes there, and to stdout.
+ *
  * A click in the gutter sets or clears a breakpoint on that line: a red mark
  * in the gutter (§5v step 4), and printed. Breakpoints stay on their line
  * numbers as the text changes -- moving them with it is a program's job, and
@@ -30,16 +34,19 @@
 #define INKS  65536
 
 static const wsk_widget_t WIN[] = {
-	{ .kind = WSK_LABEL,  .id = "status", .size = 32 },
-	{ .kind = WSK_SOURCE, .id = "code",   .sub = 0, .weight = 1 },
+	{ .kind = WSK_LABEL,   .id = "status", .size = 32 },
+	{ .kind = WSK_SOURCE,  .id = "code",   .sub = 0, .weight = 1 },
+	{ .kind = WSK_DIVIDER, .id = "split",  .size = 6, .fill = 0x3a5068u },
+	{ .kind = WSK_MEMO,    .id = "output", .sub = 1, .size = 120 },
 };
 
-static char text[CAP], clip[CAP], undo_b[256 * 1024];
+static char text[CAP], clip[CAP], undo_b[256 * 1024], out[8192];
 static wsk_ink_t inks[INKS];
 static unsigned char brk[65536];        /* breakpoints, by line */
 static wsk_gmark_t marks[4096];         /* ...as whisker draws them, in order */
-static wsk_widget_t win_items[2];
-static wsk_buf_t buf[1];
+static wsk_widget_t win_items[4];
+static wsk_buf_t buf[2];
+static short sizes[4];                  /* the panes, as the divider leaves them */
 static wsk_undo_t undo;
 static wsk_tree_t win;
 static wsk_ui_t ui;
@@ -97,6 +104,25 @@ static int colour(void)
 	return n;
 }
 
+/* A line for the output pane, and for stdout; the oldest go when it fills. */
+static void say(const char *line)
+{
+	int n = (int)strlen(line);
+	printf("%s\n", line);
+	if (n + 1 >= (int)sizeof out) return;
+	while (buf[1].len + n + 1 >= (int)sizeof out) {     /* drop the first line */
+		char *nl = memchr(out, '\n', (size_t)buf[1].len);
+		int cut = nl ? (int)(nl - out) + 1 : buf[1].len;
+		memmove(out, out + cut, (size_t)(buf[1].len - cut + 1));
+		buf[1].len -= cut;
+	}
+	if (buf[1].len > 0) out[buf[1].len++] = '\n';
+	memcpy(out + buf[1].len, line, (size_t)n + 1);
+	buf[1].len += n;
+	buf[1].caret = buf[1].len;              /* the view follows the newest */
+	buf[1].span = 0;
+}
+
 /* The breakpoints as gutter marks: one a line, in order (§5v step 4). */
 static void remark(void)
 {
@@ -143,11 +169,14 @@ int main(int argc, char **argv)
 	colour();
 	remark();
 
+	out[0] = '\0';
+	buf[1].b = out; buf[1].cap = sizeof out;
 	memcpy(win_items, WIN, sizeof WIN);
 	wsk_init(&win, WSK_COL, w, h);
 	win.pad = 4; win.gap = 0; win.font = 18; win.ids = 1;
-	win.item = win_items; win.n = 2;
-	win.buf = buf; win.bufs = 1;
+	win.item = win_items; win.n = 4;
+	win.buf = buf; win.bufs = 2;
+	win.sizes = sizes;
 	win.caps = (unsigned char)wh_caps();
 	win.talign = WSK_ALIGN_START;
 	status();
@@ -163,6 +192,11 @@ int main(int argc, char **argv)
 		        : "it holds a tab, a character beyond ASCII, or < > & -- which this host "
 		          "cannot draw until RV-9 decodes &lt; &gt; &amp;");
 		return 1;
+	}
+	{
+		char m[96];
+		snprintf(m, sizeof m, "opened %.80s", path);
+		say(m);
 	}
 	if (wh_open(w, h, 1, "whisker -- source") != 0) return 1;
 	s.put = to_window; s.ctx = 0; s.len = 0;
@@ -198,8 +232,10 @@ int main(int argc, char **argv)
 			const wsk_note_t *t = &note[i];
 			if (t->kind == WSK_NOTE_TEXT) text_changed = 1;
 			else if (t->kind == WSK_NOTE_GUTTER && t->value < (int)sizeof brk) {
+				char m[48];
 				brk[t->value] = (unsigned char)!brk[t->value];
-				printf("breakpoint %s line %d\n", brk[t->value] ? "on " : "off", t->value + 1);
+				snprintf(m, sizeof m, "breakpoint %s line %d", brk[t->value] ? "on " : "off", t->value + 1);
+				say(m);
 				remark();
 				y0 = 0; y1 = h;                 /* the gutter: the widget's height */
 			} else if (t->kind == WSK_NOTE_COPY)
@@ -209,8 +245,11 @@ int main(int argc, char **argv)
 				wsk_note_t pn[2];
 				int m0, m1, pl = wh_paste(pb, sizeof pb);
 				if (pl > 0 && wsk_ui_paste(&ui, pb, pl, pn, 2, &m0, &m1) > 0) text_changed = 1;
-			} else if (t->kind == WSK_NOTE_KEY && t->value == ('s' | WSK_MOD_CTRL))
-				printf("save: this demo never writes the file\n");
+			} else if (t->kind == WSK_NOTE_KEY && t->value == ('s' | WSK_MOD_CTRL)) {
+				say("save: this demo never writes the file");
+				y0 = 0; y1 = h;
+			} else if (t->kind == WSK_NOTE_SPLIT)
+				printf("output pane %d high\n", t->value);   /* each step of a drag: not the pane's */
 		}
 		/* the text changed: colour it again, BEFORE drawing (§5v rule 4) */
 		if (text_changed) {

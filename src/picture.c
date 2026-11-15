@@ -1708,6 +1708,59 @@ int main(void)
 		}
 	}
 
+	/*
+	 * A divider (§5x), at the pixels: two panes and the bar between them,
+	 * dragged 60 px to the right through the toolkit; the repaint of the
+	 * rows it named equals a full redraw, and the bar is where the pointer
+	 * left it.
+	 */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_BUTTON,  .id = "nav", .text = "files", .size = 80, .fill = 0x1d3b2au },
+			{ .kind = WSK_DIVIDER, .id = "div", .size = 8, .fill = 0x6a8aaau },
+			{ .kind = WSK_BUTTON,  .id = "ed",  .text = "editor", .weight = 1, .fill = 0x2a2a48u },
+		};
+		static uint16_t want[PW * PH];
+		short sz[3] = { 0, 0, 0 };
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[2];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		uint32_t v;
+		int y0, y1, lo, hi;
+		wsk_rect_t was, now;
+
+		wsk_init(&w, WSK_ROW, PW, PH);
+		w.pad = 8; w.gap = 0; w.bg = 0x10203au; w.item = F; w.n = 3; w.sizes = sz;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		s.put = to_window; s.ctx = &dev;
+
+		printf("\n  a divider (§5x)\n");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		was = wsk_rect(&w, 1);
+		ok(span(was, pix565(0x6a8aaau), &lo, &hi) == was.w * was.h, "the bar, 8 wide, every pixel its colour, at 88");
+		ev.kind = WSK_EV_DOWN; ev.x = (short)(was.x + 4); ev.y = (short)(PH / 2);
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = (short)(ev.x + 60);
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+		v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render_rows(&w, y0, y1, &s, 4096);
+		memcpy(want, screen, sizeof screen);
+		now = wsk_rect(&w, 1);
+		ok(sz[0] == 140 && now.x == was.x + 60 &&
+		   span(now, pix565(0x6a8aaau), &lo, &hi) == now.w * now.h && span(was, pix565(0x6a8aaau), &lo, &hi) == 0,
+		   "dragged 60: the files pane 140, the bar drawn at 148, and nothing of it left at 88");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		ok(memcmp(screen, want, sizeof screen) == 0, "the rows the drag named, repainted alone, equal a full redraw");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+		shot("divider.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

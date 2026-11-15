@@ -51,12 +51,12 @@ are history. **`docs/window-gap.md` (2026-10-24) is the current distance**:
 Studio's window is a pure record. **Recounted 2026-11-15 (`window-gap.md`
 §8): whisker answers all 25 of its words** — 19 directly, 6 by
 composition (21 of 25 on 2026-11-12). What is left is three interactions,
-not a widget: a draggable divider (`split`), the keyboard in a menu
-(`choice`), docking (`docks`).
+not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
+keyboard in a menu (`choice`), docking (`docks`).
 
 ## Status
 
-**Twenty-three iterations are built, and two of them have now run on the C5.**
+**Twenty-four iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -225,6 +225,13 @@ not a widget: a draggable divider (`split`), the keyboard in a menu
   the host counts clicks and says so in `d` on a DOWN (SDL's `clicks`; the
   browser's *mousedown* `detail`, since a pointerdown's is always 0).
   `WSK_NO_WORDS`, set by `WSK_PANEL`.
+- **§5x — dividers** (2026-11-15): `WSK_DIVIDER` between two panes, and
+  `short *sizes` on the stack, the caller's, which a drag writes (as
+  `scroll` is) — a weighted pane dragged becomes fixed; clamped, never
+  refused; `WSK_NOTE_SPLIT`. `code.c` has an output pane under a divider.
+  **Watch the render loop's `} else`** before the button box: a branch put
+  between them draws every chosen button wrong (it happened; a check guards
+  it now). `WSK_NO_SPLIT`, in both board tiers.
 
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
@@ -233,12 +240,12 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **748 checks**, including a step
+`src/run.sh --module` is the whole of it: **774 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 41, including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
-`host/web/run.sh --test` adds 32 over HTTP, 18 in headless Chrome, and 14 for
+`host/web/run.sh --test` adds 32 over HTTP, 18 in headless Chrome, and 15 for
 the code editor (`code.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**

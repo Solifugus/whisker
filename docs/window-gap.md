@@ -281,9 +281,9 @@ What moved is whisker, four iterations since §7 (§5s–§5w):
 The six — `tabs`, `tab`, `split`, `docks`, `dock`, `choice` — draw and work;
 what each lacks is an interaction a person expects for free:
 
-1. **`split`: a draggable divider.** Two panes whose sizes are fixed by
-   their weights. The one Studio would feel first — its window *is* a split
-   (navigator | editor | output).
+1. ~~**`split`: a draggable divider.**~~ **Built the same night (design
+   §5x)**: `WSK_DIVIDER` and the caller's `sizes`, so `split` is answered
+   directly — **twenty directly, five by composition.**
 2. **`choice`: the keyboard in a menu.** A click opens its overlay and a
    click chooses; Up, Down and Enter do not walk it yet, and a choice is the
    one control a person expects to drive from the keyboard.
