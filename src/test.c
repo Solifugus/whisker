@@ -4283,8 +4283,8 @@ int main(void)
 			wsk_tree_t k[1];
 			w.item = WS; w.n = 1; w.nest = k; w.nests = 1;
 			wsk_nest_init(&k[0], &w, WSK_COL);
-			ok(wsk_check(&w, &which) == WSK_E_KIND && which == 0,
-			   "a stack inside a world is refused in this step: a poster has to scale as one (step 2)");
+			ok(wsk_check(&w, &which) == WSK_OK,
+			   "a stack inside a world is a poster (step 2b), accepted -- an empty one fits anywhere");
 			w.item = WI; w.n = 3; w.nest = 0; w.nests = 0;
 		}
 
@@ -4682,6 +4682,144 @@ int main(void)
 			ok(wsk_world_follow(&root, "bar", 0, 50, 256, &y0, &y1) == WSK_E_NOTFOUND,
 			   "CONTROL: asked of something that is not a world, WSK_E_NOTFOUND");
 		}
+	}
+
+	printf("\n-- §5q  a world, step 2b: posters\n");
+	{
+		static const wsk_widget_t WP[] = {
+			{ .kind = WSK_STACK, .id = "poster", .sub = 0, .fill = 0x404040 },
+		};
+		static const wsk_widget_t PI[] = {
+			{ .kind = WSK_LABEL,  .id = "title", .text = "Title", .size = 24 },
+			{ .kind = WSK_BUTTON, .id = "go",    .text = "Go",    .size = 32 },
+		};
+		static const wsk_widget_t PJ[] = {
+			{ .kind = WSK_LABEL,  .id = "title", .text = "Title", .size = 24 },
+			{ .kind = WSK_BUTTON, .id = "go",    .text = "Go",    .size = 52 },
+		};
+		static const wsk_widget_t PF[] = { { .kind = WSK_FIELD, .id = "f", .text = "x", .size = 24 } };
+		wsk_place_t pl[1] = { { .x = 20, .y = 20, .w = 100, .h = 80, .scale = 256 } };
+		wsk_tree_t w, k[1];
+		const wsk_tree_t *in = 0;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char wd[4096];
+		int which = -2, y0 = 0, y1 = 0, n;
+
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.ids = 1; w.item = WP; w.n = 1; w.overflow = WSK_WORLD; w.place = pl;
+		w.nest = k; w.nests = 1;
+		wsk_nest_init(&k[0], &w, WSK_COL);
+		k[0].item = PI; k[0].n = 2; k[0].pad = 4; k[0].gap = 4;
+		ok(wsk_check(&w, &which) == WSK_OK, "a poster of 4 + 24 + 4 + 32 + 4 = 68 rows in an 80-row place: accepted");
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, "<rect x=\"20\" y=\"20\" width=\"100\" height=\"80\" fill=\"#404040\"/><text x=\"70\" y=\"40\">Title</text>"
+		           "<rect id=\"go\" x=\"24\" y=\"52\" width=\"92\" height=\"32\""),
+		   "at 1:1 the poster is its place, 20,20 100 x 80, and lays out as a stack does: Go at 24,52, 92 x 32");
+		w.zoom = 512;
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, "<g font-size=\"32\" fill=\"#fff\"><g id=\"poster\"><rect x=\"40\" y=\"40\" width=\"200\" height=\"160\"")
+		   && has(wd, "<rect id=\"go\" x=\"48\" y=\"104\" width=\"184\" height=\"64\""),
+		   "zoom 2: all of it twice -- the place, the padding, the gap, Go's size, and the font, 32");
+		w.zoom = 128;
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, "<g font-size=\"8\" fill=\"#fff\">") && has(wd, "<rect id=\"go\" x=\"12\" y=\"26\" width=\"46\" height=\"16\""),
+		   "zoom 1/2: all of it half -- Go at 12,26, 46 x 16, in font 8");
+		w.zoom = 256; pl[0].scale = 512;
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, "<rect id=\"go\" x=\"28\" y=\"84\" width=\"184\" height=\"64\""),
+		   "its own scale 2 at zoom 1: twice its size from its own corner, 20,20 -- Go at 28,84");
+		pl[0].scale = 256;
+
+		/* hit and press */
+		ok(wsk_hit_in(&w, 50, 60, &in) == 1 && in == &k[0], "hit descends: 50,60 is Go, in the poster's tree");
+		ok(wsk_hit_in(&w, 22, 22, &in) == 0 && in == &w, "in its padding, the poster itself, in the world");
+		ok(wsk_hit_in(&w, 200, 150, &in) < 0, "CONTROL: bare floor is nothing");
+		w.zoom = 512;
+		ok(wsk_hit_in(&w, 100, 120, &in) == 1 && in == &k[0], "zoomed 2: Go where it is drawn, 48..232 x 104..168");
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 100; ev.y = 120;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(w.held == &PI[1] && y0 <= 104 && y1 >= 168 && y1 <= 176,
+		   "pressed: Go is held, and its own scaled rows, 104..168, repaint");
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[0] && nt[0].item == 1,
+		   "released: CLICK on Go, in the poster");
+		w.zoom = 256;
+
+		/* fit is the poster's design, checked at 1:1 */
+		k[0].item = PJ;
+		ok(wsk_check_in(&w, &which, &in) == WSK_E_FIT && which == 1 && in == &k[0],
+		   "a poster of 88 rows in an 80-row place: refused, WSK_E_FIT, naming Go");
+		w.zoom = 512;
+		ok(wsk_check(&w, 0) == WSK_E_FIT, "and refused zoomed 2, though 176 rows would be drawn in 160 -- it is checked as declared");
+		w.zoom = 77;
+		ok(wsk_check(&w, 0) == WSK_E_FIT, "and at 0.3: no zoom makes a poster fit that does not");
+		k[0].item = PI;
+		ok(wsk_check(&w, 0) == WSK_OK, "CONTROL: the 68-row poster at 0.3 is accepted");
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, "<g font-size=\"4\""), "and drawn, in font 16 x 0.3 = 4");
+		w.zoom = 256;
+
+		/* cut by the view */
+		w.vx = 60;
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, "<rect id=\"go\" y=\"52\" width=\"56\" height=\"32\"") && !has(wd, ">Title</text>"),
+		   "the view moved 60 right: Go cut at its edge to 0..56, Title not whole and not drawn");
+		w.vx = 0;
+
+		/* fade reaches inside */
+		pl[0].fade = 128;
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, "fill=\"#272f37\"") && has(wd, "<rect id=\"go\" x=\"24\" y=\"52\" width=\"92\" height=\"32\" fill=\"#1c455f\""),
+		   "fade 128: the poster's fill 40,40,40 to 27,2f,37 and Go's accent 2a,6b,8f to 1c,45,5f -- each (c x 127 + bg x 129) >> 8");
+		pl[0].fade = 0;
+
+		/* refused inside a poster, by name */
+		k[0].item = PF; k[0].n = 1;
+		ok(wsk_check_in(&w, &which, &in) == WSK_E_KIND && which == 0 && in == &k[0],
+		   "a field inside a poster is refused, as in a world, until a caret is placed at a scale");
+		k[0].item = PI; k[0].n = 2;
+		ok(wsk_check(&w, 0) == WSK_OK, "CONTROL: the poster again, accepted");
+	}
+
+	/* a poster with an abstract: wrapped text reflows in proportion */
+	{
+		static const wsk_widget_t WP[] = { { .kind = WSK_STACK, .id = "poster", .sub = 0 } };
+		static const wsk_widget_t PA[] = {
+			{ .kind = WSK_LABEL, .id = "title", .text = "Damage", .size = 24 },
+			{ .kind = WSK_STACK, .id = "abstract", .sub = 1, .weight = 1 },
+		};
+		static const wsk_widget_t AB[] = { { .kind = WSK_TEXT, .id = "ab", .sub = 0 } };
+		const char *strs[1];
+		wsk_place_t pl[1] = { { .x = 0, .y = 0, .w = 160, .h = 120, .scale = 256 } };
+		wsk_tree_t w, k[2];
+		char wd[4096];
+		int lines1, lines2, lines3;
+
+		strs[0] = "rows that changed are drawn again and nothing else";
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.item = WP; w.n = 1; w.overflow = WSK_WORLD; w.place = pl;
+		w.nest = k; w.nests = 2; w.str = strs; w.strs = 1;
+		wsk_nest_init(&k[0], &w, WSK_COL);
+		k[0].item = PA; k[0].n = 2; k[0].pad = 4; k[0].gap = 4;
+		wsk_nest_init(&k[1], &w, WSK_ROW);
+		k[1].item = AB; k[1].n = 1; k[1].overflow = WSK_WRAP; k[1].pad = 0; k[1].gap = 8; k[1].lgap = 0;
+		ok(wsk_check(&w, 0) == WSK_OK, "a poster with a title and a wrapping abstract");
+		render_into(&w, wd, sizeof wd, 4096);
+		lines1 = count(wd, "<text");
+		w.zoom = 512;
+		ok(wsk_check(&w, 0) == WSK_OK, "zoomed 2");
+		render_into(&w, wd, sizeof wd, 4096);
+		lines2 = count(wd, "<text");
+		w.zoom = 128;
+		render_into(&w, wd, sizeof wd, 4096);
+		lines3 = count(wd, "<text");
+		ok(lines1 > 2 && lines1 == lines2 && lines1 == lines3,
+		   "the abstract breaks into the same lines at 1, 2 and 1/2 -- it reflows in proportion, not to the screen");
 	}
 
 	/* ---- what an independent read of the night's code found ---- */

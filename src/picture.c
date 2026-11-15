@@ -1857,6 +1857,66 @@ int main(void)
 		shot("world_torus.ppm");
 	}
 
+	/*
+	 * Step 2b at the pixels: one poster's design twice in a world -- a
+	 * title, an abstract that wraps, a button -- the second at its own
+	 * scale 0.75. Everything in it should shrink together, the abstract
+	 * breaking in the same places.
+	 */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_STACK, .id = "a", .sub = 0, .fill = 0x303848u },
+			{ .kind = WSK_STACK, .id = "b", .sub = 2, .fill = 0x303848u },
+		};
+		static const wsk_widget_t PA[] = {
+			{ .kind = WSK_LABEL,  .id = "ta", .text = "Damage, banded", .size = 20 },
+			{ .kind = WSK_STACK,  .id = "aa", .sub = 1, .weight = 1 },
+			{ .kind = WSK_BUTTON, .id = "va", .text = "Visit", .size = 24, .fill = 0xc08040u },
+		};
+		static const wsk_widget_t PB[] = {
+			{ .kind = WSK_LABEL,  .id = "tb", .text = "Damage, banded", .size = 20 },
+			{ .kind = WSK_STACK,  .id = "ab", .sub = 3, .weight = 1 },
+			{ .kind = WSK_BUTTON, .id = "vb", .text = "Visit", .size = 24, .fill = 0xc08040u },
+		};
+		static const wsk_widget_t AA[] = { { .kind = WSK_TEXT, .id = "xa", .sub = 0 } };
+		static const wsk_widget_t AB[] = { { .kind = WSK_TEXT, .id = "xb", .sub = 0 } };
+		wsk_place_t pl[2] = {
+			{ .x = 8,   .y = 8, .w = 150, .h = 140, .scale = 256 },
+			{ .x = 170, .y = 8, .w = 150, .h = 140, .scale = 192 },
+		};
+		const char *strs[1];
+		wsk_tree_t w, k[4];
+		wsk_sink_t s;
+		uint32_t v;
+		int loa, hia, lob, hib, na, nb;
+		wsk_rect_t ra = { 8, 8, 150, 140 }, rb = { 170, 8, 113, 106 };
+
+		strs[0] = "Only the rows that changed are drawn";
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.bg = 0x10203au; w.item = F; w.n = 2; w.overflow = WSK_WORLD; w.place = pl;
+		w.nest = k; w.nests = 4; w.str = strs; w.strs = 1;
+		for (int j = 0; j < 4; j += 2) {
+			wsk_nest_init(&k[j], &w, WSK_COL);
+			k[j].item = (j == 0) ? PA : PB; k[j].n = 3; k[j].pad = 6; k[j].gap = 4;
+			wsk_nest_init(&k[j + 1], &w, WSK_ROW);
+			k[j + 1].item = (j == 0) ? AA : AB; k[j + 1].n = 1; k[j + 1].overflow = WSK_WRAP;
+			k[j + 1].pad = 0; k[j + 1].gap = 8; k[j + 1].lgap = 0; k[j + 1].talign = WSK_ALIGN_START;
+		}
+		s.put = to_window; s.ctx = &dev;
+		printf("\n  posters (§5q step 2b)\n");
+		ok(wsk_check(&w, 0) == WSK_OK, "two posters of one design, the second at its own scale 0.75");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		na = span(ra, pix565(0xc08040u), &loa, &hia);
+		nb = span(rb, pix565(0xc08040u), &lob, &hib);
+		printf("    the button: %d wide (%d px) and %d wide (%d px)\n", hia - loa + 1, na, hib - lob + 1, nb);
+		ok(hia - loa + 1 == 138 && (hib - lob + 1) * 100 >= 138 * 72 && (hib - lob + 1) * 100 <= 138 * 78,
+		   "the button 138 wide in the first, three quarters of that in the second -- the padding scaled with it");
+		ok(na > 0 && nb * 100 >= na * 50 && nb * 100 <= na * 62,
+		   "and its area about 0.75 squared of the first's: both ways, not one");
+		shot("posters.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

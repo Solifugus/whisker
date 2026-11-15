@@ -3082,8 +3082,8 @@ files — byte-identical. In headless Chrome, **5** more (`floor.mjs`).
 **§7's question**: pan and zoom live in the toolkit; the world as drawn is
 still 1,848 bytes in the default, and the board tiers unchanged.
 
-**What is left of §5q**: posters (step 2b, for Matthew to approve — design
-above), pinch, and the P4 game.
+**What is left of §5q**: ~~posters~~ (step 2b, below, 2026-11-15), pinch,
+and the P4 game.
 
 ### Step 4, written before its code (2026-11-15): what touches what
 
@@ -3182,6 +3182,85 @@ each with a check that fails on the header before the fix (10 of 11; the
 **Not fixed, named**: colours a widget sets itself on a field, memo or
 check are not faded (only boxes and labels are); and menu keys reach only
 a menu's top-level buttons.
+
+### Step 2b, written before its code (2026-11-15): posters
+
+Matthew approved it in principle: *"everything in the world should zoom
+in/out together but that doesn't mean some things cannot change physical
+size independently within it."* A poster is a stack placed in a world — a
+title, an abstract wrapping, an author, a button — and it zooms as one, at
+the world's zoom times its own scale.
+
+1. **The factor rides on the copies**, never on the caller's trees: `wz`,
+   whisker's, 0 everywhere outside a world (and so **every earlier output
+   byte-identical**, since 0 multiplies nothing), set in the copy of a
+   stack placed in a world to `zoom x scale / 256`, and inherited by every
+   copy beneath it.
+2. **A copy laid out at a factor has its own lengths scaled** — font, pad,
+   gap, line gap, `cross_max`, indent — so every drawing function draws it
+   scaled without knowing, as a world's one-item copies already do.
+3. **Measurement scales what it reads raw**: a widget's `size`, a caller's
+   `sizes[]`, a button's default 64 rows, and the caller's nested trees,
+   which measurement reads directly (`wsk__nat_on`) — those through a
+   scaled copy, out of line so only a poster pays its stack. A label's
+   extent is **not band-rounded** at a factor: rounding up to 8 rows does
+   not shrink with the zoom, and a column of labels would stop fitting as
+   the view zoomed out.
+4. **Fit is checked at 1:1.** A poster must fit its place's `w` x `h` as
+   declared — `wsk_check` lays it out at factor 256 there, whatever the
+   view. At any other factor rounding may push a pixel past the end, so
+   nothing is refused for fit there: **the poster's rectangle cuts it**, as
+   the world's view does (both are added to the clip of what it holds).
+   A world's zoom must never be what makes a document fail.
+5. **Hit descends** into a poster, so its buttons are buttons; a held one
+   repaints its own scaled rows. **Fade** reaches what a poster holds.
+6. **Refused inside a poster, by name**: an editing field, memo or source
+   (as in a world), until the toolkit places a caret at a scale. Named and
+   not refused: a divider dragged inside a poster writes screen pixels into
+   `sizes`, which are read as poster pixels — a poster is not a workspace.
+
+Done when: a poster at zoom 1, ½, 2 and with its own scale lays out in
+proportion (by the rectangles); 1:1 fit refused and the control accepted;
+an off-scale overflow cut, not refused; a button in a poster hit and held;
+a wrapping abstract reflowing smaller; fade inside; every earlier output
+byte-identical; a picture; and the floor demo's posters become posters.
+
+**What it came to**: as written. **932 checks** (906 before): 26 in the
+suite, 3 at the pixels. Every earlier output — 41 files — byte-identical.
+
+- In the suite: a 68-row poster in an 80-row place drawn at zoom 1, 2 and
+  ½ and at its own scale 2, its button exactly 92 x 32, 184 x 64, 46 x 16 and
+  184 x 64; hit descending to that button at 1:1 and zoomed, its padding
+  answering as the poster, bare floor as nothing; pressed and released
+  through the toolkit, held and repainting its own scaled rows; an 88-row
+  poster refused WSK_E_FIT naming its button, **at 1:1, zoomed 2 and at 0.3
+  alike**; cut by the view; faded inside (fill and accent, each by the same
+  formula as step 2); a field inside refused by name. A wrapped abstract
+  breaks into **the same four lines** at 1, 2 and ½.
+- **At the pixels** (`posters.ppm`, looked at): one design twice, the second
+  at its own scale 0.75 — the button 138 and 104 wide, its area about 0.56
+  of the first's, the abstract breaking in the same places.
+- **The floor demo** has real posters — title, wrapping abstract, a Visit
+  button — and in Chrome a click on Visit says *You visit "Tiny GUIs on
+  RISC-V".* while a click on the abstract is the poster's.
+- **Found on the way, and not whisker's**: zoomed out to the whole floor,
+  the document came to over 4 KB, and the desktop window — RV-9's
+  `drv_svgwin.c`, `SRC_MAX` 4,096 — **dropped every frame**, correctly and
+  with a warning. It was 3,571 bytes before posters, so close already. The
+  answer is the one §2.3 always gave: the program draws **a frame in parts**,
+  halves on 8-row bands, each a whole document of what crosses its rows,
+  trying one document first (`WSK_E_BUDGET` refuses before a byte is
+  written). Zoomed right out it is 1,771 + 3,452 bytes; in Chrome all ten
+  people are on the canvas.
+
+**§7's question**: the world is **2,716 bytes** in the default (1,912
+before: posters +804 — the factor through measurement, the checks at 1:1,
+the hit's descent). The board tiers lose 52 bytes, from measuring a
+stack out of line.
+
+**Named, not done**: a divider dragged inside a poster writes screen
+pixels; a world inside a poster is refused (`WSK_E_KIND`); a field in one
+waits with a world's.
 
 
 ---

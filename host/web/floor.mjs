@@ -111,7 +111,18 @@ try {
   await sleep(400);
   ok(said.includes('meet   You waves.'), 'a click on a person meets them: "You waves."');
 
-  // bare floor between the posters (to 180) and where anyone walks (from 284)
+  // §5q step 2b: a poster is a stack -- world 120,20, 300 x 116, so on the
+  // screen 24..324, 56..172; its Visit button 30..318, 140..166
+  await click(174, 153);
+  await sleep(400);
+  ok(said.includes('poster You visit "Tiny GUIs on RISC-V".'),
+     'a poster\'s own button: hit descends into the poster, and the program hears Visit');
+  await click(120, 98);
+  await sleep(400);
+  ok(said.includes('poster Tiny GUIs on RISC-V: a GUI in 3.8 KB on a C5'),
+     'and its abstract, a word of wrapped text inside it, is the poster\'s too');
+
+  // bare floor between the posters (to 172) and where anyone walks (from 284)
   await click(600, 230);
   await sleep(400);
   ok(said.includes('walk   to 696,194'), 'a click on bare floor walks you there: world 696,194 -- 100 + 600 - 4, 230 - 36');
@@ -120,7 +131,7 @@ try {
 
   // §5q step 4: now walk toward the floor just under a poster -- world
   // 696,150, so you would stand at 135..165, and "Damage, banded" ends at
-  // 142: you stop against it, and the program says so
+  // 136: you stop against it, and the program says so
   await click(600, 186);
   await sleep(1500);
   ok(said.includes('walk   to 696,150') && said.includes('bump   You reach "Damage, banded".'),
@@ -173,6 +184,22 @@ try {
     ok(m && Number(m[1]) < 356, `and - zooms out: ${m ? m[0].trim() : 'nothing'}`);
   }
   await snap('floor_zoomed.png');
+
+  // zoomed right out the whole floor is in view, and the document is over
+  // the 4 KB a window on /w0 takes: the program draws it in parts. Every
+  // person's colour on the canvas says both parts arrived.
+  for (let k = 0; k < 12; k++) { await type('-'); await sleep(60); }
+  await sleep(600);
+  {
+    const fills = [0xd0a020, 0x3a7ab0, 0x8a4a9a, 0x3a9a6a, 0xb05a3a, 0x5a6ab0, 0x9a8a3a, 0x4a8a8a, 0xa04a6a, 0x6a9a3a];
+    const seen = await js(`(()=>{const d=whisker.canvas.getContext("2d").getImageData(0,36,1024,564).data;
+      const f=${JSON.stringify(fills)};const n=f.map(()=>0);
+      for(let i=0;i<d.length;i+=4)for(let j=0;j<f.length;j++)if(d[i]===(f[j]>>16)&&d[i+1]===((f[j]>>8)&255)&&d[i+2]===(f[j]&255))n[j]++;return n;})()`);
+    console.log(`      pixels of each person's colour: ${seen.join(' ')}`);
+    ok(said.includes('bands  a frame over 4 KB goes in parts') && seen.every(v => v > 50),
+       'zoomed out to the whole floor: over 4 KB, drawn in parts -- and all ten people are on the canvas');
+  }
+  await snap('floor_all.png');
 
 } finally {
   try { ws?.close(); } catch {}

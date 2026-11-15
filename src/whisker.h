@@ -660,6 +660,9 @@ typedef struct wsk_tree {
 	unsigned char wone;
 	unsigned char wfade;         /* whisker's, in those copies: the item's fade */
 	int           wdx, wdy;      /* and which copy of a torus's item: 0 or -ww, -wh */
+	/* whisker's, in the copies a poster is laid out in (step 2b): the
+	   factor, 256 = 1:1, its lengths were scaled by -- 0 outside a world */
+	int           wz;
 #endif
 
 	/* Set by whisker in those copies, never by a caller: the intersection of
@@ -1082,6 +1085,9 @@ static inline int wsk__u_along(const wsk_tree_t *r, const wsk_tree_t *t,
 static inline int wsk__u_deep(const wsk_tree_t *r, const wsk_tree_t *t,
                               const wsk__u_t *u, int along, int depth)
 {
+#ifndef WSK_NO_WORLD
+	if (u->wi >= 0 && r->wz != 0) return t->font + t->gap;
+#endif
 	if (u->wi >= 0) return wsk__round_band(t->font + t->gap);
 	return wsk__meas(r, t, u->k, (t->axis == WSK_COL) ? WSK_ROW : WSK_COL,
 	                 depth, along);
@@ -1363,16 +1369,17 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 	   rather than clamped as a scroll past its end is. Nothing has to fit:
 	   overlapping and running off the view is what a world is for. */
 	if (t->overflow == WSK_WORLD) {
-		if (t->place == 0 || t->zoom <= 0 || t->wspace > WSK_TORUS ||
+		/* a world in a poster would zoom by its own view alone (step 2b) */
+		if (t->place == 0 || t->zoom <= 0 || t->wspace > WSK_TORUS || t->wz != 0 ||
 		    (t->wspace != WSK_OPEN && (t->ww <= 0 || t->wh <= 0))) {
 			if (which != 0) *which = -1;
 			return WSK_E_KIND;
 		}
 		for (int i = 0; i < t->n; i++)
-			/* a stack inside is a poster: step 2b, which scales it; and an
-			   editable field waits for the toolkit to place its caret at
-			   the item's scale, which it does not yet */
-			if (t->item[i].kind == WSK_STACK || t->place[i].scale <= 0 ||
+			/* an editable field waits for the toolkit to place its caret
+			   at the item's scale, which it does not yet; a stack is a
+			   poster (step 2b), checked below at 1:1 */
+			if (t->place[i].scale <= 0 ||
 			    t->item[i].kind == WSK_FIELD || t->item[i].kind == WSK_MEMO ||
 			    t->item[i].kind == WSK_SOURCE ||
 			    t->place[i].w < 0 || t->place[i].h < 0) {
@@ -1440,6 +1447,23 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 	   2026-10-24 that was wslop's marks and edge bars, and a day spent
 	   asking RV-9 why its panel drew low (roadmap 4.3). `which` names the
 	   first widget that crosses the end. */
+#ifndef WSK_NO_WORLD
+	/* Inside a poster (§5q step 2b): editing waits, as in a world; and
+	   fit is a poster's design, checked at 1:1 -- at any other factor
+	   rounding may cross the end by a pixel, and its rectangle cuts it. */
+	if (t->wz != 0) {
+		for (int i = 0; i < t->n; i++)
+			if (t->item[i].kind == WSK_FIELD
+#ifndef WSK_NO_MEMO
+			    || wsk__lined(t->item[i].kind)
+#endif
+			    ) {
+				if (which != 0) *which = i;
+				return WSK_E_KIND;
+			}
+		if (t->wz != 256) return WSK_OK;
+	}
+#endif
 	{
 		int span = (t->axis == WSK_COL ? t->ah : t->aw) - 2 * t->pad;
 		int used = 0;
@@ -1566,6 +1590,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->wone = 0;
 	t->wfade = 0;
 	t->wdx = t->wdy = 0;
+	t->wz = 0;
 #endif
 	t->clipped = 0;
 	t->cx0 = t->cy0 = t->cx1 = t->cy1 = 0;
@@ -1584,6 +1609,32 @@ static inline int wsk__round_band(int v)
 {
 	return ((v + WSK_BAND - 1) / WSK_BAND) * WSK_BAND;
 }
+
+#ifndef WSK_NO_WORLD
+/*
+ * A length at a poster's factor (§5q step 2b): as it is outside a world,
+ * where `wz` is 0. 64-bit, shifted and never divided.
+ */
+static inline int wsk__zv(const wsk_tree_t *r, int v)
+{
+	return (r->wz == 0) ? v : (int)(((long long)v * r->wz) >> 8);
+}
+
+/* A copy's own lengths at factor f, so drawing scales without knowing. */
+static inline void wsk__zscale(wsk_tree_t *c, int f)
+{
+	c->wz = f;
+	c->font = (short)(((long long)c->font * f) >> 8);
+	if (c->font < 1) c->font = 1;
+	c->pad = (short)(((long long)c->pad * f) >> 8);
+	c->gap = (short)(((long long)c->gap * f) >> 8);
+	if (c->lgap != WSK_SAME) c->lgap = (short)(((long long)c->lgap * f) >> 8);
+	c->cross_max = (short)(((long long)c->cross_max * f) >> 8);
+	c->indent = (short)(((long long)c->indent * f) >> 8);
+}
+#else
+#define wsk__zv(r, v) (v)
+#endif
 
 /*
  * A widget's natural extent along the stack's axis, before weights.
@@ -1632,58 +1683,89 @@ static inline int wsk__natural(const wsk_tree_t *t, int i)
  * only the copies layout makes do. `depth` stops a tree that holds itself.
  */
 static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
+                              int axis, int depth, int avail);
+
+/* A stack's natural extent: its content along `axis`, its padding both ends. */
+static inline int wsk__nat_stack(const wsk_tree_t *r, const wsk_tree_t *c,
+                                 int axis, int depth, int avail)
+{
+	int ext = 0, inner = (avail < 0) ? -1 : avail - 2 * c->pad;
+#ifndef WSK_NO_SCROLL
+	/* A stack that scrolls asks for nothing along the axis it scrolls
+	   on: being shorter than its content is what it is for. Its size
+	   comes from `size` or `weight`. */
+	if (c->overflow == WSK_SCROLL && c->axis == axis) return 2 * c->pad;
+#endif
+#ifndef WSK_NO_WORLD
+	/* nor does a world, either way: it is a view, sized from outside */
+	if (c->overflow == WSK_WORLD) return 2 * c->pad;
+#endif
+#ifndef WSK_NO_WRAP
+	/* A wrapping stack takes what it is given and wraps to fit it, so
+	   along its axis it asks only for its widest unit -- item or word
+	   (§5g rule 4); across, the depth of its lines at the width it will
+	   get -- or, where nothing above knows that, one line. */
+	if (c->overflow == WSK_WRAP && (c->axis == axis || inner >= 0)) {
+		wsk__u_t u;
+		int more;
+		if (c->axis != axis)
+			return wsk__flow(r, c, inner, -1, -1, 0, 0, 0, 0, depth + 1)
+			     + 2 * c->pad;
+		for (more = wsk__u_at(r, c, 0, &u); more; more = wsk__u_next(r, c, &u)) {
+			int e = wsk__u_along(r, c, &u, depth + 1);
+			if (e > ext) ext = e;
+		}
+		return ext + 2 * c->pad;
+	}
+#endif
+	for (int j = 0; j < c->n; j++) {
+		int e = (c->axis == axis)
+		      ? wsk__nat_on(r, c, j, axis, depth + 1, inner)
+		      : wsk__nat_on(r, c, j, axis, depth + 1, -1);
+		if (c->axis == axis) ext += e + ((j > 0) ? c->gap : 0);
+		else if (e > ext) ext = e;
+	}
+	return ext + 2 * c->pad;
+}
+
+#ifndef WSK_NO_WORLD
+static inline void wsk__tcopy(wsk_tree_t *d, const wsk_tree_t *s);
+
+/*
+ * The same, inside a poster (§5q step 2b): the caller's tree is measured
+ * through a copy at the poster's factor. Out of line, so only a poster
+ * pays the copy's stack.
+ */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static int wsk__nat_z(const wsk_tree_t *r, const wsk_tree_t *c,
+                      int axis, int depth, int avail)
+{
+	wsk_tree_t z;
+	wsk__tcopy(&z, c);
+	wsk__zscale(&z, r->wz);
+	return wsk__nat_stack(r, &z, axis, depth, avail);
+}
+#endif
+
+static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
                               int axis, int depth, int avail)
 {
 	const wsk_widget_t *w = &t->item[i];
 
 #ifndef WSK_NO_SPLIT
 	/* the caller's size for it, which a divider sets (§5x rule 1) */
-	if (axis == t->axis && t->sizes != 0 && t->sizes[i] > 0) return t->sizes[i];
+	if (axis == t->axis && t->sizes != 0 && t->sizes[i] > 0) return wsk__zv(r, t->sizes[i]);
 #endif
-	if (w->size > 0 && axis == t->axis) return w->size;
+	if (w->size > 0 && axis == t->axis) return wsk__zv(r, w->size);
 	if (w->kind == WSK_STACK) {
-		const wsk_tree_t *c;
-		int ext = 0, inner;
 		if (r->nest == 0 || w->sub < 0 || w->sub >= r->nests || depth >= WSK_DEPTH_MAX)
 			return 0;                    /* wsk_check refuses it by name */
-		c = &r->nest[w->sub];
-		inner = (avail < 0) ? -1 : avail - 2 * c->pad;
-#ifndef WSK_NO_SCROLL
-		/* A stack that scrolls asks for nothing along the axis it scrolls
-		   on: being shorter than its content is what it is for. Its size
-		   comes from `size` or `weight`. */
-		if (c->overflow == WSK_SCROLL && c->axis == axis) return 2 * c->pad;
-#endif
 #ifndef WSK_NO_WORLD
-		/* nor does a world, either way: it is a view, sized from outside */
-		if (c->overflow == WSK_WORLD) return 2 * c->pad;
+		if (r->wz != 0) return wsk__nat_z(r, &r->nest[w->sub], axis, depth, avail);
 #endif
-#ifndef WSK_NO_WRAP
-		/* A wrapping stack takes what it is given and wraps to fit it, so
-		   along its axis it asks only for its widest unit -- item or word
-		   (§5g rule 4); across, the depth of its lines at the width it will
-		   get -- or, where nothing above knows that, one line. */
-		if (c->overflow == WSK_WRAP && (c->axis == axis || inner >= 0)) {
-			wsk__u_t u;
-			int more;
-			if (c->axis != axis)
-				return wsk__flow(r, c, inner, -1, -1, 0, 0, 0, 0, depth + 1)
-				     + 2 * c->pad;
-			for (more = wsk__u_at(r, c, 0, &u); more; more = wsk__u_next(r, c, &u)) {
-				int e = wsk__u_along(r, c, &u, depth + 1);
-				if (e > ext) ext = e;
-			}
-			return ext + 2 * c->pad;
-		}
-#endif
-		for (int j = 0; j < c->n; j++) {
-			int e = (c->axis == axis)
-			      ? wsk__nat_on(r, c, j, axis, depth + 1, inner)
-			      : wsk__nat_on(r, c, j, axis, depth + 1, -1);
-			if (c->axis == axis) ext += e + ((j > 0) ? c->gap : 0);
-			else if (e > ext) ext = e;
-		}
-		return ext + 2 * c->pad;
+		return wsk__nat_stack(r, &r->nest[w->sub], axis, depth, avail);
 	}
 	if (axis == WSK_ROW) {
 		const char *x = wsk__say(r, t, i);
@@ -1696,7 +1778,10 @@ static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
 #endif
 		return text + 2 * t->pad;
 	}
-	if (w->kind == WSK_BUTTON) return WSK_BTN_ROWS;
+	if (w->kind == WSK_BUTTON) return wsk__zv(r, WSK_BTN_ROWS);
+#ifndef WSK_NO_WORLD
+	if (r->wz != 0) return t->font + t->gap;     /* rounding would not scale */
+#endif
 	return wsk__round_band(t->font + t->gap);
 }
 
@@ -1937,6 +2022,10 @@ static inline wsk_rect_t wsk__cell(const wsk_tree_t *t, int idx)
 	h.caps = t->caps;
 	h.ax = t->ax; h.aw = t->aw; h.ay = t->ay; h.ah = t->ah;
 	h.ghead = 0; h.clipped = 0;
+#ifndef WSK_NO_WORLD
+	h.wz = 0;
+	if (t->wz != 0) wsk__zscale(&h, t->wz);       /* a table in a poster */
+#endif
 	if (idx < h.n) hc = wsk_rect(&h, idx);
 	else { hc.x = (short)(t->ax + t->aw); hc.w = 0; }   /* refused by wsk_check */
 	if (idx == 0 && t->rdepth != 0 && t->rindent > 0) {  /* a tree's row (§5p) */
@@ -2207,6 +2296,32 @@ static inline int wsk__child(const wsk_tree_t *t, int i, wsk_tree_t *c)
 
 	c->clipped = t->clipped;
 	c->cx0 = t->cx0; c->cy0 = t->cy0; c->cx1 = t->cx1; c->cy1 = t->cy1;
+#ifndef WSK_NO_WORLD
+	/* A poster (§5q step 2b): laid out at the world's zoom times its own
+	   scale -- times any poster it is in -- its lengths scaled, and cut by
+	   the view and by its own rectangle, which rounding may cross. */
+	c->wz = t->wz;
+	c->wone = 0;
+	if (t->overflow == WSK_WORLD) {
+		long long f = ((long long)t->zoom * t->place[i].scale) >> 8;
+		wsk_rect_t k = r;
+		if (t->wz != 0) f = (f * t->wz) >> 8;
+		c->wz = (f < 1) ? 1 : (int)f;
+		if (!wsk__cut(t, &k)) k.w = k.h = 0;
+		c->cx0 = k.x; c->cy0 = k.y;
+		c->cx1 = (short)(k.x + k.w); c->cy1 = (short)(k.y + k.h);
+		c->clipped = 1;
+	}
+	if (c->wz != 0) wsk__zscale(c, c->wz);
+	c->wfade = t->wfade;
+	if (c->wfade != 0) {                /* faded with the poster (step 2) */
+		c->bg = t->bg;
+		c->ink = wsk__fade(c, c->ink);
+		c->accent = wsk__fade(c, c->accent);
+		c->trough = wsk__fade(c, c->trough);
+		c->selfill = wsk__fade(c, c->selfill);
+	}
+#endif
 #ifndef WSK_NO_SCROLL
 	if (t->overflow == WSK_SCROLL) {
 		int x0 = t->ax, y0 = t->ay, x1 = t->ax + t->aw, y1 = t->ay + t->ah;
@@ -2241,6 +2356,18 @@ static inline int wsk__check_at(const wsk_tree_t *t, const wsk_tree_t *orig,
 		wsk_tree_t c;
 		if (t->item[i].kind != WSK_STACK) continue;
 		(void)wsk__child(t, i, &c);         /* wsk__check1 vouched for sub */
+#ifndef WSK_NO_WORLD
+		if (t->overflow == WSK_WORLD) {
+			/* a poster is checked as declared: its place's size, at 1:1
+			   (step 2b rule 4), whatever the view is doing */
+			const wsk_tree_t *o = &t->nest[t->item[i].sub];
+			c.font = o->font; c.pad = o->pad; c.gap = o->gap; c.lgap = o->lgap;
+			c.cross_max = o->cross_max; c.indent = o->indent;
+			wsk__zscale(&c, 256);
+			c.aw = (short)t->place[i].w; c.ah = (short)t->place[i].h;
+			c.clipped = 0;
+		}
+#endif
 		e = wsk__check_at(&c, &t->nest[t->item[i].sub], which, in, depth + 1);
 		if (e != WSK_OK) return e;
 	}
@@ -2649,6 +2776,30 @@ static inline int wsk_hit(const wsk_tree_t *t, int x, int y)
  */
 static inline int wsk__hit_at(const wsk_tree_t *t, const wsk_tree_t *orig,
                               int x, int y, const wsk_tree_t **in,
+                              wsk_tree_t *at, int depth);
+
+#ifndef WSK_NO_WORLD
+/*
+ * Into a poster (§5q step 2b), laid out from the copy that was hit: its
+ * buttons are buttons. Out of line, so the two copies cost only a world.
+ */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static int wsk__whit_in(const wsk_tree_t *t, int i, int hitk, int x, int y,
+                        const wsk_tree_t **in, wsk_tree_t *at, int depth)
+{
+	wsk_tree_t h, c;
+	wsk__tcopy(&h, t);
+	h.wdx = ((hitk - 1) & 1) ? -t->ww : 0;
+	h.wdy = ((hitk - 1) & 2) ? -t->wh : 0;
+	if (!wsk__child(&h, i, &c)) return WSK_E_NOTFOUND;
+	return wsk__hit_at(&c, &t->nest[t->item[i].sub], x, y, in, at, depth + 1);
+}
+#endif
+
+static inline int wsk__hit_at(const wsk_tree_t *t, const wsk_tree_t *orig,
+                              int x, int y, const wsk_tree_t **in,
                               wsk_tree_t *at, int depth)
 {
 #ifndef WSK_NO_OVER
@@ -2668,6 +2819,10 @@ static inline int wsk__hit_at(const wsk_tree_t *t, const wsk_tree_t *orig,
 			int hitk;
 			i = t->n - 1 - j;
 			if ((hitk = wsk__whit(t, i, x, y)) == 0) continue;
+			if (t->item[i].kind == WSK_STACK && depth + 1 < WSK_DEPTH_MAX) {
+				int k = wsk__whit_in(t, i, hitk, x, y, in, at, depth);
+				if (k >= 0) return k;
+			}
 			if (in != 0) *in = orig;
 			if (at != 0) {
 				/* laid out as the copy that was hit, so its rectangle --
@@ -3891,7 +4046,7 @@ static void wsk__stack(const wsk_doc_t *d, const wsk_tree_t *t, int i,
 	if (t->select && i == t->sel) wsk__box(s, 0, v, t->selfill);   /* a chosen row */
 	else
 #endif
-	if (w->fill != WSK_INHERIT) wsk__box(s, 0, v, w->fill);
+	if (w->fill != WSK_INHERIT) wsk__box(s, 0, v, wsk__fade(t, w->fill));
 #ifndef WSK_NO_SCROLL
 	{
 		int clip = wsk__clip_open(s, &c);

@@ -5,7 +5,8 @@
  *     host/web/run.sh --floor      the same program in a browser
  *
  * Matthew's virtual conference, small: people walk the floor, posters hang
- * on the wall, and what people say floats above them -- smaller and fainter
+ * on the wall -- each a stack of its own, a title, an abstract that wraps
+ * and a button, zooming as one (§5q step 2b) -- and what people say floats above them -- smaller and fainter
  * the further it is from you. That is THIS PROGRAM's policy; whisker draws
  * each thing at the scale and fade it is told (§5q rule 2). Drag to look
  * around, the wheel to zoom, a click on the floor to walk there, a click on
@@ -67,13 +68,17 @@ static const wsk_widget_t WIN[] = {
 	{ .kind = WSK_STACK, .id = "floor", .sub = 0, .weight = 1 },
 };
 
-static wsk_widget_t win_items[2], items[ITEMS];
+/* A poster: its title, its abstract wrapping in a row, a button. */
+static const wsk_widget_t ABSTRACT[1] = { { .kind = WSK_TEXT, .id = "abstract" } };
+
+static wsk_widget_t win_items[2], items[ITEMS], poster[POSTERS][3], abstract[POSTERS][1];
 static wsk_place_t place[ITEMS];
-static wsk_tree_t win, nest[1];
+static wsk_tree_t win, nest[1 + 2 * POSTERS];    /* the floor; each poster and its abstract */
 static wsk_ui_t ui;
 static int px[PEOPLE], py[PEOPLE], tx[PEOPLE], ty[PEOPLE];   /* where, and where to */
 static unsigned int seed = 12345;
 static int following = 1;
+static int split_told;
 
 static int rnd(int n) { seed = seed * 1103515245u + 12345u; return (int)((seed >> 16) % (unsigned)n); }
 static int iabs(int v) { return v < 0 ? -v : v; }
@@ -150,21 +155,48 @@ static int step(void)
 
 static void to_window(wsk_sink_t *s, const char *b, int n) { (void)s; wh_write(b, n); }
 
+/*
+ * Rows y0..y1 of the window, as one document if it fits the 4 KB a window
+ * on RV-9's /w0 takes (design §2.3) -- and, zoomed out with the whole floor
+ * in view, it does not: then the rows in halves, on 8-row bands, each a
+ * whole document of what crosses them. whisker refuses an oversize document
+ * before writing a byte (WSK_E_BUDGET), so a refusal costs only the count.
+ */
+static void draw(wsk_sink_t *s, int y0, int y1)
+{
+	int mid = ((y0 + y1) / 2) & ~7;
+	wh_clip(y0, y1);
+	s->len = 0;
+	if (wsk_render_rows(&win, y0, y1, s, 4096) != WSK_E_BUDGET) return;
+	if (mid <= y0 || mid >= y1) return;      /* one band too dense: nothing to split */
+	if (!split_told) { split_told = 1; printf("bands  a frame over 4 KB goes in parts\n"); }
+	draw(s, y0, mid);
+	draw(s, mid, y1);
+}
+
 int main(void)
 {
 	int w = 1024, h = 600, y0, y1, which = -1, e;
 	const wsk_tree_t *in = 0;
 	wsk_sink_t s;
 
-	/* posters along the top wall, bigger than life */
+	/* posters along the top wall: stacks, laid out at the floor's zoom */
 	for (int i = 0; i < POSTERS; i++) {
-		wsk_widget_t *it = &items[i];
-		it->kind = WSK_BUTTON;
+		wsk_widget_t *it = &items[i], *p = poster[i];
+		it->kind = WSK_STACK;
 		snprintf(it->id, WSK_ID_MAX, "p%d", i);
-		snprintf(it->text, WSK_TEXT_MAX, "%.31s", TITLES[i]);
+		it->sub = (short)(1 + 2 * i);
 		it->fill = 0x2a3a50u;
-		place[i].x = 120 + i * 380; place[i].y = 60;            /* 328 wide at 300/256 */
-		place[i].w = 280; place[i].h = 70; place[i].scale = 300;
+		place[i].x = 120 + i * 380; place[i].y = 20;
+		place[i].w = 300; place[i].h = 116; place[i].scale = 256;
+		p[0].kind = WSK_LABEL; snprintf(p[0].id, WSK_ID_MAX, "t%d", i);
+		snprintf(p[0].text, WSK_TEXT_MAX, "%.31s", TITLES[i]); p[0].size = 22;
+		p[1].kind = WSK_STACK; snprintf(p[1].id, WSK_ID_MAX, "x%d", i);
+		p[1].sub = (short)(2 + 2 * i); p[1].weight = 1;
+		p[2].kind = WSK_BUTTON; snprintf(p[2].id, WSK_ID_MAX, "v%d", i);
+		snprintf(p[2].text, WSK_TEXT_MAX, "Visit"); p[2].size = 26; p[2].fill = 0x4a6a8au;
+		abstract[i][0] = ABSTRACT[0];
+		abstract[i][0].sub = (short)i;
 	}
 	for (int i = 0; i < PEOPLE; i++) {
 		wsk_widget_t *p = &items[POSTERS + i], *t = &items[POSTERS + PEOPLE + i];
@@ -187,7 +219,8 @@ int main(void)
 	wsk_init(&win, WSK_COL, w, h);
 	win.pad = 4; win.gap = 0; win.ids = 1;
 	win.item = win_items; win.n = 2;
-	win.nest = nest; win.nests = 1;
+	win.nest = nest; win.nests = 1 + 2 * POSTERS;
+	win.str = ABSTRACTS; win.strs = POSTERS;
 	win.caps = (unsigned char)wh_caps();
 	win.talign = WSK_ALIGN_START;
 	wsk_nest_init(&nest[0], &win, WSK_COL);
@@ -198,6 +231,14 @@ int main(void)
 	nest[0].wspace = WSK_BOUNDED; nest[0].ww = FLOOR_W; nest[0].wh = FLOOR_H;
 	nest[0].vx = 100; nest[0].vy = 0;
 	win_items[1].fill = nest[0].bg;
+	for (int i = 0; i < POSTERS; i++) {
+		wsk_tree_t *p = &nest[1 + 2 * i], *a = &nest[2 + 2 * i];
+		wsk_nest_init(p, &win, WSK_COL);
+		p->item = poster[i]; p->n = 3; p->pad = 6; p->gap = 4;
+		wsk_nest_init(a, &win, WSK_ROW);
+		a->item = abstract[i]; a->n = 1; a->overflow = WSK_WRAP;
+		a->pad = 0; a->gap = 8; a->lgap = 0; a->talign = WSK_ALIGN_START;
+	}
 	say("drag:look wheel:zoom click:walk");      /* a label holds 31 */
 	if ((e = wsk_check_in(&win, &which, &in)) != WSK_OK) {
 		fprintf(stderr, "floor: refused (%d) at %d\n", e, which);
@@ -207,8 +248,7 @@ int main(void)
 	s.put = to_window; s.ctx = 0; s.len = 0;
 	wsk_ui_init(&ui, &win);
 	wsk_ui_focus(&ui, "floor", &y0, &y1);     /* the keys look around from the start */
-	wh_clip(0, 0);
-	wsk_render(&win, &s, 0);
+	draw(&s, 0, h);
 
 	for (;;) {
 		wh_event_t he;
@@ -225,11 +265,11 @@ int main(void)
 				/* the view glides after you: 30% margin, a quarter of the way a frame */
 				if (following && wsk_world_follow(&win, "floor", POSTERS + 0, 30, 64, &fy0, &fy1) == 1)
 					moved = 1;
-				if (moved) { wh_clip(0, 0); wsk_render(&win, &s, 0); }
+				if (moved) draw(&s, 0, h);
 			}
 			continue;
 		}
-		if (k == WH_EXPOSE) { wh_clip(0, 0); wsk_render(&win, &s, 0); continue; }
+		if (k == WH_EXPOSE) { draw(&s, 0, h); continue; }
 		memset(&ev, 0, sizeof ev);
 		ev.x = (short)he.x; ev.y = (short)he.y;
 		if (k == WH_PRESS) { ev.kind = WSK_EV_DOWN; ev.key = (unsigned short)he.key; ev.d = (short)he.d; }
@@ -256,6 +296,16 @@ int main(void)
 				say(m);
 				printf("meet   %s\n", m);
 				all = 1;
+			} else if (t->kind == WSK_NOTE_CLICK && t->in > &nest[0] && t->in < &nest[1 + 2 * POSTERS]) {
+				/* inside a poster: its Visit button, or anything else on it */
+				int j = (int)((t->in - &nest[1]) / 2);
+				if (t->in == &nest[1 + 2 * j] && t->item == 2)
+					snprintf(m, sizeof m, "You visit \"%s\".", TITLES[j]);
+				else
+					snprintf(m, sizeof m, "%s: %s", TITLES[j], ABSTRACTS[j]);
+				say(m);
+				printf("poster %s\n", m);
+				all = 1;
 			} else if (t->kind == WSK_NOTE_CLICK && t->in == &win && t->item == 1) {
 				/* bare floor: walk there (step 3) */
 				int wx, wy;
@@ -278,8 +328,8 @@ int main(void)
 			}
 		}
 		fflush(stdout);
-		if (all) { wh_clip(0, 0); wsk_render(&win, &s, 0); }
-		else if (y1 > y0) { wh_clip(y0, y1); wsk_render_rows(&win, y0, y1, &s, 0); }
+		if (all) draw(&s, 0, h);
+		else if (y1 > y0) draw(&s, y0, y1);
 	}
 	wh_close();
 	return 0;
