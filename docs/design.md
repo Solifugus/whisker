@@ -3085,6 +3085,37 @@ still 1,848 bytes in the default, and the board tiers unchanged.
 **What is left of §5q**: posters (step 2b, for Matthew to approve — design
 above), pinch, and the P4 game.
 
+### Step 4, written before its code (2026-11-15): what touches what
+
+Matthew: *"we still need things like collision detection."* What whisker
+knows that a program would otherwise compute again is **where things are
+in the world** — places, sizes, each item's scale, and a torus's wrap. So
+whisker answers the question; **what a collision does is the program's**,
+as colours and fades are.
+
+1. **`wsk_world_in(world, x, y, w, h, out, max)`**: the items whose world
+   rectangles (place, size times its own scale) overlap that rectangle of
+   the world, topmost first, wrapping on a torus. Returns how many; the
+   first `max` are written to `out`.
+2. **`wsk_world_overlaps(world, i, out, max)`**: the same for item i's own
+   rectangle, i itself left out — "what am I touching".
+3. Rectangles, because that is what a placed item is; a program wanting
+   circles or pixels asks this first and refines. Linear in the items: a
+   floor of a thousand people is a thousand comparisons, which on a desktop
+   is nothing and is the program's to index if it ever is not.
+4. The floor demo: you stop at whoever you walk into and meet them, and
+   no one walks through a poster.
+
+**What it came to**: 9 checks — overlap and its symmetry, an item's own
+scale counted, edges that only meet not overlapping, topmost first and
+`max` respected, and a torus: an item at 390..440 of a 400-wide world
+touching one at 20 across the seam, and the same places in an open world
+not (the control). Wrapped in 32 bits: a first draft took a 64-bit `%`,
+which a module may not. In Chrome, walking toward the floor just under a
+poster stops you at y 149 — the next step, to 139, would touch it — and
+the program says *You reach "Damage, banded"*. (The check first failed for
+the demo's own reason: it printed the bump without flushing.)
+
 ### An independent read, and what it found (2026-11-15)
 
 The night's `whisker.h` diff was read by a second agent given the code and
@@ -4050,7 +4081,7 @@ overlay's ring and the reset on close); `WSK_PANEL` **10,344** and
 ---
 
 
-## 5z. Proposed, not built — the keyboard in a list (a decision for Matthew)
+## 5z. Iteration 26 — a list or a world from the keyboard (proposed, then decided: A)
 
 **Written 2026-11-15**, after §5y gave menus their keys. Lists and trees —
 Studio's navigator, a table's rows, `edit.c`'s file tree — are chosen from
@@ -4076,6 +4107,33 @@ is a choice, not an arithmetic:
 it is the one that reaches tables, and the one a person expects. The cost
 to §5m's tests is a few lines; the cost of B is that Studio's main views
 stay mouse-only. Whichever is chosen, `WSK_NO_LISTKEYS` in `WSK_PANEL`.
+
+**Decided 2026-11-15, A** — Matthew: *"a list or tree should be one tab
+stop but up/down arrow keys could work within."* And in the same message
+he tried the arrow keys on the conference floor and nothing happened, so
+**a world is one stop too**, by the same rule.
+
+### What it came to, 2026-11-15
+
+1. **One stop**: a stack holding a selecting list or a world is reached by
+   Tab as a whole, and what is inside it is not; it wears §5m's ring. A
+   program may give it focus by id (`wsk_ui_focus`) — the floor demo does,
+   so the arrows work from the start.
+2. **A list**: Up, Down, Home, End move its choice (SELECT), kept whole in
+   sight when it scrolls; Enter is a CLICK on the chosen row.
+3. **A world**: the arrows pan an eighth of the view; `+` (or `=`) and `-`
+   zoom a quarter about the view's middle (VIEW).
+4. **Deliberate rebaseline**: §5m's check "Tab goes on into the list,
+   depth first" now reads "Tab goes on to the list — one stop", and a new
+   one that the next Tab is round to the first widget.
+5. **`WSK_NO_LISTKEYS`**, in `WSK_PANEL`; implied by `WSK_NO_FIELD` (Tab's
+   walk is the fields'), `WSK_NO_NEST` and `WSK_NO_INPUT`.
+
+19 checks in the suite (a scrolling list of five, scrolled 20 to show row
+3 and 50 for the last; a world panned 40 and 13, zoomed to 320/256 with the
+view's middle held at 160,55; controls for Left in a list and other typing
+in a world); in Chrome, the floor's arrows and `-`. **895 checks**; every
+earlier output byte-identical (41 files); board tiers unchanged.
 
 ## 6. What would have to be true before gBASIC took this
 

@@ -118,6 +118,14 @@ try {
   await sleep(2500);
   await snap('floor_walked.png');
 
+  // §5q step 4: now walk toward the floor just under a poster -- world
+  // 696,150, so you would stand at 135..165, and "Damage, banded" ends at
+  // 142: you stop against it, and the program says so
+  await click(600, 186);
+  await sleep(1500);
+  ok(said.includes('walk   to 696,150') && said.includes('bump   You reach "Damage, banded".'),
+     'walking into a poster: whisker says what the step would touch, the program stops you there');
+
   // the wheel zooms about the pointer
   {
     const [px, py] = await at(500, 300);
@@ -139,7 +147,20 @@ try {
     ok((said.match(/view   /g) || []).length > before && !said.slice(said.length - 200).includes('walk   to 8'),
        'a drag pans the floor -- VIEW notices -- and is not a walk');
   }
+  // §5z: the floor has the keyboard from the start -- the arrows look around
+  {
+    const before = (said.match(/view   /g) || []).length;
+    await key('ArrowRight', 'ArrowRight');
+    await key('ArrowDown', 'ArrowDown');
+    await sleep(400);
+    ok((said.match(/view   /g) || []).length === before + 2, 'the arrow keys look around: two VIEW notices for Right and Down');
+    await type('-');
+    await sleep(300);
+    const m = said.match(/view   -?\d+,-?\d+ at (\d+)\/256\n$/);
+    ok(m && Number(m[1]) < 356, `and - zooms out: ${m ? m[0].trim() : 'nothing'}`);
+  }
   await snap('floor_zoomed.png');
+
 } finally {
   try { ws?.close(); } catch {}
   chrome.kill();

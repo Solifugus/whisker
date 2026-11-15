@@ -85,14 +85,14 @@ for D in "" -DWSK_PANEL -DWSK_MINIMAL -DWSK_NO_FIELD -DWSK_NO_MARKS -DWSK_NO_SCR
          -DWSK_NO_NEST -DWSK_NO_WRAP -DWSK_NO_TEXT -DWSK_NO_OVER -DWSK_NO_CHECK \
          -DWSK_NO_MEMO -DWSK_NO_INPUT -DWSK_NO_UTF8 -DWSK_NO_IMAGE -DWSK_NO_TEXTSEL -DWSK_NO_UNDO -DWSK_NO_SOURCE -DWSK_NO_ENTITY \
          -DWSK_NO_WORDS -DWSK_NO_SPLIT -DWSK_NO_MENUKEYS \
-         -DWSK_NO_WORLD; do
+         -DWSK_NO_WORLD -DWSK_NO_LISTKEYS; do
 	if ${CC:-gcc} -O1 -Wall -Wextra -Werror $D -I"$HERE" -c -o /dev/null /tmp/wsk_switch.c 2>/tmp/wsk_switch.err; then
 		:
 	else
 		echo "FAIL  whisker.h does not build with '${D:-the default}'"; head -5 /tmp/wsk_switch.err; exit 1
 	fi
 done
-echo "ok    whisker.h builds with each of the 23 profiles and switches, -Werror"
+echo "ok    whisker.h builds with each of the 24 profiles and switches, -Werror"
 
 echo
 echo "-- 3, 8  through RV-9's own rasteriser, to a picture"

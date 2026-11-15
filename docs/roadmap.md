@@ -409,7 +409,7 @@ a stack inside a world (a poster) zooms as one. 1:1 stays byte-identical;
 the change is to the core of layout in every profile, which is why it waits
 for a yes. Design `§5q`, "Step 2, … why not posters yet".
 
-### 4.5 The keyboard in a list: one Tab stop, or roving focus (2026-11-15)
+### 4.5 The keyboard in a list: one Tab stop, or roving focus — ✅ decided 2026-11-15: one stop (built, §5z)
 
 Whether a selecting stack becomes one Tab stop with Up/Down inside it (A —
 reaches tables; changes §5m's Tab order deliberately) or focus roves

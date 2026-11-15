@@ -112,6 +112,7 @@
  *     -DWSK_NO_SPLIT    dividers a person drags, and the sizes they set (§5x)
  *     -DWSK_NO_MENUKEYS Up, Down, Enter in an open menu (§5y)
  *     -DWSK_NO_WORLD    a world: placed items, a view and a zoom (§5q)
+ *     -DWSK_NO_LISTKEYS a list or a world as one Tab stop, and its keys (§5z)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -152,6 +153,9 @@
 #  endif
 #  ifndef WSK_NO_WORLD
 #    define WSK_NO_WORLD 1         /* until a P4 program asks for one (§5q) */
+#  endif
+#  ifndef WSK_NO_LISTKEYS
+#    define WSK_NO_LISTKEYS 1      /* no arrow keys on its keyboard (§5z) */
 #  endif
 #endif
 #ifdef WSK_MINIMAL
@@ -223,6 +227,11 @@
 #  define WSK_NO_WORLD 1           /* drawn through copies, as nesting is; its
                                       posters are stacks; and it pans through
                                       a scroll's drag (§5q) */
+#endif
+#if (defined(WSK_NO_NEST) || defined(WSK_NO_INPUT) || defined(WSK_NO_FIELD)) && \
+    !defined(WSK_NO_LISTKEYS)
+#  define WSK_NO_LISTKEYS 1        /* a list is a stack in a stack, and Tab's
+                                      walk is the fields' (§5z) */
 #endif
 #if (defined(WSK_NO_OVER) || defined(WSK_NO_INPUT)) && !defined(WSK_NO_MENUKEYS)
 #  define WSK_NO_MENUKEYS 1        /* the keys walk an overlay (§5y) */
@@ -2758,6 +2767,58 @@ static inline int wsk_world_at(const wsk_tree_t *t, int x, int y, int *wx, int *
 }
 #endif
 
+#ifndef WSK_NO_WORLD
+/* Whether [a, a + an) and [b, b + bn) meet, along one axis of a world --
+   modulo `size` on a torus, where b may wrap round to meet a's start. */
+static inline int wsk__meets(long long a, long long an, long long b, long long bn, int torus, int size)
+{
+	if (!torus) return a < b + bn && b < a + an;
+	{
+		/* both are ints: wrapped in 32 bits, as a module has no 64-bit % */
+		long long d = wsk__wrap(wsk__wrap((int)b, size) - wsk__wrap((int)a, size), size);
+		return d < an || d + bn > size;
+	}
+}
+
+/*
+ * The items overlapping a rectangle of the world (§5q step 4): place and
+ * size times each item's own scale, wrapped on a torus; topmost first, and
+ * `skip` left out (-1 for none). How many; the first `max` into `out`.
+ * What a collision does is the program's.
+ */
+static inline int wsk__world_in(const wsk_tree_t *t, int x, int y, int w, int h, int skip,
+                                int *out, int max)
+{
+	int n = 0, torus = (t->wspace == WSK_TORUS);
+	if (t->overflow != WSK_WORLD || t->place == 0) return 0;
+	for (int j = t->n - 1; j >= 0; j--) {
+		const wsk_place_t *p = &t->place[j];
+		long long pw = ((long long)p->w * p->scale) >> 8, ph = ((long long)p->h * p->scale) >> 8;
+		if (j == skip) continue;
+		if (wsk__meets(x, w, p->x, pw, torus, t->ww) && wsk__meets(y, h, p->y, ph, torus, t->wh)) {
+			if (n < max) out[n] = j;
+			n++;
+		}
+	}
+	return n;
+}
+
+static inline int wsk_world_in(const wsk_tree_t *t, int x, int y, int w, int h, int *out, int max)
+{
+	return wsk__world_in(t, x, y, w, h, -1, out, max);
+}
+
+/* What item i is touching: the same, for its own rectangle, itself left out. */
+static inline int wsk_world_overlaps(const wsk_tree_t *t, int i, int *out, int max)
+{
+	const wsk_place_t *p;
+	if (t->overflow != WSK_WORLD || t->place == 0 || i < 0 || i >= t->n) return 0;
+	p = &t->place[i];
+	return wsk__world_in(t, p->x, p->y, (int)(((long long)p->w * p->scale) >> 8),
+	                     (int)(((long long)p->h * p->scale) >> 8), i, out, max);
+}
+#endif
+
 #ifndef WSK_NO_NEST
 /*
  * A widget by id at any depth, or by path (D19).
@@ -3802,6 +3863,10 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
  * nothing (tools/evidence/stack). Here only a stack that holds a stack pays,
  * once per level, and the rasteriser runs beneath all of it on /w0.
  */
+#if !defined(WSK_NO_LISTKEYS)
+static inline void wsk__ring(wsk_sink_t *s, const wsk_tree_t *t,
+                             const wsk_widget_t *w, wsk_rect_t r);
+#endif
 #if defined(__GNUC__)
 __attribute__((noinline, unused))
 #endif
@@ -3835,6 +3900,10 @@ static void wsk__stack(const wsk_doc_t *d, const wsk_tree_t *t, int i,
 	}
 #else
 	wsk__items(d, &c, s);
+#endif
+#if !defined(WSK_NO_LISTKEYS)
+	/* a list or a world with focus wears focus's ring, over what it holds */
+	if ((const void *)w == t->focus) wsk__ring(s, t, w, v);
 #endif
 	if (g) wsk__s(s, "</g>");
 }
@@ -4625,8 +4694,20 @@ static inline int wsk__fields(const wsk_tree_t *t, const wsk_tree_t *orig,
 	for (int i = 0; i < t->n; i++) {
 		const wsk_widget_t *w = &t->item[i];
 		wsk_buf_t *b = wsk__fbuf(t, w);
+		int whole = 0;
+#if !defined(WSK_NO_LISTKEYS) && !defined(WSK_NO_NEST)
+		/* a list, or a world, is one stop, and what is inside it none
+		   (§5z rule 1): its keys move within it */
+		if (w->kind == WSK_STACK && t->nest != 0 && w->sub >= 0 && w->sub < t->nests &&
+		    (t->nest[w->sub].select
+#ifndef WSK_NO_WORLD
+		     || t->nest[w->sub].overflow == WSK_WORLD
+#endif
+		    ))
+			whole = 1;
+#endif
 		/* focusable (§5m rule 4): an editable field, a button, a check */
-		if (b != 0 || w->kind == WSK_BUTTON
+		if (b != 0 || w->kind == WSK_BUTTON || whole
 #ifndef WSK_NO_CHECK
 		    || w->kind == WSK_CHECK
 #endif
@@ -4641,7 +4722,7 @@ static inline int wsk__fields(const wsk_tree_t *t, const wsk_tree_t *orig,
 			count++;
 		}
 #ifndef WSK_NO_NEST
-		if (w->kind == WSK_STACK && depth + 1 < WSK_DEPTH_MAX) {
+		if (w->kind == WSK_STACK && !whole && depth + 1 < WSK_DEPTH_MAX) {
 			wsk_tree_t c;
 			if (wsk__child(t, i, &c))
 				count = wsk__fields(&c, &t->nest[w->sub], count, want, nth, pos,
@@ -4652,6 +4733,23 @@ static inline int wsk__fields(const wsk_tree_t *t, const wsk_tree_t *orig,
 	(void)depth;
 	return count;
 }
+
+#if !defined(WSK_NO_LISTKEYS) && !defined(WSK_NO_NEST)
+/* The laid-out tree that holds widget `w`, and its index there, or -1: how
+   the keys reach the tree inside a focused list or world (§5z). */
+static inline int wsk__lay_of(const wsk_tree_t *t, const void *w, wsk_tree_t *at, int depth)
+{
+	for (int i = 0; i < t->n; i++) {
+		if ((const void *)&t->item[i] == w) { wsk__tcopy(at, t); return i; }
+		if (t->item[i].kind == WSK_STACK && depth + 1 < WSK_DEPTH_MAX) {
+			wsk_tree_t c;
+			int k;
+			if (wsk__child(t, i, &c) && (k = wsk__lay_of(&c, w, at, depth + 1)) >= 0) return k;
+		}
+	}
+	return -1;
+}
+#endif
 
 /* Focus moves: the old field's rows and the new one's both repaint. */
 static inline void wsk__refocus(wsk_ui_t *ui, const wsk_tree_t *in, int item,
@@ -4959,7 +5057,20 @@ static inline int wsk_ui_focus(wsk_ui_t *ui, const char *key, int *y0, int *y1)
 	wsk_buf_t *b;
 	wsk_rect_t r;
 
-	if (i < 0 || (b = wsk__fbuf(&at, &at.item[i])) == 0) return WSK_E_NOTFOUND;
+	if (i < 0) return WSK_E_NOTFOUND;
+	b = wsk__fbuf(&at, &at.item[i]);
+#if !defined(WSK_NO_LISTKEYS)
+	/* a list or a world takes focus too, as one stop (§5z) */
+	if (b == 0 && !(at.item[i].kind == WSK_STACK && at.nest != 0 && at.item[i].sub >= 0 &&
+	                at.item[i].sub < at.nests && (at.nest[at.item[i].sub].select
+#ifndef WSK_NO_WORLD
+	                || at.nest[at.item[i].sub].overflow == WSK_WORLD
+#endif
+	   )))
+		return WSK_E_NOTFOUND;
+#else
+	if (b == 0) return WSK_E_NOTFOUND;
+#endif
 	r = wsk_rect(&at, i);
 	if (!wsk__cut(&at, &r)) r.h = 0;
 	wsk__focus_now(ui);
@@ -5163,6 +5274,83 @@ static inline int wsk__split_move(wsk_ui_t *ui, int d, int *pane)
 		t->sizes[x] = (short)e;
 	*pane = x;
 	return e;
+}
+#endif
+
+#if !defined(WSK_NO_LISTKEYS)
+/*
+ * A key for the focused list or world (§5z): a list's Up, Down, Home and
+ * End move its choice, kept in sight, and Enter clicks the chosen row; a
+ * world's arrows pan an eighth of the view, + and - zoom about its middle.
+ * 1 if the key was theirs.
+ */
+static inline int wsk__stackkeys(wsk_ui_t *ui, const wsk_event_t *ev, wsk_note_t *note,
+                                 int max, int *n, int *lo, int *hi)
+{
+	wsk_tree_t par, c, *o;
+	const wsk_widget_t *w = (const wsk_widget_t *)ui->root->focus;
+	int k = wsk__lay_of(ui->root, w, &par, 0), key = (ev->kind == WSK_EV_KEY) ? ev->key : 0;
+	int a0, a1;
+
+	if (k < 0 || w->kind != WSK_STACK || !wsk__child(&par, k, &c)) return 0;
+	o = (wsk_tree_t *)&par.nest[w->sub];         /* the caller's: writable (§5i) */
+#ifndef WSK_NO_WORLD
+	if (c.overflow == WSK_WORLD) {
+		int z = c.zoom, nz = z, vx = c.vx, vy = c.vy;
+		int sx = c.aw * 256 / z / 8, sy = c.ah * 256 / z / 8;
+		char t0 = (ev->kind == WSK_EV_TEXT) ? ev->text[0] : 0;
+		if (key == WSK_KEY_LEFT) vx -= sx;
+		else if (key == WSK_KEY_RIGHT) vx += sx;
+		else if (key == WSK_KEY_UP) vy -= sy;
+		else if (key == WSK_KEY_DOWN) vy += sy;
+		else if (t0 == '+' || t0 == '=' || t0 == '-') {
+			/* about the middle of the view: that world point stays put */
+			int cx = vx + (c.aw / 2) * 256 / z, cy = vy + (c.ah / 2) * 256 / z;
+			nz = wsk__zclamp(&c, (t0 == '-') ? z * 4 / 5 : z * 5 / 4);
+			vx = cx - (c.aw / 2) * 256 / nz;
+			vy = cy - (c.ah / 2) * 256 / nz;
+		} else
+			return 0;
+		if (wsk__view_to(o, &c, vx, vy, nz)) {
+			if (wsk_area_rows(&c, &a0, &a1) == WSK_OK) wsk__span(lo, hi, a0, a1);
+			*n = wsk__note(note, max, *n, WSK_NOTE_VIEW, o, -1, o->zoom);
+		}
+		return 1;
+	}
+#endif
+	if (c.select && c.n > 0) {
+		int sel = (c.sel >= 0 && c.sel < c.n) ? c.sel : -1, ns;
+		if (key == WSK_KEY_ENTER) {
+			if (sel >= 0) *n = wsk__note(note, max, *n, WSK_NOTE_CLICK, o, sel, -1);
+			return 1;
+		}
+		if (key == WSK_KEY_UP) ns = (sel <= 0) ? 0 : sel - 1;
+		else if (key == WSK_KEY_DOWN) ns = (sel < 0) ? 0 : (sel + 1 < c.n) ? sel + 1 : sel;
+		else if (key == WSK_KEY_HOME) ns = 0;
+		else if (key == WSK_KEY_END) ns = c.n - 1;
+		else return 0;
+		if (ns != sel) {
+			o->sel = c.sel = (short)ns;
+#ifndef WSK_NO_SCROLL
+			/* a list that scrolls keeps its choice whole in sight */
+			if (c.overflow == WSK_SCROLL) {
+				wsk_rect_t b = wsk_rect(&c, ns);
+				int col = (c.axis == WSK_COL), at = col ? b.y : b.x, len = col ? b.h : b.w;
+				int s0 = (col ? c.ay : c.ax) + c.pad, s1 = (col ? c.ay + c.ah : c.ax + c.aw) - c.pad;
+				int to = c.scroll;
+				if (at < s0) to -= s0 - at;
+				else if (at + len > s1) to += at + len - s1;
+				if (to < 0) to = 0;
+				if (to > wsk_scroll_max(&c)) to = wsk_scroll_max(&c);
+				o->scroll = c.scroll = (short)to;
+			}
+#endif
+			if (wsk_area_rows(&c, &a0, &a1) == WSK_OK) wsk__span(lo, hi, a0, a1);
+			*n = wsk__note(note, max, *n, WSK_NOTE_SELECT, o, ns, ns);
+		}
+		return 1;
+	}
+	return 0;
 }
 #endif
 
@@ -5590,6 +5778,13 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			n = wsk__note(note, max, n, WSK_NOTE_FOCUS, in, item, 0);
 		}
 	}
+#if !defined(WSK_NO_LISTKEYS)
+	/* the focused list's or world's keys (§5z) */
+	else if ((ev->kind == WSK_EV_KEY || ev->kind == WSK_EV_TEXT) && r->focus != 0 &&
+	         ui->focus_b == 0 && ((const wsk_widget_t *)r->focus)->kind == WSK_STACK &&
+	         wsk__stackkeys(ui, ev, note, max, &n, &lo, &hi))
+		used = 1;
+#endif
 	/* ENTER on a focused button is its click, and on a check its toggle. */
 	else if (ev->kind == WSK_EV_KEY && ev->key == WSK_KEY_ENTER && r->focus != 0 &&
 	         ui->focus_b == 0) {

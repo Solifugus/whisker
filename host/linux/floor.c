@@ -9,7 +9,12 @@
  * the further it is from you. That is THIS PROGRAM's policy; whisker draws
  * each thing at the scale and fade it is told (§5q rule 2). Drag to look
  * around, the wheel to zoom, a click on the floor to walk there, a click on
- * a person or a poster to meet it.
+ * a person or a poster to meet it. The floor has the keyboard from the
+ * start: the arrows look around, + and - zoom (§5z).
+ *
+ * Nobody walks through anybody: whisker says what a step would touch
+ * (wsk_world_in, §5q step 4) and this program decides -- you stop and meet
+ * whoever it is; the others choose somewhere else to go.
  */
 #include "host.h"
 #include "whisker.h"
@@ -89,21 +94,47 @@ static void place_all(void)
 	}
 }
 
+/* Who or what a person would touch standing at x, y: a poster or another
+   person -- not what anyone says, which floats over heads. -1 for nobody. */
+static int bumps(int i, int x, int y)
+{
+	int out[16], n = wsk_world_in(&nest[0], x, y, PW_, PH_, out, 16);
+	for (int k = 0; k < n && k < 16; k++)
+		if (out[k] != POSTERS + i && out[k] < POSTERS + PEOPLE) return out[k];
+	return -1;
+}
+
 /* Everyone a step toward where they are going; the others choose somewhere
-   new when they get there. 1 if anyone moved. */
+   new when they get there, or when someone is in the way. 1 if anyone moved. */
 static int step(void)
 {
 	int moved = 0;
 	for (int i = 0; i < PEOPLE; i++) {
-		int v = (i == 0) ? 10 : 3, dx = tx[i] - px[i], dy = ty[i] - py[i];
+		int v = (i == 0) ? 10 : 3, dx = tx[i] - px[i], dy = ty[i] - py[i], nx, ny, b;
 		if (dx == 0 && dy == 0) {
 			if (i == 0 || rnd(40) != 0) continue;
 			tx[i] = 100 + rnd(FLOOR_W - 200 - PW_);
 			ty[i] = 260 + rnd(FLOOR_H - 360);
 			continue;
 		}
-		px[i] += (dx > v) ? v : (dx < -v) ? -v : dx;
-		py[i] += (dy > v) ? v : (dy < -v) ? -v : dy;
+		nx = px[i] + ((dx > v) ? v : (dx < -v) ? -v : dx);
+		ny = py[i] + ((dy > v) ? v : (dy < -v) ? -v : dy);
+		/* only a step that would newly touch someone is stopped, so two
+		   who start too close can still walk apart */
+		if ((b = bumps(i, nx, ny)) >= 0 && bumps(i, px[i], py[i]) < 0) {
+			tx[i] = px[i]; ty[i] = py[i];
+			if (i == 0) {
+				char m[64];
+				if (b < POSTERS) snprintf(m, sizeof m, "You reach \"%s\".", TITLES[b]);
+				else snprintf(m, sizeof m, "You meet %s.", NAMES[b - POSTERS]);
+				say(m);
+				printf("bump   %s\n", m);
+				fflush(stdout);
+				moved = 1;
+			}
+			continue;
+		}
+		px[i] = nx; py[i] = ny;
 		moved = 1;
 		if (i == 0 && px[0] == tx[0] && py[0] == ty[0]) say("You arrive.");
 	}
@@ -169,6 +200,7 @@ int main(void)
 	if (wh_open(w, h, 1, "whisker -- a conference floor") != 0) return 1;
 	s.put = to_window; s.ctx = 0; s.len = 0;
 	wsk_ui_init(&ui, &win);
+	wsk_ui_focus(&ui, "floor", &y0, &y1);     /* the keys look around from the start */
 	wh_clip(0, 0);
 	wsk_render(&win, &s, 0);
 
@@ -192,6 +224,8 @@ int main(void)
 		else if (k == WH_RELEASE) ev.kind = WSK_EV_UP;
 		else if (k == WH_MOVE) ev.kind = WSK_EV_MOVE;
 		else if (k == WH_WHEEL) { ev.kind = WSK_EV_WHEEL; ev.d = (short)he.d; }
+		else if (k == WH_KEY) { ev.kind = WSK_EV_KEY; ev.key = (unsigned short)he.key; }
+		else if (k == WH_TEXT) { ev.kind = WSK_EV_TEXT; memcpy(ev.text, he.text, sizeof ev.text); }
 		else continue;
 
 		n = wsk_feed(&ui, &ev, note, 4, &y0, &y1);

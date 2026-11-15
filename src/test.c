@@ -2450,7 +2450,12 @@ int main(void)
 		   "BACKTAB to Bluetooth, ENTER: it toggles off");
 		KEY(WSK_KEY_TAB);
 		KEY(WSK_KEY_TAB);
-		ok(w.focus == &LISTC[0], "and Tab goes on into the list, depth first");
+		/* changed 2026-11-15, deliberately (§5z, Matthew: "a list or tree
+		   should be one tab stop"): was "on into the list, depth first",
+		   focus on its first button */
+		ok(w.focus == &FORMC[3], "and Tab goes on to the list -- one stop, the list itself, not its rows");
+		KEY(WSK_KEY_TAB);
+		ok(w.focus == &FORMC[0], "and the next Tab is round to WiFi: the list's rows are not stops");
 #undef TAP
 #undef KEY
 	}
@@ -4489,6 +4494,130 @@ int main(void)
 			ok(wsk_world_point(&root, 250, 20, &wd, &wx, &wy) == WSK_E_NOTFOUND, "CONTROL: on the bar, no world");
 		}
 #undef EV
+	}
+
+	/* ---- §5z. a list or a world: one Tab stop, and its keys ---- */
+	printf("\n-- §5z  lists and worlds from the keyboard\n");
+	{
+		static const wsk_widget_t TOPZ[] = {
+			{ .kind = WSK_BUTTON, .id = "go",    .text = "Go", .size = 30 },
+			{ .kind = WSK_STACK,  .id = "list",  .sub = 0, .size = 100 },
+			{ .kind = WSK_STACK,  .id = "world", .sub = 1, .weight = 1 },
+		};
+		static const wsk_widget_t ROWS[] = {
+			{ .kind = WSK_LABEL, .id = "r0", .text = "zero",  .size = 30 },
+			{ .kind = WSK_LABEL, .id = "r1", .text = "one",   .size = 30 },
+			{ .kind = WSK_LABEL, .id = "r2", .text = "two",   .size = 30 },
+			{ .kind = WSK_LABEL, .id = "r3", .text = "three", .size = 30 },
+			{ .kind = WSK_LABEL, .id = "r4", .text = "four",  .size = 30 },
+		};
+		static const wsk_widget_t SPR[] = { { .kind = WSK_BUTTON, .id = "spr", .text = "S" } };
+		wsk_place_t pl[1] = { { .x = 50, .y = 20, .w = 40, .h = 20, .scale = 256 } };
+		wsk_tree_t w, k[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char zd[4096];
+		int n, y0, y1;
+
+		wsk_init(&w, WSK_COL, 320, 240);
+		w.pad = 0; w.gap = 0; w.item = TOPZ; w.n = 3; w.nest = k; w.nests = 2;
+		wsk_nest_init(&k[0], &w, WSK_COL);
+		k[0].pad = 0; k[0].gap = 0; k[0].item = ROWS; k[0].n = 5; k[0].select = 1;
+		k[0].overflow = WSK_SCROLL;                         /* 150 of rows in 100 */
+		wsk_nest_init(&k[1], &w, WSK_COL);
+		k[1].pad = 0; k[1].item = SPR; k[1].n = 1; k[1].overflow = WSK_WORLD; k[1].place = pl;
+		ok(wsk_check(&w, 0) == WSK_OK, "a button, a scrolling list of five rows, and a world");
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+#define KEY(K)  (ev.kind = WSK_EV_KEY, ev.key = (unsigned short)(K), n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define TEXT(T) (ev.kind = WSK_EV_TEXT, snprintf(ev.text, sizeof ev.text, "%s", (T)), \
+                 n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+		KEY(WSK_KEY_TAB); KEY(WSK_KEY_TAB);
+		ok(w.focus == &TOPZ[1], "Tab, Tab: Go, then the list -- one stop");
+		render_into(&w, zd, sizeof zd, 4096);
+		ok(has(zd, "<rect x=\"2\" y=\"32\" width=\"316\" height=\"2\" fill=\"#fff\"/>"),
+		   "the list wears the focus ring, two pixels in from its edge");
+		KEY(WSK_KEY_DOWN);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_SELECT && nt[0].in == &k[0] && nt[0].item == 0 && k[0].sel == 0,
+		   "Down with nothing chosen: the first row, SELECT");
+		KEY(WSK_KEY_DOWN); KEY(WSK_KEY_DOWN); KEY(WSK_KEY_DOWN);
+		ok(k[0].sel == 3 && k[0].scroll == 20, "Down three more: row 3, at 90..120 of a 100-row list -- scrolled 20 to show it whole");
+		KEY(WSK_KEY_DOWN); KEY(WSK_KEY_DOWN);
+		ok(k[0].sel == 4 && n == 0, "Down at the last row: it stays, and says nothing");
+		KEY(WSK_KEY_HOME);
+		ok(k[0].sel == 0 && k[0].scroll == 0, "Home: the first, scrolled back");
+		KEY(WSK_KEY_END);
+		ok(k[0].sel == 4 && k[0].scroll == 50, "End: the last, scrolled to the end, 50");
+		KEY(WSK_KEY_ENTER);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[0] && nt[0].item == 4,
+		   "Enter: a CLICK on the chosen row, as a tap on it gives");
+		KEY(WSK_KEY_LEFT);
+		ok(n == 0 && k[0].sel == 4, "CONTROL: Left means nothing to a list");
+
+		KEY(WSK_KEY_TAB);
+		ok(w.focus == &TOPZ[2], "Tab: the world -- one stop too");
+		KEY(WSK_KEY_RIGHT);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_VIEW && k[1].vx == 40 && k[1].vy == 0,
+		   "Right pans an eighth of the 320-wide view: 40");
+		KEY(WSK_KEY_DOWN);
+		ok(k[1].vy == 13, "Down an eighth of its 110 rows: 13");
+		KEY(WSK_KEY_LEFT); KEY(WSK_KEY_UP);
+		ok(k[1].vx == 0 && k[1].vy == 0, "Left and Up: back");
+		TEXT("+");
+		ok(n == 1 && k[1].zoom == 320 && k[1].vx == 32 && k[1].vy == 11,
+		   "+ zooms in a quarter, about the view's middle: 160,55 stays where it was");
+		TEXT("-");
+		ok(k[1].zoom == 256, "- zooms back out");
+		TEXT("x");
+		ok(n == 0, "CONTROL: other typing means nothing to a world");
+
+		wsk_ui_init(&ui, &w);
+		ok(wsk_ui_focus(&ui, "world", &y0, &y1) == WSK_OK && w.focus == &TOPZ[2],
+		   "a program gives a world focus by its id, as the floor demo does at the start");
+		ok(wsk_ui_focus(&ui, "go", &y0, &y1) == WSK_E_NOTFOUND, "CONTROL: a button is not one to give it to");
+#undef KEY
+#undef TEXT
+	}
+
+	/* ---- §5q step 4. what touches what ---- */
+	printf("\n-- §5q  a world, step 4: what touches what\n");
+	{
+		static const wsk_widget_t WC[] = {
+			{ .kind = WSK_BUTTON, .id = "a", .text = "a" },
+			{ .kind = WSK_BUTTON, .id = "b", .text = "b" },
+			{ .kind = WSK_BUTTON, .id = "c", .text = "c" },
+		};
+		wsk_place_t pl[3] = {
+			{ .x = 0,   .y = 0, .w = 50, .h = 20, .scale = 256 },
+			{ .x = 40,  .y = 10, .w = 50, .h = 20, .scale = 256 },    /* overlaps a */
+			{ .x = 100, .y = 0, .w = 20, .h = 20, .scale = 512 },     /* 40 x 40 at its scale */
+		};
+		wsk_tree_t w;
+		int out[4], n;
+
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.item = WC; w.n = 3; w.overflow = WSK_WORLD; w.place = pl;
+		n = wsk_world_overlaps(&w, 0, out, 4);
+		ok(n == 1 && out[0] == 1, "a touches b, and only b -- itself left out");
+		n = wsk_world_overlaps(&w, 1, out, 4);
+		ok(n == 1 && out[0] == 0, "and b touches a");
+		ok(wsk_world_in(&w, 95, 30, 10, 10, out, 4) == 1 && out[0] == 2,
+		   "c, 20 x 20 at scale 2, covers 100..140: a box at 95..105, 30..40 touches it -- its own scale counts");
+		ok(wsk_world_in(&w, 0, 25, 10, 10, out, 4) == 0, "CONTROL: a box under a, above nothing, touches nothing");
+		ok(wsk_world_in(&w, 0, 0, 200, 50, out, 2) == 3 && out[0] == 2 && out[1] == 1,
+		   "a box over all three: three, the topmost first, and only as many written as asked");
+		pl[1].x = 50;
+		ok(wsk_world_overlaps(&w, 0, out, 4) == 0, "edges that meet do not overlap: a ends at 50, b starts there");
+
+		/* a torus: touching across the seam */
+		w.wspace = WSK_TORUS; w.ww = 400; w.wh = 300;
+		pl[0].x = 390; pl[0].y = 0; pl[1].x = 20; pl[1].y = 0;     /* a: 390..440, which is 390..400 and 0..40 */
+		n = wsk_world_overlaps(&w, 0, out, 4);
+		ok(n == 1 && out[0] == 1, "on a torus, a at 390 runs past the seam to 40, and touches b at 20");
+		ok(wsk_world_overlaps(&w, 1, out, 4) == 1, "and b, seen from the other side, touches a");
+		w.wspace = WSK_OPEN;
+		ok(wsk_world_overlaps(&w, 0, out, 4) == 0, "CONTROL: the same places in an open world do not touch");
 	}
 
 	/* ---- what an independent read of the night's code found ---- */
