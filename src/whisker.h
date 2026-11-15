@@ -110,6 +110,7 @@
  *     -DWSK_NO_ENTITY   < > & in text, for a host that decodes entities (§5v)
  *     -DWSK_NO_WORDS    Ctrl's word moves, double- and triple-click (§5w)
  *     -DWSK_NO_SPLIT    dividers a person drags, and the sizes they set (§5x)
+ *     -DWSK_NO_MENUKEYS Up, Down, Enter in an open menu (§5y)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -144,6 +145,9 @@
 #  endif
 #  ifndef WSK_NO_SPLIT
 #    define WSK_NO_SPLIT 1         /* panes the program sizes (§5x) */
+#  endif
+#  ifndef WSK_NO_MENUKEYS
+#    define WSK_NO_MENUKEYS 1      /* no arrow keys on its keyboard (§5y) */
 #  endif
 #endif
 #ifdef WSK_MINIMAL
@@ -207,6 +211,9 @@
 
 #if defined(WSK_NO_NEST) && !defined(WSK_NO_OVER)
 #  define WSK_NO_OVER 1            /* an overlay is a tree in `nest` (§5l) */
+#endif
+#if (defined(WSK_NO_OVER) || defined(WSK_NO_INPUT)) && !defined(WSK_NO_MENUKEYS)
+#  define WSK_NO_MENUKEYS 1        /* the keys walk an overlay (§5y) */
 #endif
 #if (defined(WSK_NO_INPUT) || defined(WSK_NO_FIELD)) && !defined(WSK_NO_TEXTSEL)
 #  define WSK_NO_TEXTSEL 1         /* a selection is edited by the toolkit */
@@ -557,6 +564,10 @@ typedef struct wsk_tree {
 	 */
 	short         over;
 	short         ox, oy, ow, oh;
+#ifndef WSK_NO_MENUKEYS
+	short         ohi;           /* the overlay's button the keys have reached,
+	                                or WSK_NONE (§5y) */
+#endif
 
 	/*
 	 * State (§5m): bytes a WSK_CHECK's `sub` indexes -- ticked or not --
@@ -1422,6 +1433,9 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->bufs = 0;
 	t->focus = 0;
 	t->over = WSK_NONE;
+#ifndef WSK_NO_MENUKEYS
+	t->ohi = WSK_NONE;
+#endif
 	t->ox = t->oy = t->ow = t->oh = 0;
 	t->state = 0;
 	t->states = 0;
@@ -2183,6 +2197,9 @@ static inline int wsk_over_open(wsk_tree_t *t, int sub, wsk_rect_t anchor)
 		return WSK_E_FIT;
 #endif
 	}
+#ifndef WSK_NO_MENUKEYS
+	t->ohi = WSK_NONE;                             /* opened with nothing reached */
+#endif
 	x = anchor.x;
 	y = anchor.y + anchor.h;
 	if (y + h > t->h) y = anchor.y - h;            /* no room below: above */
@@ -2194,7 +2211,13 @@ static inline int wsk_over_open(wsk_tree_t *t, int sub, wsk_rect_t anchor)
 	return WSK_OK;
 }
 
-static inline void wsk_over_close(wsk_tree_t *t) { t->over = WSK_NONE; }
+static inline void wsk_over_close(wsk_tree_t *t)
+{
+	t->over = WSK_NONE;
+#ifndef WSK_NO_MENUKEYS
+	t->ohi = WSK_NONE;
+#endif
+}
 
 /* The rows the open overlay covers, band-snapped: what opening or closing
    it repaints. */
@@ -3745,6 +3768,11 @@ static inline void wsk__overlay(const wsk_doc_t *d, const wsk_tree_t *t,
 	int g;
 
 	if (!wsk__over_tree(t, &c)) return;
+#ifndef WSK_NO_MENUKEYS
+	/* the button the keys reached wears focus's ring -- in this copy
+	   only, so the window's own focus is untouched (§5y rule 3) */
+	if (t->ohi >= 0 && t->ohi < c.n) c.focus = &c.item[t->ohi];
+#endif
 	v.x = t->ox; v.w = t->ow;
 	v.y = (short)((t->oy > d->y0) ? t->oy : d->y0);
 	v.h = (short)(((t->oy + t->oh < d->y1) ? t->oy + t->oh : d->y1) - v.y);
@@ -4778,7 +4806,56 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
 		wsk_over_close(r);
 		n = wsk__note(note, max, n, WSK_NOTE_CLOSE, was, -1, 0);
-	} else
+	}
+#ifndef WSK_NO_MENUKEYS
+	/* An open menu's keys are its own (§5y): a highlight walks its
+	   buttons, and Enter chooses as a click would. */
+	else if (ev->kind == WSK_EV_KEY && r->over != WSK_NONE &&
+	         (ev->key == WSK_KEY_UP || ev->key == WSK_KEY_DOWN || ev->key == WSK_KEY_HOME ||
+	          ev->key == WSK_KEY_END || ev->key == WSK_KEY_ENTER)) {
+		/* the menu's own tree, which scrolls: writable, as every tree the
+		   toolkit changes is the caller's (§5i) */
+		wsk_tree_t c, *o = (wsk_tree_t *)&r->nest[r->over];
+		int a0, a1, k = r->ohi;
+		used = 1;
+		if (wsk__over_tree(r, &c)) {
+			if (ev->key == WSK_KEY_ENTER) {
+				if (k >= 0 && k < c.n && c.item[k].kind == WSK_BUTTON) {
+					n = wsk__note(note, max, n, WSK_NOTE_CLICK, o, k, -1);
+					if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
+					wsk_over_close(r);
+					n = wsk__note(note, max, n, WSK_NOTE_CLOSE, o, -1, 0);
+				}
+			} else {
+				/* the next button that way, wrapping; Home and End from
+				   outside the ends, so the first and last are found */
+				int up = (ev->key == WSK_KEY_UP || ev->key == WSK_KEY_END);
+				int at = (ev->key == WSK_KEY_HOME) ? -1 : (ev->key == WSK_KEY_END) ? c.n
+				       : (k >= 0 && k < c.n) ? k : (up ? c.n : -1);
+				for (int step = 0; step < c.n; step++) {
+					at += up ? -1 : 1;
+					if (at < 0) at = c.n - 1;
+					if (at >= c.n) at = 0;
+					if (c.item[at].kind == WSK_BUTTON) break;
+				}
+				if (at >= 0 && at < c.n && c.item[at].kind == WSK_BUTTON && at != k) {
+					r->ohi = (short)at;
+#ifndef WSK_NO_SCROLL
+					/* a menu that scrolls keeps it whole in sight (rule 5) */
+					if (c.overflow == WSK_SCROLL) {
+						wsk_rect_t b = wsk_rect(&c, at);
+						int top = c.ay + c.pad, bot = c.ay + c.ah - c.pad;
+						if (b.y < top) o->scroll = (short)(o->scroll - (top - b.y));
+						else if (b.y + b.h > bot) o->scroll = (short)(o->scroll + (b.y + b.h - bot));
+					}
+#endif
+					if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
+				}
+			}
+		}
+	}
+#endif
+	else
 #endif
 	if (ev->kind == WSK_EV_MENU) {
 		/* A context menu is asked for (§5s rule 1): the program is told

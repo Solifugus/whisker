@@ -3729,6 +3729,66 @@ the drag together, not a floor like words' 44); the default's small panel
 **15,196** (+192, the layout's share); `WSK_PANEL` **10,344** (+4, the
 weight read through one helper); `WSK_MINIMAL` **3,788**, unchanged.
 
+## 5y. Iteration 25 — the keyboard in a menu
+
+**Written 2026-11-15, before its code.** The second interaction
+`window-gap.md` §8 leaves: a `choice` and a menu open and close, and are
+chosen from, by a pointer only. A person with a hand on the keyboard expects
+Down, Down, Enter.
+
+1. **While an overlay is open, Up, Down, Home, End and Enter are its** —
+   not the focused field's: Down in an open menu over a memo must not move
+   the memo's caret. Escape already closes it (§5l).
+2. **A highlight walks the overlay's buttons**: Down to the next, Up to the
+   one before, wrapping at the ends; Home and End the first and last. Labels
+   and separators in a menu are passed over. With no highlight, Down starts
+   at the first button and Up at the last. Opening an overlay — by any means
+   — starts with none.
+3. **Drawn as keyboard focus is everywhere else**: §5m's ring of thin
+   rectangles, on the highlighted button. The window's own focus is not
+   touched — the field a menu was opened over keeps its caret and gets it
+   back when the menu closes.
+4. **Enter chooses**: CLICK on the highlighted button, then CLOSE — exactly
+   what a click on it gives, so a program cannot tell which hand chose.
+   With no highlight, Enter does nothing (and is still the menu's).
+5. **A menu that scrolls** keeps the highlight in view: its `scroll` moves
+   as little as shows the button whole.
+6. The highlight is a `short` on the root (`ohi`), the caller's, beside
+   `over` — drawing needs it and drawing has only the tree.
+   **`WSK_NO_MENUKEYS`**, set by `WSK_PANEL` (no arrow keys on the P4's
+   keyboard) and implied by `WSK_NO_OVER`.
+
+Done when: each key, wrapping both ways, passing a label, Enter's two
+notices matching a click's, Enter with no highlight, a field under the menu
+untouched by Down (the control: with the menu closed, Down moves its
+caret), the ring drawn and gone on close, a scrolling menu following, every
+earlier output byte-identical, and in Chrome a menu chosen from the
+keyboard.
+
+### What it came to, 2026-11-15
+
+**793 checks** (774 before): 18 in the suite and the `-DWSK_NO_MENUKEYS`
+link; **22** profiles and switches build. Every earlier output — 39 files —
+byte-identical. In headless Chrome, one more (19): Ctrl-S opens `edit.c`'s
+Save menu, Down reaches "Save now" — the picture shows the ring on it — and
+Enter chooses it, the program printing the same `click save-now` a click
+prints.
+
+- As written. The first draft of the ring check guessed the ring's
+  rectangles at the button's edge; §5m draws them two pixels in. The check
+  was wrong, not the ring.
+- With the menu closed, Down moves the memo's caret (the control); open, the
+  caret does not move, and after Enter closes it the memo has focus and
+  Down is its own again. Enter with nothing reached does nothing, and does
+  not reach the memo either — no line break.
+- A six-item menu scrolling in a 200-px screen: Down to the sixth scrolls
+  until it is whole; Home scrolls back to 0.
+
+**§7's question**: 32 bytes to `module_nest.c` (a floor: it opens no menu
+from the keyboard); the default's small panel **15,220** (+24 — the
+overlay's ring and the reset on close); `WSK_PANEL` **10,344** and
+`WSK_MINIMAL` **3,788**, unchanged.
+
 ---
 
 ## 6. What would have to be true before gBASIC took this

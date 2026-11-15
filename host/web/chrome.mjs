@@ -65,7 +65,7 @@ async function type(text) {
   }
 }
 async function key(name, code, modifiers = 0, commands) {   // CDP: Alt 1, Ctrl 2, Shift 8
-  const vk = { Enter: 13, Tab: 9, Home: 36, End: 35 }[name] ?? name.toUpperCase().charCodeAt(0);
+  const vk = { Enter: 13, Tab: 9, Home: 36, End: 35, ArrowDown: 40 }[name] ?? name.toUpperCase().charCodeAt(0);
   await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: name, code, modifiers,
                                         windowsVirtualKeyCode: vk, ...(commands ? { commands } : {}) });
   await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code, modifiers });
@@ -192,6 +192,19 @@ try {
   await sleep(400);
   ok(said.includes('paste  city "Hello web"'),
      'a real Ctrl-V: the browser\'s paste event, P to the host, Ctrl-V to the program, the selection replaced');
+
+  // §5y: the Save menu from the keyboard alone -- Ctrl-S opens it, Down
+  // reaches "Save now", Enter chooses it: the same two notices a click gives
+  const chose = (said.match(/click  save-now/g) || []).length;
+  await key('s', 'KeyS', 2);
+  await settle(); await sleep(200);
+  await key('ArrowDown', 'ArrowDown');
+  await settle(); await sleep(200);
+  await snap('web_menu_keys.png');
+  await key('Enter', 'Enter');
+  await settle(); await sleep(300);
+  ok((said.match(/click  save-now/g) || []).length === chose + 1,
+     'a menu from the keyboard: Ctrl-S, Down, Enter -- "Save now" chosen, as a click chooses it');
 
   // The banded rule: everything above was clipped repaints. Keep that canvas,
   // ask the program to draw it all again, and compare.

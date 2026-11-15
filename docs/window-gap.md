@@ -284,9 +284,10 @@ what each lacks is an interaction a person expects for free:
 1. ~~**`split`: a draggable divider.**~~ **Built the same night (design
    §5x)**: `WSK_DIVIDER` and the caller's `sizes`, so `split` is answered
    directly — **twenty directly, five by composition.**
-2. **`choice`: the keyboard in a menu.** A click opens its overlay and a
-   click chooses; Up, Down and Enter do not walk it yet, and a choice is the
-   one control a person expects to drive from the keyboard.
+2. ~~**`choice`: the keyboard in a menu.**~~ **Built the same night (design
+   §5y)**: Up, Down, Home, End and Enter walk and choose in any open
+   overlay — `choice` answered directly: **twenty-one directly, four by
+   composition** (`tabs`, `tab`, `docks`, `dock`).
 3. **`docks` / `dock`: docking and floating.** Areas, never moved — and
    floating needs more than one window, which is a host's (§4).
 4. `tabs` / `tab`: nothing missing that a person would name; the program

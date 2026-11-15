@@ -52,11 +52,11 @@ Studio's window is a pure record. **Recounted 2026-11-15 (`window-gap.md`
 §8): whisker answers all 25 of its words** — 19 directly, 6 by
 composition (21 of 25 on 2026-11-12). What is left is three interactions,
 not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
-keyboard in a menu (`choice`), docking (`docks`).
+~~keyboard in a menu (`choice`)~~ (§5y), docking (`docks`).
 
 ## Status
 
-**Twenty-four iterations are built, and two of them have now run on the C5.**
+**Twenty-five iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -232,6 +232,10 @@ keyboard in a menu (`choice`), docking (`docks`).
   **Watch the render loop's `} else`** before the button box: a branch put
   between them draws every chosen button wrong (it happened; a check guards
   it now). `WSK_NO_SPLIT`, in both board tiers.
+- **§5y — the keyboard in a menu** (2026-11-15): while an overlay is open,
+  Up/Down/Home/End walk its buttons (the root's `ohi`, drawn as §5m's ring
+  in the overlay's copy only) and Enter gives CLICK + CLOSE as a click
+  does; a scrolling menu follows. `WSK_NO_MENUKEYS`, set by `WSK_PANEL`.
 
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
@@ -240,12 +244,12 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **774 checks**, including a step
+`src/run.sh --module` is the whole of it: **793 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 41, including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
-`host/web/run.sh --test` adds 32 over HTTP, 18 in headless Chrome, and 15 for
+`host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, and 15 for
 the code editor (`code.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**

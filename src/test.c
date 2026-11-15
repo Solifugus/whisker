@@ -4070,6 +4070,116 @@ int main(void)
 		}
 	}
 
+	/* ---- §5y. the keyboard in a menu ---- */
+	printf("\n-- §5y  menu keys\n");
+	{
+		static const wsk_widget_t WIN5[] = {
+			{ .kind = WSK_BUTTON, .id = "pick", .text = "Pick", .size = 40 },
+			{ .kind = WSK_MEMO,   .id = "m", .sub = 0, .size = 80 },
+		};
+		static const wsk_widget_t MENU5[] = {
+			{ .kind = WSK_LABEL,  .id = "head", .text = "Colours", .size = 30 },
+			{ .kind = WSK_BUTTON, .id = "red",  .text = "Red", .size = 30 },
+			{ .kind = WSK_BUTTON, .id = "green", .text = "Green", .size = 30 },
+			{ .kind = WSK_LABEL,  .id = "sep", .text = "", .size = 4 },
+			{ .kind = WSK_BUTTON, .id = "blue", .text = "Blue", .size = 30 },
+		};
+		static const wsk_widget_t LONG5[] = {
+			{ .kind = WSK_BUTTON, .id = "l0", .text = "zero", .size = 40 },
+			{ .kind = WSK_BUTTON, .id = "l1", .text = "one", .size = 40 },
+			{ .kind = WSK_BUTTON, .id = "l2", .text = "two", .size = 40 },
+			{ .kind = WSK_BUTTON, .id = "l3", .text = "three", .size = 40 },
+			{ .kind = WSK_BUTTON, .id = "l4", .text = "four", .size = 40 },
+			{ .kind = WSK_BUTTON, .id = "l5", .text = "five", .size = 40 },
+		};
+		char mb[64];
+		wsk_buf_t buf[1];
+		wsk_tree_t w, k[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char md[4096];
+		int n, y0 = 0, y1 = 0;
+
+		memset(buf, 0, sizeof buf);
+		snprintf(mb, sizeof mb, "one\ntwo");
+		buf[0].b = mb; buf[0].cap = sizeof mb; buf[0].len = 7; buf[0].caret = 0;
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.pad = 4; w.gap = 4; w.ids = 1; w.item = WIN5; w.n = 2; w.buf = buf; w.bufs = 1;
+		w.nest = k; w.nests = 2;
+		wsk_nest_init(&k[0], &w, WSK_COL); k[0].pad = 2; k[0].gap = 2; k[0].item = MENU5; k[0].n = 5;
+		k[0].bg = 0x303840u;
+		wsk_nest_init(&k[1], &w, WSK_COL); k[1].pad = 2; k[1].gap = 2; k[1].item = LONG5; k[1].n = 6;
+		k[1].overflow = WSK_SCROLL;
+		wsk_ui_init(&ui, &w);
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		memset(&ev, 0, sizeof ev);
+#define KEY(K)  (ev.kind = WSK_EV_KEY, ev.key = (unsigned short)(K), n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+
+		KEY(WSK_KEY_DOWN);
+		ok(buf[0].caret == 4, "CONTROL: with no menu open, Down moves the memo's caret, to 4");
+		buf[0].caret = 0;
+		wsk_ui_open(&ui, 0, "pick", &y0, &y1);
+		ok(w.ohi == WSK_NONE, "a menu opens with nothing reached");
+		KEY(WSK_KEY_DOWN);
+		ok(w.ohi == 1 && buf[0].caret == 0 && n == 0 && y1 > y0,
+		   "Down: Red, the first button -- the label above it passed over; the memo's caret not moved; the menu's rows to repaint");
+		KEY(WSK_KEY_DOWN);
+		ok(w.ohi == 2, "Down: Green");
+		KEY(WSK_KEY_DOWN);
+		ok(w.ohi == 4, "Down: Blue, past the separator");
+		KEY(WSK_KEY_DOWN);
+		ok(w.ohi == 1, "Down from the last: round to Red");
+		KEY(WSK_KEY_UP);
+		ok(w.ohi == 4, "Up from the first: round to Blue");
+		KEY(WSK_KEY_HOME);
+		ok(w.ohi == 1, "Home: Red");
+		KEY(WSK_KEY_END);
+		ok(w.ohi == 4, "End: Blue");
+		render_into(&w, md, sizeof md, 4096);
+		{
+			wsk_rect_t b = rect_of(&w, "blue");
+			char ring[96];
+			/* §5m's ring: thin rectangles two pixels in from the button */
+			snprintf(ring, sizeof ring, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"2\"", b.x + 2, b.y + 2, b.w - 4);
+			ok(has(md, ring) && count(md, "height=\"2\"") == 2,
+			   "Blue wears the focus ring, top and bottom -- and nothing else does");
+		}
+		KEY(WSK_KEY_UP); KEY(WSK_KEY_UP);
+		KEY(WSK_KEY_ENTER);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[0] && nt[0].item == 1 && nt[0].value == -1 &&
+		   nt[1].kind == WSK_NOTE_CLOSE && w.over == WSK_NONE && w.ohi == WSK_NONE,
+		   "Up, Up, Enter: CLICK on Red and CLOSE -- what a click on Red gives");
+		render_into(&w, md, sizeof md, 4096);
+		ok(count(md, "height=\"2\"") == 0 && (const void *)w.focus == (const void *)&WIN5[1],
+		   "closed: no ring, and the memo still has focus");
+		KEY(WSK_KEY_DOWN);
+		ok(buf[0].caret == 4, "and Down is the memo's again");
+
+		buf[0].caret = 0;
+		wsk_ui_open(&ui, 0, "pick", &y0, &y1);
+		KEY(WSK_KEY_ENTER);
+		ok(n == 0 && w.over == 0 && strcmp(mb, "one\ntwo") == 0,
+		   "Enter with nothing reached: nothing -- no line break in the memo, the menu stays");
+		KEY(WSK_KEY_UP);
+		ok(w.ohi == 4, "Up with nothing reached starts at the last, Blue");
+		KEY(WSK_KEY_ESCAPE);
+
+		/* a menu that scrolls: six of 40 in a screen of 200 */
+		wsk_ui_open(&ui, 1, "pick", &y0, &y1);
+		ok(w.over == 1 && k[1].scroll == 0, "a long menu opens, scrolling, at its top");
+		for (int i = 0; i < 6; i++) KEY(WSK_KEY_DOWN);
+		{
+			wsk_rect_t five = rect_of(&w, "l5");
+			ok(w.ohi == 5 && k[1].scroll > 0 && five.y + five.h <= w.oy + w.oh - k[1].pad,
+			   "Down to the sixth: the menu scrolled until it is whole in sight");
+		}
+		KEY(WSK_KEY_HOME);
+		ok(w.ohi == 0 && k[1].scroll == 0, "Home: the first, scrolled back to the top");
+		KEY(WSK_KEY_ESCAPE);
+#undef KEY
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;
