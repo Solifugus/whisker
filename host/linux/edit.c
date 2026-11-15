@@ -176,7 +176,24 @@ static void feed(const wsk_event_t *ev, int *y0, int *y1)
 		const wsk_note_t *t = &note_[i];
 		const char *id = (t->item >= 0) ? t->in->item[t->item].id : "nothing";
 		if (t->kind == WSK_NOTE_CLICK) {
+			/* the tree row clicked: a cell of it, or the row itself */
+			int row = (t->in >= &nest[6] && t->in < &nest[6 + 30]) ? (int)(t->in - &nest[6])
+			        : (t->in == &nest[5]) ? t->item : -1;
 			printf("click  %s\n", id);
+			/* A folder opens or closes on every click. On a CLICK, not a
+			   SELECT: a click on the row already chosen selects nothing new,
+			   and a toggle that waited for a selection did nothing there --
+			   Matthew found it, 2026-11-14. */
+			if (row >= 0 && row < nest[5].n && NODES[rownode[row]].kids) {
+				node_t *f = &NODES[rownode[row]];
+				f->open = !f->open;
+				printf("%s  %s\n", f->open ? "open " : "close", f->name);
+				nest[5].n = tree_rows();
+				/* fewer rows may now end above where the list was scrolled
+				   to, and an offset past the end is refused (D11): to the top */
+				nest[5].scroll = 0;
+				*y0 = 0; *y1 = H;                 /* the rows all moved */
+			}
 			/* Save opens its menu; the menu's own buttons close it */
 			if (strcmp(id, "save") == 0 && wsk_ui_open(&ui, 3, "save", &m0, &m1) == WSK_OK)
 				also(y0, y1, m0, m1);
@@ -193,18 +210,7 @@ static void feed(const wsk_event_t *ev, int *y0, int *y1)
 			printf("close  the menu\n");
 		else if (t->kind == WSK_NOTE_CHANGE)
 			printf("change %s = %d\n", id, t->value);
-		else if (t->kind == WSK_NOTE_SELECT && t->in == &nest[5] &&
-		         NODES[rownode[t->value]].kids) {
-			/* a folder: open or close it, and hand the rows over again */
-			node_t *f = &NODES[rownode[t->value]];
-			f->open = !f->open;
-			printf("%s  %s\n", f->open ? "open " : "close", f->name);
-			nest[5].n = tree_rows();
-			/* fewer rows may now end above where the list was scrolled to,
-			   and an offset past the end is refused (D11): back to the top */
-			nest[5].scroll = 0;
-			*y0 = 0; *y1 = H;                     /* the rows all moved */
-		} else if (t->kind == WSK_NOTE_MENU) {
+		else if (t->kind == WSK_NOTE_MENU) {
 			/* a context menu: on a field, Cut/Copy/Paste/Select all, hung
 			   from the pointer -- or, from the Menu key, from the field */
 			printf("menu   %s\n", id);

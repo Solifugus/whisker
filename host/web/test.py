@@ -21,8 +21,10 @@ def ok(cond, what):
 
 
 def box(doc, wid):
-    """Where a widget was drawn: its rect's x, y, width, height, from the SVG."""
-    m = re.search(r'<rect id="%s"(?: x="(\d+)")? y="(\d+)" width="(\d+)" height="(\d+)"' % wid, doc or "")
+    """Where a widget was drawn: its rect's x, y, width, height, from the SVG --
+    a widget's own rect, or a nested stack's first, inside its <g>."""
+    m = re.search(r'(?:<rect id="%s"|<g id="%s"><rect)(?: x="(\d+)")? y="(\d+)" width="(\d+)" height="(\d+)"'
+                  % (wid, wid), doc or "")
     return None if m is None else (int(m.group(1) or 0), int(m.group(2)), int(m.group(3)), int(m.group(4)))
 
 
@@ -126,6 +128,11 @@ try:
     m = ev.until(">Paris</text>")
     ok(m is not None, "Tab, then typing, reaches the second field")
 
+    # a folder clicked twice, the second time while it is the chosen row:
+    # it closes, then opens -- Matthew found the second click did nothing
+    src = middle(box(first, "it0"))
+    post("D %s\nU %s" % (src, src))
+    post("D %s\nU %s" % (src, src))
     post("D 900 200\nU 900 200")      # a click in the list, two events in one POST
     post("K 7")                       # Enter
     # The Note memo (§5o): 278..374. A tap there, two lines, Enter between.
@@ -175,6 +182,8 @@ finally:
 
 ok("enter  city = \"Paris\"" in out, "Enter on the second field printed it: city = \"Paris\"")
 ok("select it" in out, "the click in the table reached the program: a cell clicked, its row chosen")
+ok("close  src" in out and out.find("open   src", out.find("close  src")) > 0,
+   "a folder clicked twice closes and opens again -- the second click on the chosen row counts")
 ok('menu   name' in out and 'click  cx-all' in out and 'copy   name "hi"' in out,
    "the program was told: MENU on name, Select all and Copy chosen, \"hi\" copied")
 ok('paste  name "hi there"' in out, "and the paste went into name")

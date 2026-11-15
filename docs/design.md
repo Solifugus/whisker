@@ -2771,6 +2771,14 @@ runtime half, wanting its own design.
 
 ---
 
+**Found in use, 2026-11-14**: a folder clicked a second time, while its row
+was still the chosen one, did not close — Matthew, in the desktop window.
+`edit.c` opened and closed folders on **SELECT**, and a click on the row
+already chosen selects nothing new, so no notice came. A toggle belongs on
+**CLICK**, which every click is; SELECT says the choice moved. The toolkit
+was right and the program asked it the wrong question; `host/web/test.py`
+now clicks a folder twice, and fails on the old program.
+
 ## 5q. A world: a view onto a space larger than the screen — designed, not built
 
 **Written 2026-11-14, design only**, at Matthew's asking: *"a container that
