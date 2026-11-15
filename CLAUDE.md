@@ -236,6 +236,13 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   Up/Down/Home/End walk its buttons (the root's `ohi`, drawn as §5m's ring
   in the overlay's copy only) and Enter gives CLICK + CLOSE as a click
   does; a scrolling menu follows. `WSK_NO_MENUKEYS`, set by `WSK_PANEL`.
+- **§5q step 1 — a world** (2026-11-15): `overflow = WSK_WORLD`, the
+  caller's `wsk_place_t place[]` (32-bit x, y; size; own scale), a view
+  `vx`, `vy`, `zoom` (256 = 1:1), open or bounded; clipped both ways; items
+  drawn through one-item copies so their font scales; **hit topmost
+  first**; `wsk_world_at`. Torus, posters (stacks inside — refused for now)
+  and fade are step 2; pan/zoom and demos step 3. 1,156 bytes, default
+  only; `WSK_NO_NEST` implies `WSK_NO_WORLD`.
 
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
@@ -244,7 +251,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **793 checks**, including a step
+`src/run.sh --module` is the whole of it: **823 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 41, including the

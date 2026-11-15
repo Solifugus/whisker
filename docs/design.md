@@ -2877,6 +2877,79 @@ repaints its old rows and its new; a pan or a zoom repaints the view.
 8. A demo: a small toroidal game on the P4, and a conference floor in the
    browser — avatars walking, speech above them fading with distance.
 
+### Step 1, written before its code (2026-11-15): placing, viewing, zooming
+
+Built overnight under Matthew's "whatever else you can do", in steps so
+each lands whole. **Step 1 is the drawing and the hit**; the torus, posters
+and fade are step 2, the toolkit's pan and zoom and the demos step 3.
+
+- `overflow = WSK_WORLD` makes a tree a world (the field that already
+  chooses scroll and wrap, which also change how a stack lays out).
+- `wsk_place_t { int x, y; short w, h; short scale; unsigned char fade; }`,
+  one per item, `place` on the tree — **the caller's, writable** (a game
+  moves a sprite by writing x and y). `scale` 256 is 1:1, as `zoom` is.
+- The view: `vx`, `vy` (`int`) and `zoom` (`short`, 256 = 1:1) on the
+  tree; `wspace` = `WSK_OPEN` or `WSK_BOUNDED` with `ww`, `wh`.
+- An item's rectangle: its place less the view, times the zoom, from the
+  area's corner; its size times the zoom times its scale. 64-bit products,
+  shifted, never divided (the module rules); one too far away to be a
+  coordinate is put wholly outside the area, so nothing far off can wrap a
+  `short` onto the screen (§5e's lesson).
+- **Clipped both ways** to the area — a box cut, text whole or not drawn,
+  as a scrolling pane does along its axis; a host that clips is given a
+  clip (§5r).
+- **Text scales with the item**: a world draws in its font times the zoom,
+  and an item whose own scale is not 1:1 in that times its scale, in a
+  `<g font-size>` of its own. Its pad scales with it.
+- **Overlap**: drawn in array order, **hit topmost first** — the reverse.
+- **`wsk_world_at`**: a point on the screen to a point in the world, for a
+  click on bare floor.
+- **Refused**: no `place`, a zoom or scale ≤ 0, a bounded view leaving its
+  world (`WSK_E_SCROLL`, as a scroll past its end is), and — in this step
+  — **a stack inside a world** (`WSK_E_KIND`): unscaled, a poster would
+  overflow its own rectangle at any zoom below 1:1, and refusing it until
+  step 2 scales it is the honest answer.
+- **`WSK_NO_WORLD`**, set by `WSK_PANEL` and `WSK_MINIMAL` for now — the P4
+  game can claim it when it exists.
+
+### What step 1 came to, 2026-11-15
+
+**823 checks** (793 before): 27 in the suite, 2 at the pixels, the
+`-DWSK_NO_WORLD` link; **23** profiles and switches build. Every earlier
+output — 39 files — byte-identical.
+
+- **As written, with one consequence of the build**: an item is drawn
+  through a copy of the world holding it alone, its font and pad scaled —
+  so every drawing function scales it without knowing, and the widget is
+  the same widget, so focus, a held button and a field's buffer still find
+  it. Copies are nesting's (`wsk__tcopy`), so **`WSK_NO_NEST` implies
+  `WSK_NO_WORLD`** — a world's posters will be stacks anyway.
+- In the suite: places at 1:1, the view moved (an item cut to 60 wide at
+  the edge, its text not whole and not drawn — and drawn, the control, once
+  moved wholly in), zoom 2 and ½, an item's own scale 2 with a
+  `<g font-size="32">` of its own and its neighbour without; drawn in array
+  order, **hit topmost first** — where Ann and Bo overlap, Bo, and a click
+  there is Bo's; an open world **two billion units out**, with an item two
+  billion away nowhere rather than wrapped onto the screen;
+  `wsk_world_at` back to 32-bit world points, zoomed; a bounded view at 680
+  of 1,000 inside and at 681 refused (`WSK_E_SCROLL`); zoom 0, scale 0 and a
+  stack inside refused by name; for a host that clips, a clip, and the
+  half-out label drawn for it to cut.
+- **At the pixels through RV-9's rasteriser**: two buttons saying "Hello"
+  under a zoom of 1.5, one at its own scale 2 — 90 x 30 and 180 x 60 in
+  their fills, and the word **57 px wide at 24 px and 115 at 48**: twice,
+  within a tenth. Looked at.
+
+**§7's question**: the world is **1,156 bytes** in the default (16,388 for
+a small panel); `WSK_PANEL` 10,348 and `WSK_MINIMAL` 3,792 — **4 bytes
+each**, the check that refuses a world by name there, which is what a
+reduced build owes (§7).
+
+**Step 2**, named: the torus (seam-straddlers drawn twice, hit and
+`wsk_world_at` wrapping), posters (a stack inside, its sizes, padding, gap
+and font scaled as one — refused until then), and fade. **Step 3**: the
+toolkit's pan and zoom, and the demos.
+
 
 ---
 

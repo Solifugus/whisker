@@ -4180,6 +4180,127 @@ int main(void)
 #undef KEY
 	}
 
+	/* ---- §5q step 1. a world: placed items, a view, a zoom ---- */
+	printf("\n-- §5q  a world, step 1\n");
+	{
+		static const wsk_widget_t WI[] = {
+			{ .kind = WSK_BUTTON, .id = "a", .text = "Ann" },
+			{ .kind = WSK_BUTTON, .id = "b", .text = "Bo" },
+			{ .kind = WSK_LABEL,  .id = "c", .text = "poster" },
+		};
+		wsk_place_t pl[3] = {
+			{ .x = 10,  .y = 20, .w = 100, .h = 30, .scale = 256 },
+			{ .x = 60,  .y = 30, .w = 100, .h = 30, .scale = 256 },     /* over a, later: on top */
+			{ .x = 250, .y = 150, .w = 120, .h = 30, .scale = 256 },    /* running off the right */
+		};
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char wd[4096];
+		int which = -2, wx = 0, wy = 0, y0, y1, n;
+
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.ids = 1; w.item = WI; w.n = 3; w.overflow = WSK_WORLD;
+		ok(wsk_check(&w, &which) == WSK_E_KIND && which == -1, "a world with no places is refused");
+		w.place = pl;
+		ok(wsk_check(&w, 0) == WSK_OK, "with them, accepted -- overlapping, and running off the view");
+		ok(rect_is(wsk_rect(&w, 0), 10, 20, 100, 30) && rect_is(wsk_rect(&w, 1), 60, 30, 100, 30),
+		   "at 1:1 from 0,0, a place is its rectangle");
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(strstr(wd, "id=\"a\"") != 0 && strstr(wd, "id=\"a\"") < strstr(wd, "id=\"b\""),
+		   "drawn in array order: Bo after Ann, on top of it");
+		ok(!has(wd, ">poster</text>"), "the poster running off the right edge: its text is not whole, so not drawn");
+		pl[2].x = 150;
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, ">poster</text>"), "CONTROL: moved 100 left, wholly in view, it is");
+		pl[2].x = 250;
+		ok(strcmp(wsk_hit_id(&w, 80, 40), "b") == 0 && strcmp(wsk_hit_id(&w, 20, 25), "a") == 0,
+		   "hit asks the topmost first: where they overlap, Bo; where only Ann is, Ann");
+		ok(wsk_hit_id(&w, 200, 100) == 0, "CONTROL: bare floor is nothing");
+
+		w.vx = 50;
+		ok(rect_is(wsk_rect(&w, 0), -40, 20, 100, 30), "the view moved 50 right: Ann at -40");
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, "<rect id=\"a\" y=\"20\" width=\"60\" height=\"30\"") && !has(wd, ">Ann</text>"),
+		   "cut at the view's edge to 60 wide, its text not whole and so not drawn");
+		w.vx = 0;
+
+		w.zoom = 512;
+		ok(rect_is(wsk_rect(&w, 0), 20, 40, 200, 60), "zoom 2: Ann at 20,40, 200 x 60");
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, "<g font-size=\"32\" fill=\"#fff\"><rect id=\"a\""),
+		   "and its text twice the font, 32, in a <g> of its own");
+		w.zoom = 128;
+		ok(rect_is(wsk_rect(&w, 0), 5, 10, 50, 15), "zoom 1/2: 5,10, 50 x 15");
+		w.zoom = 256;
+		pl[0].scale = 512;
+		ok(rect_is(wsk_rect(&w, 0), 10, 20, 200, 60), "an item's own scale, 2: its size doubled where it stands");
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, "<g font-size=\"32\" fill=\"#fff\"><rect id=\"a\"") && !has(wd, "<g font-size=\"32\" fill=\"#fff\"><rect id=\"b\""),
+		   "and its font, 32 -- Bo, at 1:1, has none of its own");
+		pl[0].scale = 256;
+
+		/* far from the origin: past what a short can say */
+		pl[0].x = 2000000000; pl[0].y = 1000000;
+		w.vx = 2000000000 - 10; w.vy = 1000000 - 20;
+		ok(wsk_check(&w, 0) == WSK_OK && rect_is(wsk_rect(&w, 0), 10, 20, 100, 30),
+		   "an open world two billion units out: Ann at 10,20 in a view there");
+		ok(wsk_rect(&w, 1).w == 0 && wsk_hit_id(&w, 70, 40) != 0 && strcmp(wsk_hit_id(&w, 70, 40), "a") == 0,
+		   "and Bo, two billion away, is nowhere -- not wrapped onto the screen, not hit");
+		ok(wsk_world_at(&w, 100, 50, &wx, &wy) == WSK_OK && wx == 2000000000 + 90 && wy == 1000000 + 30,
+		   "wsk_world_at: a screen point back to the world, 32-bit");
+		pl[0].x = 10; pl[0].y = 20; w.vx = 0; w.vy = 0;
+		w.zoom = 512; w.vx = 1000;
+		ok(wsk_world_at(&w, 100, 50, &wx, &wy) == WSK_OK && wx == 1050 && wy == 25,
+		   "zoomed 2 with the view at 1000: screen 100,50 is world 1050,25");
+		ok(wsk_world_at(&w, 400, 50, &wx, &wy) == WSK_E_NOTFOUND, "off the area, nothing");
+		w.zoom = 256; w.vx = 0;
+
+		/* bounded */
+		w.wspace = WSK_BOUNDED; w.ww = 1000; w.wh = 500;
+		w.vx = 680;
+		ok(wsk_check(&w, 0) == WSK_OK, "bounded, 1000 x 500: a view from 680 is inside");
+		w.vx = 681;
+		ok(wsk_check(&w, &which) == WSK_E_SCROLL && which == -1, "from 681 it would leave the world: refused, as a scroll past its end is");
+		w.vx = 0; w.wspace = WSK_OPEN;
+
+		/* refusals */
+		w.zoom = 0;
+		ok(wsk_check(&w, 0) == WSK_E_KIND, "a zoom of 0 is refused");
+		w.zoom = 256; pl[1].scale = 0;
+		ok(wsk_check(&w, &which) == WSK_E_KIND && which == 1, "and a scale of 0, naming the item");
+		pl[1].scale = 256;
+		{
+			static const wsk_widget_t WS[] = {
+				{ .kind = WSK_STACK, .id = "poster", .sub = 0 },
+			};
+			wsk_tree_t k[1];
+			w.item = WS; w.n = 1; w.nest = k; w.nests = 1;
+			wsk_nest_init(&k[0], &w, WSK_COL);
+			ok(wsk_check(&w, &which) == WSK_E_KIND && which == 0,
+			   "a stack inside a world is refused in this step: a poster has to scale as one (step 2)");
+			w.item = WI; w.n = 3; w.nest = 0; w.nests = 0;
+		}
+
+		/* a host that clips is given a clip, and draws what is cut */
+		w.caps = WSK_CAP_CLIP;
+		render_into(&w, wd, sizeof wd, 4096);
+		ok(has(wd, "<clipPath id=\"wsk-c0-0\">") && has(wd, ">poster</text>"),
+		   "for a host that clips: the world in a clip, and the poster drawn whole for it to cut");
+		w.caps = 0;
+
+		/* the toolkit: a click is the topmost's */
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 80; ev.y = 40;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].item == 1,
+		   "a click where Ann and Bo overlap: CLICK on Bo, the one on top");
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

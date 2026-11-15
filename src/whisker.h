@@ -111,6 +111,7 @@
  *     -DWSK_NO_WORDS    Ctrl's word moves, double- and triple-click (§5w)
  *     -DWSK_NO_SPLIT    dividers a person drags, and the sizes they set (§5x)
  *     -DWSK_NO_MENUKEYS Up, Down, Enter in an open menu (§5y)
+ *     -DWSK_NO_WORLD    a world: placed items, a view and a zoom (§5q)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -149,6 +150,9 @@
 #  ifndef WSK_NO_MENUKEYS
 #    define WSK_NO_MENUKEYS 1      /* no arrow keys on its keyboard (§5y) */
 #  endif
+#  ifndef WSK_NO_WORLD
+#    define WSK_NO_WORLD 1         /* until a P4 program asks for one (§5q) */
+#  endif
 #endif
 #ifdef WSK_MINIMAL
 #  ifndef WSK_NO_INPUT
@@ -156,6 +160,9 @@
 #  endif
 #  ifndef WSK_NO_SPLIT
 #    define WSK_NO_SPLIT 1
+#  endif
+#  ifndef WSK_NO_WORLD
+#    define WSK_NO_WORLD 1
 #  endif
 #  ifndef WSK_NO_OVER
 #    define WSK_NO_OVER 1
@@ -211,6 +218,10 @@
 
 #if defined(WSK_NO_NEST) && !defined(WSK_NO_OVER)
 #  define WSK_NO_OVER 1            /* an overlay is a tree in `nest` (§5l) */
+#endif
+#if defined(WSK_NO_NEST) && !defined(WSK_NO_WORLD)
+#  define WSK_NO_WORLD 1           /* drawn through copies, as nesting is; its
+                                      posters are stacks (§5q) */
 #endif
 #if (defined(WSK_NO_OVER) || defined(WSK_NO_INPUT)) && !defined(WSK_NO_MENUKEYS)
 #  define WSK_NO_MENUKEYS 1        /* the keys walk an overlay (§5y) */
@@ -287,8 +298,25 @@ enum {
 enum {
 	WSK_REFUSE = 0,
 	WSK_SCROLL,
-	WSK_WRAP                     /* onto a new line across the axis (§5g) */
+	WSK_WRAP,                    /* onto a new line across the axis (§5g) */
+	WSK_WORLD                    /* placed, not stacked: a view onto a space (§5q) */
 };
+
+/* A world's space (§5q rule 4): no edges, or a size its view stays inside. */
+enum { WSK_OPEN = 0, WSK_BOUNDED };
+
+/*
+ * Where a world's item is (§5q rule 2): the caller's, beside the tree, one
+ * per item -- a game moves a sprite by writing x and y. World units, 32-bit
+ * because a world outgrows a short; w and h its size at 1:1; `scale` its own
+ * size on top of the view's zoom, 256 = 1:1; `fade` for step 2, 0 for now.
+ */
+typedef struct {
+	int           x, y;
+	short         w, h;
+	short         scale;
+	unsigned char fade;
+} wsk_place_t;
 
 /*
  * A mark on a widget, for the states a flat substrate has no other way to
@@ -605,6 +633,21 @@ typedef struct wsk_tree {
 
 	/* What the host can draw beyond /w0: WSK_CAP_*, on the root (§5r). */
 	unsigned char caps;
+
+#ifndef WSK_NO_WORLD
+	/*
+	 * A world (§5q), when `overflow` is WSK_WORLD: its items' places, the
+	 * caller's and writable; the view -- the world point at the area's top
+	 * left, and the zoom, 256 = 1:1, the caller's as `scroll` is; and its
+	 * space, WSK_OPEN or WSK_BOUNDED within ww x wh. `wone` is whisker's,
+	 * set in the one-item copies an item is drawn through.
+	 */
+	wsk_place_t  *place;
+	int           vx, vy, ww, wh;
+	short         zoom;
+	unsigned char wspace;
+	unsigned char wone;
+#endif
 
 	/* Set by whisker in those copies, never by a caller: the intersection of
 	   every scrolling viewport above this stack, which cuts it (§5f rule 3). */
@@ -1289,6 +1332,37 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 	}
 #endif
 
+#ifdef WSK_NO_WORLD
+	if (t->overflow == WSK_WORLD) {
+		if (which != 0) *which = -1;
+		return WSK_E_KIND;
+	}
+#else
+	/* A world (§5q): places for its items, a zoom and scales above 0, a
+	   space whisker knows -- and, bounded, a view inside it, refused
+	   rather than clamped as a scroll past its end is. Nothing has to fit:
+	   overlapping and running off the view is what a world is for. */
+	if (t->overflow == WSK_WORLD) {
+		if (t->place == 0 || t->zoom <= 0 || t->wspace > WSK_BOUNDED) {
+			if (which != 0) *which = -1;
+			return WSK_E_KIND;
+		}
+		for (int i = 0; i < t->n; i++)
+			/* a stack inside is a poster: step 2, which scales it */
+			if (t->item[i].kind == WSK_STACK || t->place[i].scale <= 0 ||
+			    t->place[i].w < 0 || t->place[i].h < 0) {
+				if (which != 0) *which = i;
+				return WSK_E_KIND;
+			}
+		if (t->wspace == WSK_BOUNDED &&
+		    (t->vx < 0 || t->vy < 0 || t->vx + t->aw * 256 / t->zoom > t->ww ||
+		     t->vy + t->ah * 256 / t->zoom > t->wh)) {
+			if (which != 0) *which = -1;
+			return WSK_E_SCROLL;
+		}
+		return WSK_OK;
+	}
+#endif
 #ifdef WSK_NO_SCROLL
 	/* Refused by name, and there is no widget to name, so `which` is -1. */
 	if (t->overflow == WSK_SCROLL) {
@@ -1452,6 +1526,13 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 #ifndef WSK_NO_SPLIT
 	t->sizes = 0;
 #endif
+#ifndef WSK_NO_WORLD
+	t->place = 0;
+	t->vx = t->vy = t->ww = t->wh = 0;
+	t->zoom = 256;
+	t->wspace = WSK_OPEN;
+	t->wone = 0;
+#endif
 	t->clipped = 0;
 	t->cx0 = t->cy0 = t->cx1 = t->cy1 = 0;
 }
@@ -1538,6 +1619,10 @@ static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
 		   on: being shorter than its content is what it is for. Its size
 		   comes from `size` or `weight`. */
 		if (c->overflow == WSK_SCROLL && c->axis == axis) return 2 * c->pad;
+#endif
+#ifndef WSK_NO_WORLD
+		/* nor does a world, either way: it is a view, sized from outside */
+		if (c->overflow == WSK_WORLD) return 2 * c->pad;
 #endif
 #ifndef WSK_NO_WRAP
 		/* A wrapping stack takes what it is given and wraps to fit it, so
@@ -1835,6 +1920,33 @@ static inline wsk_rect_t wsk__cell(const wsk_tree_t *t, int idx)
 }
 #endif
 
+#ifndef WSK_NO_WORLD
+/*
+ * Item i of a world (§5q rule 3): its place less the view, times the zoom,
+ * from the area's corner; its size times the zoom and its own scale. 64-bit
+ * products, shifted and never divided (a module has no 64-bit division). One
+ * too far off to be a coordinate is put wholly outside the area, where a cut
+ * drops it -- nothing far away may wrap a short onto the screen (§5e).
+ */
+static inline wsk_rect_t wsk__wrect(const wsk_tree_t *t, int i)
+{
+	const wsk_place_t *p = &t->place[i];
+	long long z = t->zoom, zs = (long long)t->zoom * p->scale;
+	long long x = t->ax + ((((long long)p->x - t->vx) * z) >> 8);
+	long long y = t->ay + ((((long long)p->y - t->vy) * z) >> 8);
+	long long w = ((long long)p->w * zs) >> 16, h = ((long long)p->h * zs) >> 16;
+	wsk_rect_t r;
+	if (w > 16000) w = 16000;
+	if (h > 16000) h = 16000;
+	if (x < -16000 || x > 16000 || y < -16000 || y > 16000) {
+		r.x = -16000; r.y = -16000; r.w = 0; r.h = 0;  /* far away: nowhere */
+		return r;
+	}
+	r.x = (short)x; r.y = (short)y; r.w = (short)w; r.h = (short)h;
+	return r;
+}
+#endif
+
 /* A widget's weight -- none once the caller has sized it (§5x rule 1). */
 static inline int wsk__wt(const wsk_tree_t *t, int i)
 {
@@ -1852,6 +1964,9 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 
 #ifndef WSK_NO_WRAP
 	if (t->overflow == WSK_WRAP) return wsk__wrap_rect(t, idx);
+#endif
+#ifndef WSK_NO_WORLD
+	if (t->overflow == WSK_WORLD) return wsk__wrect(t, idx);
 #endif
 #ifndef WSK_NO_NEST
 	if (t->ghead != 0) return wsk__cell(t, idx);
@@ -2291,6 +2406,19 @@ static inline int wsk__cut(const wsk_tree_t *t, wsk_rect_t *r)
 #else
 	(void)t; (void)r;
 #endif
+#ifndef WSK_NO_WORLD
+	/* a world's view cuts both ways (§5q rule 7) */
+	if (t->overflow == WSK_WORLD) {
+		int x0 = r->x, y0 = r->y, x1 = r->x + r->w, y1 = r->y + r->h;
+		if (x0 < t->ax) x0 = t->ax;
+		if (y0 < t->ay) y0 = t->ay;
+		if (x1 > t->ax + t->aw) x1 = t->ax + t->aw;
+		if (y1 > t->ay + t->ah) y1 = t->ay + t->ah;
+		if (x1 <= x0 || y1 <= y0) return 0;
+		r->x = (short)x0; r->y = (short)y0;
+		r->w = (short)(x1 - x0); r->h = (short)(y1 - y0);
+	}
+#endif
 #ifndef WSK_NO_NEST
 	/* and by every viewport above it, along both axes (§5f rule 3) */
 	if (t->clipped) {
@@ -2376,7 +2504,11 @@ static inline int wsk_hit(const wsk_tree_t *t, int x, int y)
 #ifndef WSK_NO_OVER
 	if (wsk__on_over(t, x, y)) return WSK_E_NOTFOUND;   /* not a root widget */
 #endif
-	for (int i = 0; i < t->n; i++) {
+	for (int j = 0; j < t->n; j++) {
+		int i = j;
+#ifndef WSK_NO_WORLD
+		if (t->overflow == WSK_WORLD) i = t->n - 1 - j;  /* the topmost first (§5q) */
+#endif
 		wsk_rect_t r = wsk_rect(t, i);
 		/* cut first: a widget scrolled off still has a rectangle, and it
 		   may lie over a neighbouring stack the person can see (§5e) */
@@ -2425,7 +2557,11 @@ static inline int wsk__hit_at(const wsk_tree_t *t, const wsk_tree_t *orig,
 		return wsk__hit_at(&c, &t->nest[t->over], x, y, in, at, 1);
 	}
 #endif
-	for (int i = 0; i < t->n; i++) {
+	for (int j = 0; j < t->n; j++) {
+		int i = j;
+#ifndef WSK_NO_WORLD
+		if (t->overflow == WSK_WORLD) i = t->n - 1 - j;  /* the topmost first (§5q) */
+#endif
 		wsk_rect_t r = wsk_rect(t, i);
 		if (!wsk__cut(t, &r)) continue;
 		if (!(x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)) continue;
@@ -2490,6 +2626,23 @@ static inline const char *wsk_hit_id(const wsk_tree_t *t, int x, int y)
 {
 	int i = wsk_hit(t, x, y);
 	return (i < 0) ? 0 : t->item[i].id;
+}
+#endif
+
+#ifndef WSK_NO_WORLD
+/*
+ * The world point under a point on the screen (§5q rule 8) -- the inverse of
+ * an item's placing -- so a click on bare floor is somewhere to walk to.
+ * WSK_E_NOTFOUND off the world's area, or for a tree that is not a world.
+ */
+static inline int wsk_world_at(const wsk_tree_t *t, int x, int y, int *wx, int *wy)
+{
+	if (t->overflow != WSK_WORLD || t->zoom <= 0 ||
+	    x < t->ax || x >= t->ax + t->aw || y < t->ay || y >= t->ay + t->ah)
+		return WSK_E_NOTFOUND;
+	*wx = t->vx + (x - t->ax) * 256 / t->zoom;
+	*wy = t->vy + (y - t->ay) * 256 / t->zoom;
+	return WSK_OK;
 }
 #endif
 
@@ -2854,6 +3007,12 @@ static inline int wsk__shows(const wsk_tree_t *t, int x0, int x1, int top)
 	/* A host that clips draws it all and lets the clip decide (§5r): a label
 	   half out of a scrolled pane slides, rather than vanishing whole. */
 	if (t->caps & WSK_CAP_CLIP) return 1;
+#endif
+#ifndef WSK_NO_WORLD
+	/* in a world, whole within the view both ways (§5q rule 7) */
+	if (t->overflow == WSK_WORLD &&
+	    (x0 < t->ax || x1 > t->ax + t->aw || top < t->ay || top + t->font > t->ay + t->ah))
+		return 0;
 #endif
 	if (t->axis == WSK_COL ? !wsk__whole(t, top, top + t->font)
 	                       : !wsk__whole(t, x0, x1)) return 0;
@@ -3503,7 +3662,11 @@ static inline void wsk__runs(const wsk_doc_t *d, const wsk_tree_t *t, int i,
 static inline int wsk__clip_open(wsk_sink_t *s, const wsk_tree_t *t)
 {
 	wsk_rect_t a;
-	if (!(t->caps & WSK_CAP_CLIP) || t->overflow != WSK_SCROLL) return 0;
+	if (!(t->caps & WSK_CAP_CLIP) || (t->overflow != WSK_SCROLL
+#ifndef WSK_NO_WORLD
+	                                  && t->overflow != WSK_WORLD
+#endif
+	   )) return 0;
 	a.x = t->ax; a.y = t->ay; a.w = t->aw; a.h = t->ah;
 	wsk__s(s, "<clipPath id=\"wsk-c");
 	wsk__n(s, t->ax); wsk__s(s, "-"); wsk__n(s, t->ay);
@@ -3663,9 +3826,53 @@ static inline int wsk__look(wsk_sink_t *s, const wsk_doc_t *d, const wsk_tree_t 
  * only when its widget asks for a fill. A stack that says nothing costs
  * nothing, so nesting for layout alone adds no bytes.
  */
+#ifndef WSK_NO_WORLD
+static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
+                              wsk_sink_t *s);
+
+/*
+ * A world's items (§5q), each through a copy of the world holding it alone:
+ * the copy's font and pad are the world's times the zoom and the item's own
+ * scale, so every drawing function scales the item without knowing it is in
+ * a world -- and a <g font-size> says so where it differs. The widget is the
+ * same widget, so focus, a held button and a field's buffer still find it.
+ * Out of line, as a nested stack is, so only a world pays for the copy.
+ */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static void wsk__world(const wsk_doc_t *d, const wsk_tree_t *t, wsk_sink_t *s)
+{
+	wsk_tree_t c;
+	for (int i = 0; i < t->n; i++) {
+		wsk_rect_t v = wsk__wrect(t, i);
+		long long zs = (long long)t->zoom * t->place[i].scale;
+		int g;
+		if (!wsk__cut(t, &v) || v.y >= d->y1 || v.y + v.h <= d->y0) continue;
+		wsk__tcopy(&c, t);
+		c.item = &t->item[i];
+		c.place = &t->place[i];
+		c.n = 1;
+		c.wone = 1;
+#ifndef WSK_NO_INPUT
+		c.sel = (t->sel == i) ? 0 : WSK_NONE;
+#endif
+		c.font = (short)((t->font * zs) >> 16);
+		c.pad = (short)((t->pad * zs) >> 16);
+		if (c.font < 1) continue;                       /* too small to draw */
+		g = wsk__look(s, d, &c);
+		wsk__items(d, &c, s);
+		if (g) wsk__s(s, "</g>");
+	}
+}
+#endif
+
 static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
                               wsk_sink_t *s)
 {
+#ifndef WSK_NO_WORLD
+	if (t->overflow == WSK_WORLD && !t->wone) { wsk__world(d, t, s); return; }
+#endif
 	for (int i = 0; i < t->n; i++) {
 		const wsk_widget_t *w = &t->item[i];
 		wsk_rect_t r = wsk_rect(t, i), v = r;

@@ -1761,6 +1761,56 @@ int main(void)
 		shot("divider.ppm");
 	}
 
+	/*
+	 * A world (§5q step 1), at the pixels: two buttons with the same word,
+	 * one at its own scale 2, under a view zoomed 1.5 -- RV-9 draws text at
+	 * any size, so the scaled one's word should come out twice as wide.
+	 */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_BUTTON, .id = "one", .text = "Hello", .fill = 0x2a4a6au },
+			{ .kind = WSK_BUTTON, .id = "two", .text = "Hello", .fill = 0x6a3a2au },
+		};
+		wsk_place_t pl[2] = {
+			{ .x = 10, .y = 10, .w = 60, .h = 20, .scale = 256 },
+			{ .x = 20, .y = 40, .w = 60, .h = 20, .scale = 512 },
+		};
+		wsk_tree_t w;
+		wsk_sink_t s;
+		uint32_t v;
+		int lo1, hi1, lo2, hi2, a, b;
+		wsk_rect_t r1, r2;
+
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.bg = 0x10203au; w.item = F; w.n = 2; w.overflow = WSK_WORLD; w.place = pl; w.zoom = 384;
+		s.put = to_window; s.ctx = &dev;
+		printf("\n  a world, zoomed (§5q step 1)\n");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		r1 = wsk_rect(&w, 0); r2 = wsk_rect(&w, 1);
+		ok(r1.x == 15 && r1.y == 15 && r1.w == 90 && r1.h == 30 &&
+		   r2.x == 30 && r2.y == 60 && r2.w == 180 && r2.h == 60 &&
+		   span(r1, pix565(0x2a4a6au), &lo1, &hi1) > 90 * 30 / 2 && span(r2, pix565(0x6a3a2au), &lo2, &hi2) > 180 * 60 / 2,
+		   "placed and sized by the zoom, 1.5, and the second by its own scale, 2: 90 x 30 and 180 x 60, in their fills");
+		/* the word's extent: pixels in each box that are neither its fill */
+		a = b = 0; lo1 = lo2 = PW; hi1 = hi2 = -1;
+		for (int y = r1.y; y < r1.y + r1.h; y++)
+			for (int x = r1.x; x < r1.x + r1.w; x++) {
+				uint16_t p = at(x, y);
+				if (((p >> 11) & 0x1F) + ((p >> 6) & 0x1F) + (p & 0x1F) > 50) { if (x < lo1) lo1 = x; if (x > hi1) hi1 = x; a++; }
+			}
+		for (int y = r2.y; y < r2.y + r2.h; y++)
+			for (int x = r2.x; x < r2.x + r2.w; x++) {
+				uint16_t p = at(x, y);
+				if (((p >> 11) & 0x1F) + ((p >> 6) & 0x1F) + (p & 0x1F) > 50) { if (x < lo2) lo2 = x; if (x > hi2) hi2 = x; b++; }
+			}
+		printf("    \"Hello\" at 24 px: %d wide (%d bright pixels); at 48: %d wide (%d)\n",
+		       hi1 - lo1 + 1, a, hi2 - lo2 + 1, b);
+		ok(a > 0 && b > 0 && (hi2 - lo2 + 1) * 10 >= (hi1 - lo1 + 1) * 18 && (hi2 - lo2 + 1) * 10 <= (hi1 - lo1 + 1) * 22,
+		   "the scaled word is twice as wide, within a tenth: text scales with its item");
+		shot("world.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

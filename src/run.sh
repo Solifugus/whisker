@@ -84,14 +84,15 @@ C
 for D in "" -DWSK_PANEL -DWSK_MINIMAL -DWSK_NO_FIELD -DWSK_NO_MARKS -DWSK_NO_SCROLL \
          -DWSK_NO_NEST -DWSK_NO_WRAP -DWSK_NO_TEXT -DWSK_NO_OVER -DWSK_NO_CHECK \
          -DWSK_NO_MEMO -DWSK_NO_INPUT -DWSK_NO_UTF8 -DWSK_NO_IMAGE -DWSK_NO_TEXTSEL -DWSK_NO_UNDO -DWSK_NO_SOURCE -DWSK_NO_ENTITY \
-         -DWSK_NO_WORDS -DWSK_NO_SPLIT -DWSK_NO_MENUKEYS; do
+         -DWSK_NO_WORDS -DWSK_NO_SPLIT -DWSK_NO_MENUKEYS \
+         -DWSK_NO_WORLD; do
 	if ${CC:-gcc} -O1 -Wall -Wextra -Werror $D -I"$HERE" -c -o /dev/null /tmp/wsk_switch.c 2>/tmp/wsk_switch.err; then
 		:
 	else
 		echo "FAIL  whisker.h does not build with '${D:-the default}'"; head -5 /tmp/wsk_switch.err; exit 1
 	fi
 done
-echo "ok    whisker.h builds with each of the 22 profiles and switches, -Werror"
+echo "ok    whisker.h builds with each of the 23 profiles and switches, -Werror"
 
 echo
 echo "-- 3, 8  through RV-9's own rasteriser, to a picture"
@@ -163,6 +164,8 @@ link_check module_shape.c "module_shape.c -DWSK_NO_MEMO" -DWSK_NO_MEMO
 NOMEMO="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_UTF8" -DWSK_NO_UTF8
 NOUTF8="$SIZE"
+link_check module_shape.c "module_shape.c -DWSK_NO_WORLD" -DWSK_NO_WORLD
+NOWORLD="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_PANEL" -DWSK_PANEL
 PANEL="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
@@ -176,7 +179,7 @@ echo "      and what each part costs the default, by building without it:"
 printf "        nesting %d, wrap %d, text items %d, the check %d, the memo %d, source %d,\n" \
 	"$(( FULL - NONEST ))" "$(( FULL - NOWRAP ))" "$(( FULL - NOTEXT ))" "$(( FULL - NOCHECK ))" \
 	"$(( FULL - NOMEMO ))" "$(( FULL - NOSOURCE ))"
-printf "        UTF-8 %d;\n" "$(( FULL - NOUTF8 ))"
+printf "        UTF-8 %d, the world %d;\n" "$(( FULL - NOUTF8 ))" "$(( FULL - NOWORLD ))"
 printf "        overlays %d, selection and the clipboard %d, undo %d, words %d, dividers %d,\n" \
 	"$(( NEST - NOOVER ))" "$(( NEST - NOSEL ))" "$(( NEST - NOUNDO ))" "$(( NEST - NOWORDS ))" \
 	"$(( NEST - NOSPLIT ))"
