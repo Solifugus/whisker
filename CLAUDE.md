@@ -208,9 +208,10 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   gutter of line numbers (GUTTER notice on a click), and **colour runs from
   the program** (`wsk_ink_t` in the buffer; whisker knows no syntax). Demo:
   `host/linux/code.c`, `run.sh --code`. And **`WSK_CAP_ENTITY`**: `<` `>` `&`
-  in text for a host that decodes entities — the browser; `/w0` does not,
-  so the SDL window refuses real code until RV-9 does
-  (`docs/rv9-request-entities.md`).
+  in text for a host that decodes entities — the browser, and **since
+  2026-11-15 the SDL window**: RV-9 decoded them at Matthew's asking (rv9
+  `8e0ef96`, `docs/rv9-request-entities.md`). The boards keep
+  `WSK_NO_ENTITY` until they are flashed with it.
 - **§5v step 3 — UTF-8 editing** (2026-11-14): positions stay bytes,
   columns are characters — the caret, Backspace and Delete step over whole
   characters; the check refuses a caret or a colour run inside one. For a

@@ -3668,6 +3668,26 @@ small panel: +936 since step 1, with entities and the memo's single pass);
 1.2 % of gBASIC's lines; until then such a file is refused. And breakpoint
 *marks* in the gutter, which the program can only print today.
 
+### 2026-11-15: RV-9 decodes the three entities; the desktop window opens code
+
+Passed to the RV-9 session at Matthew's word; done the same morning (rv9
+`8e0ef96`, local): `drv_svgwin.c` decodes `&lt;` `&gt;` `&amp;` in text,
+each one character for drawing and for `text-anchor` width, and RV-9
+looked at `a &lt; b &amp; c &gt; d` drawn as `a < b & c > d`. The SDL
+host compiles that file from RV-9's tree, so it now claims
+`WSK_CAP_ENTITY`, and `code.c` opens `sample.bas` there. `sample.bas` went
+back to ASCII (the window's font is), and the browser's UTF-8 check types
+its em dash instead of reading it: 9 px for three bytes, then an é, then
+two Backspaces back to where it began. The boards keep `WSK_NO_ENTITY`
+until they are flashed with it.
+
+**Found the same morning, not by any check: `host/linux/run.sh` with no
+arguments refused its own panel** — four unsized buttons and a title in
+172 rows, refused since D10 (2026-10-24), three weeks unnoticed because no
+test started the demo. Bisected to D10, fixed by sizing the buttons, and
+`host/linux/run.sh --test` now starts **every demo program** (`demo`,
+`input`, `edit`, `code` on `sample.bas`, `floor`) and fails if one exits.
+
 ### What the third step came to, 2026-11-14: UTF-8 editing
 
 Written with the code, overnight, on Matthew's "go ahead with source" — the
