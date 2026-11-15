@@ -3085,6 +3085,36 @@ still 1,848 bytes in the default, and the board tiers unchanged.
 **What is left of §5q**: posters (step 2b, for Matthew to approve — design
 above), pinch, and the P4 game.
 
+### An independent read, and what it found (2026-11-15)
+
+The night's `whisker.h` diff was read by a second agent given the code and
+not my conclusions. It found eight things; three it ran to confirm. Fixed,
+each with a check that fails on the header before the fix (10 of 11; the
+11th is a control) — **866 checks**:
+
+- **A torus's button pressed through its wrapped copy** was laid out as
+  its first copy, off the screen: the held button never repainted pressed.
+  Hit now lays out the copy that was hit.
+- **A world item bigger than a short can say, zoomed in**, was put
+  "nowhere" or cut short: a 2,000-unit floor at zoom 16 stopped being hit.
+  Rectangles are now cut to ±16,000 in 64 bits before narrowing.
+- **Two small fixed panes** could be given a negative size by a 1-px drag
+  (the pair's total under two clamps); now a drag with no room moves nothing.
+- **Zoom limits**: a bounded world of size 0 divided by 0 (now refused);
+  the smallest zoom could overflow a `short` (now capped); the wheel's
+  anchor point drifted when that limit bound (now computed at the zoom it
+  will be); a wheel event of 0 zoomed (now nothing).
+- **A field in a world** placed its caret by the unscaled font — taps
+  landing a column off at zoom 2. **Refused by name** until the toolkit
+  places it at the item's scale.
+- **UTF-8**: overlong 3-byte forms, surrogates and code points past
+  U+10FFFF are now refused, as `/w0`'s rule always claimed; a selection
+  ending inside a character is refused as the caret is.
+
+**Not fixed, named**: colours a widget sets itself on a field, memo or
+check are not faded (only boxes and labels are); and menu keys reach only
+a menu's top-level buttons.
+
 
 ---
 

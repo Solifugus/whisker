@@ -904,6 +904,12 @@ static inline int wsk__ok_n(const char *t, int n, int caps, int nl)
 		if (i + more >= n) return 0;     /* cut off before its end */
 		for (int k = 1; k <= more; k++)
 			if (((unsigned char)t[i + k] & 0xC0) != 0x80) return 0;
+		{
+			/* nor the long way round, a surrogate, or past U+10FFFF */
+			unsigned char d = (unsigned char)t[i + 1];
+			if ((c == 0xE0 && d < 0xA0) || (c == 0xED && d > 0x9F) ||
+			    (c == 0xF0 && d < 0x90) || (c == 0xF4 && d > 0x8F)) return 0;
+		}
 		i += more + 1;
 #else
 		(void)more;
@@ -1179,7 +1185,8 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 			   beyond ASCII for a host that draws it, the caret between
 			   characters, never inside one (§5v step 3) */
 			good = wsk__ok_n(b->b, b->len, t->caps, t->item[i].kind != WSK_FIELD) &&
-			       wsk__starts(b->b, b->len, b->caret);
+			       wsk__starts(b->b, b->len, b->caret) &&
+			       wsk__starts(b->b, b->len, b->caret + b->span);
 #ifndef WSK_NO_SOURCE
 			/* colour runs in order, none over another, none before 0 --
 			   past the end is allowed: the text may just have shrunk */
@@ -1348,13 +1355,17 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 	   overlapping and running off the view is what a world is for. */
 	if (t->overflow == WSK_WORLD) {
 		if (t->place == 0 || t->zoom <= 0 || t->wspace > WSK_TORUS ||
-		    (t->wspace == WSK_TORUS && (t->ww <= 0 || t->wh <= 0))) {
+		    (t->wspace != WSK_OPEN && (t->ww <= 0 || t->wh <= 0))) {
 			if (which != 0) *which = -1;
 			return WSK_E_KIND;
 		}
 		for (int i = 0; i < t->n; i++)
-			/* a stack inside is a poster: step 2, which scales it */
+			/* a stack inside is a poster: step 2b, which scales it; and an
+			   editable field waits for the toolkit to place its caret at
+			   the item's scale, which it does not yet */
 			if (t->item[i].kind == WSK_STACK || t->place[i].scale <= 0 ||
+			    t->item[i].kind == WSK_FIELD || t->item[i].kind == WSK_MEMO ||
+			    t->item[i].kind == WSK_SOURCE ||
 			    t->place[i].w < 0 || t->place[i].h < 0) {
 				if (which != 0) *which = i;
 				return WSK_E_KIND;
@@ -1969,11 +1980,16 @@ static inline wsk_rect_t wsk__wrect_at(const wsk_tree_t *t, int i, int ox, int o
 	y = t->ay + ((dy * z) >> 8);
 	long long w = ((long long)p->w * zs) >> 16, h = ((long long)p->h * zs) >> 16;
 	wsk_rect_t r;
-	if (w > 16000) w = 16000;
-	if (h > 16000) h = 16000;
-	if (x < -16000 || x > 16000 || y < -16000 || y > 16000) {
-		r.x = -16000; r.y = -16000; r.w = 0; r.h = 0;  /* far away: nowhere */
-		return r;
+	/* cut to what a short can say, in 64 bits first: a floor bigger than
+	   the screen zoomed in still covers it; one wholly beyond is nowhere */
+	{
+		long long x1 = x + w, y1 = y + h;
+		if (x < -16000) x = -16000;
+		if (y < -16000) y = -16000;
+		if (x1 > 16000) x1 = 16000;
+		if (y1 > 16000) y1 = 16000;
+		if (x1 <= x || y1 <= y) { r.x = -16000; r.y = -16000; r.w = 0; r.h = 0; return r; }
+		w = x1 - x; h = y1 - y;
 	}
 	r.x = (short)x; r.y = (short)y; r.w = (short)w; r.h = (short)h;
 	return r;
@@ -1990,12 +2006,14 @@ static inline int wsk__cut(const wsk_tree_t *t, wsk_rect_t *r);
  * Whether a point is on item i of a world -- on any of its copies, for a
  * torus, each cut by the view (step 2 rule 2).
  */
+/* ...1 + the copy that was hit (bit 0: a world back across, bit 1: down),
+   so a caller can lay out the copy the person sees; 0 if none */
 static inline int wsk__whit(const wsk_tree_t *t, int i, int x, int y)
 {
 	for (int k = 0; k < ((t->wspace == WSK_TORUS) ? 4 : 1); k++) {
 		wsk_rect_t r = wsk__wrect_at(t, i, (k & 1) ? -t->ww : 0, (k & 2) ? -t->wh : 0);
 		if (!wsk__cut(t, &r)) continue;
-		if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return 1;
+		if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return k + 1;
 	}
 	return 0;
 }
@@ -2638,10 +2656,17 @@ static inline int wsk__hit_at(const wsk_tree_t *t, const wsk_tree_t *orig,
 		int i = j;
 #ifndef WSK_NO_WORLD
 		if (t->overflow == WSK_WORLD) {               /* the topmost first (§5q) */
+			int hitk;
 			i = t->n - 1 - j;
-			if (!wsk__whit(t, i, x, y)) continue;
+			if ((hitk = wsk__whit(t, i, x, y)) == 0) continue;
 			if (in != 0) *in = orig;
-			if (at != 0) wsk__tcopy(at, t);
+			if (at != 0) {
+				/* laid out as the copy that was hit, so its rectangle --
+				   a held button's rows -- is the one on the screen */
+				wsk__tcopy(at, t);
+				at->wdx = ((hitk - 1) & 1) ? -t->ww : 0;
+				at->wdy = ((hitk - 1) & 2) ? -t->wh : 0;
+			}
 			return i;
 		}
 #endif
@@ -5058,15 +5083,24 @@ static inline int wsk_world_point(const wsk_tree_t *root, int x, int y,
  * torus's wrapped. Written to the caller's tree and the laid-out copy; 1 if
  * anything moved.
  */
-static inline int wsk__view_to(wsk_tree_t *orig, wsk_tree_t *at, int vx, int vy, int z)
+/* A zoom the toolkit may set: 1/16 to 16, and no further out than a
+   bounded world or torus whole -- unless even 16 cannot fill the view. */
+static inline int wsk__zclamp(const wsk_tree_t *at, int z)
 {
 	if (z < 16) z = 16;
-	if (z > 4096) z = 4096;
-	if (at->wspace != WSK_OPEN) {
+	if (at->wspace != WSK_OPEN && at->ww > 0 && at->wh > 0) {
 		int zmin = (at->aw * 256 + at->ww - 1) / at->ww, zy = (at->ah * 256 + at->wh - 1) / at->wh;
 		if (zy > zmin) zmin = zy;
 		if (z < zmin) z = zmin;
 	}
+	if (z > 4096) z = 4096;
+	return z;
+}
+
+static inline int wsk__view_to(wsk_tree_t *orig, wsk_tree_t *at, int vx, int vy, int z)
+{
+	z = wsk__zclamp(at, z);
+	if (at->wspace != WSK_OPEN && (at->ww <= 0 || at->wh <= 0)) return 0;
 	if (at->wspace == WSK_BOUNDED) {
 		int mx = at->ww - at->aw * 256 / z, my = at->wh - at->ah * 256 / z;
 		if (vx > mx) vx = mx;
@@ -5118,6 +5152,7 @@ static inline int wsk__split_move(wsk_ui_t *ui, int d, int *pane)
 		lo = min;
 		hi = span - others - (rest ? min : 0);
 	}
+	if (hi < lo) return -1;               /* no room to move at all: leave it */
 	if (e > hi) e = hi;
 	if (e < lo) e = lo;
 	if (t->sizes[x] == e) return -1;
@@ -5751,9 +5786,9 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		if (s != 0 && at.overflow == WSK_WORLD) {
 			int z = at.zoom, nz = z - z * ev->d / 256, px = x - at.ax, py = y - at.ay;
 			int wx = at.vx + px * 256 / z, wy = at.vy + py * 256 / z;
-			if (nz == z) nz = z + ((ev->d < 0) ? 1 : -1);
-			if (wsk__view_to(s, &at, wx - px * 256 / (nz < 16 ? 16 : nz > 4096 ? 4096 : nz),
-			                 wy - py * 256 / (nz < 16 ? 16 : nz > 4096 ? 4096 : nz), nz)) {
+			if (nz == z && ev->d != 0) nz = z + ((ev->d < 0) ? 1 : -1);
+			nz = wsk__zclamp(&at, nz);          /* the zoom it will be, so the point holds */
+			if (ev->d != 0 && wsk__view_to(s, &at, wx - px * 256 / nz, wy - py * 256 / nz, nz)) {
 				int a0, a1;
 				if (wsk_area_rows(&at, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
 				n = wsk__note(note, max, n, WSK_NOTE_VIEW, s, -1, s->zoom);

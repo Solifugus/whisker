@@ -4491,6 +4491,99 @@ int main(void)
 #undef EV
 	}
 
+	/* ---- what an independent read of the night's code found ---- */
+	printf("\n-- review fixes, 2026-11-15\n");
+	{
+		static const wsk_widget_t B1[] = { { .kind = WSK_BUTTON, .id = "b", .text = "B" } };
+		static const wsk_widget_t FL[] = { { .kind = WSK_FIELD, .id = "f", .sub = 0 } };
+		wsk_place_t pl[1] = { { .x = 380, .y = 280, .w = 60, .h = 40, .scale = 256 } };
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0 = 0, y1 = 0, n, which = -2;
+
+		/* a torus's button pressed through its wrapped copy repaints there */
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.item = B1; w.n = 1; w.overflow = WSK_WORLD; w.place = pl;
+		w.wspace = WSK_TORUS; w.ww = 400; w.wh = 300;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 10; ev.y = 10;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(w.held == &B1[0] && y0 == 0 && y1 >= 20,
+		   "a torus's button pressed where its copy shows (0..20): those rows repaint, not its first copy's off the screen");
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && y0 == 0 && y1 >= 20, "and the release clicks it and repaints the same rows");
+
+		/* a floor bigger than a short, zoomed in, still covers the view */
+		pl[0].x = 0; pl[0].y = 0; pl[0].w = 2000; pl[0].h = 2000;
+		w.wspace = WSK_OPEN; w.zoom = 4096; w.vx = 1100; w.vy = 1100;
+		ok(wsk_hit(&w, 100, 100) == 0, "a 2000-unit floor at zoom 16, seen from its middle: hit, not nowhere");
+		w.vx = 990; w.vy = 990;
+		ok(wsk_hit(&w, 300, 190) == 0, "and seen near its corner: covering the view to its far edge, not stopping short");
+		w.zoom = 256; w.vx = w.vy = 0;
+
+		/* a bounded world of no size, a wheel that does not turn */
+		w.wspace = WSK_BOUNDED; w.ww = 0; w.wh = 0;
+		ok(wsk_check(&w, 0) == WSK_E_KIND, "a bounded world of size 0 is refused -- no division by it");
+		w.wspace = WSK_OPEN;
+		ev.kind = WSK_EV_WHEEL; ev.d = 0; ev.x = 100; ev.y = 100;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0 && w.zoom == 256, "a wheel event of 0 zooms nothing");
+
+		/* a field in a world: refused until its caret is placed at the item's scale */
+		{
+			char fb[8] = "";
+			wsk_buf_t buf[1];
+			memset(buf, 0, sizeof buf);
+			buf[0].b = fb; buf[0].cap = 8;
+			w.item = FL; w.buf = buf; w.bufs = 1;
+			ok(wsk_check(&w, &which) == WSK_E_KIND && which == 0, "an editable field in a world is refused, for now, by name");
+			w.item = B1; w.buf = 0; w.bufs = 0;
+		}
+
+		/* two small fixed panes: a drag that has no room moves nothing */
+		{
+			static const wsk_widget_t SM[] = {
+				{ .kind = WSK_LABEL,   .id = "a", .text = "a", .size = 10 },
+				{ .kind = WSK_DIVIDER, .id = "d", .size = 6 },
+				{ .kind = WSK_LABEL,   .id = "c", .text = "c", .size = 10 },
+			};
+			short sz[3] = { 0, 0, 0 };
+			wsk_tree_t c;
+			wsk_init(&c, WSK_COL, 320, 200);
+			c.pad = 0; c.gap = 0; c.item = SM; c.n = 3; c.sizes = sz;
+			wsk_ui_init(&ui, &c);
+			ev.kind = WSK_EV_DOWN; ev.x = 100; ev.y = 13; ev.d = 0;
+			wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			ev.kind = WSK_EV_MOVE; ev.y = 14;
+			n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			ok(n == 0 && sz[0] == 0 && sz[2] == 0,
+			   "two fixed panes of 10, under the 32 a pane keeps: a drag moves nothing, and writes no negative size");
+			ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		}
+
+		/* UTF-8 the long way round, a surrogate, past U+10FFFF; a span inside a character */
+		ok(!wsk__ok_n("\xe0\x80\x80", 3, WSK_CAP_UTF8, 0) && !wsk__ok_n("\xed\xa0\x80", 3, WSK_CAP_UTF8, 0) &&
+		   !wsk__ok_n("\xf4\x90\x80\x80", 4, WSK_CAP_UTF8, 0) && wsk__ok_n("\xe2\x80\x94\xf4\x8f\xbf\xbf", 7, WSK_CAP_UTF8, 0),
+		   "an overlong, a surrogate and a code point past U+10FFFF refused; a dash and U+10FFFF, the control, accepted");
+		{
+			static const wsk_widget_t F1[] = { { .kind = WSK_FIELD, .id = "f", .sub = 0, .size = 32 } };
+			char fb[16] = "a\xc3\xa9";
+			wsk_buf_t buf[1];
+			wsk_tree_t c;
+			memset(buf, 0, sizeof buf);
+			buf[0].b = fb; buf[0].cap = 16; buf[0].len = 3; buf[0].caret = 0; buf[0].span = 2;
+			wsk_init(&c, WSK_COL, 320, 200);
+			c.item = F1; c.n = 1; c.buf = buf; c.bufs = 1; c.caps = WSK_CAP_UTF8;
+			ok(wsk_check(&c, 0) == WSK_E_TEXT, "a selection ending inside a character is refused");
+			buf[0].span = 3;
+			ok(wsk_check(&c, 0) == WSK_OK, "CONTROL: ending after it, accepted");
+		}
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;
