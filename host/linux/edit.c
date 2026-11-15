@@ -14,7 +14,8 @@
  *
  * And a desktop's plumbing (§5s): Shift with the arrows, or a drag, selects
  * in a field; Ctrl-A, C, X and V are the clipboard -- the system's, through
- * the host. A right-click on a field opens a menu of the same four, each of
+ * the host; Ctrl-Z undoes and Ctrl-Y redoes (§5v). A right-click on a field
+ * opens a menu of the same four, each of
  * which feeds the toolkit the same key, so a menu command and its shortcut
  * cannot disagree. Ctrl-S is Save, the program's own shortcut. Close the
  * window to quit.
@@ -140,6 +141,8 @@ static const char *strs[2] = { "Tab between fields, Enter prints a field, right-
 static const char HELP_UTF8[] = "Tab between fields \xe2\x80\x94 Enter prints a field \xe2\x80\x94 "
                                 "right-click a field \xe2\x96\xb8 Copy, Paste";
 static wsk_buf_t buf[3];
+static char undo_b[3][2048];            /* what Ctrl-Z undoes, per field (§5v) */
+static wsk_undo_t undo[3];
 static wsk_tree_t win, nest[6 + 30 + 1];
 static wsk_ui_t ui;
 static char clip[128];                  /* the toolkit's copy, for the host (§5s) */
@@ -266,6 +269,10 @@ int main(int argc, char **argv)
 	buf[1].b = city; buf[1].cap = sizeof city;
 	buf[2].b = note; buf[2].cap = sizeof note;
 	buf[2].wrap = 1;                        /* a note wraps (§5u) */
+	for (int i = 0; i < 3; i++) {
+		undo[i].b = undo_b[i]; undo[i].cap = sizeof undo_b[i];
+		buf[i].undo = &undo[i];
+	}
 
 	caps = wh_caps();                       /* ask the host first (§5r) */
 	if (caps & WH_CAP_UTF8) strs[0] = HELP_UTF8;

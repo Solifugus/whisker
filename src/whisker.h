@@ -105,6 +105,7 @@
  *     -DWSK_NO_IMAGE    the image, for a host that can draw one (§5r)
  *     -DWSK_NO_INPUT    the toolkit: events, focus, editing
  *     -DWSK_NO_TEXTSEL  selection in a field, and the clipboard (§5s)
+ *     -DWSK_NO_UNDO     undo and redo of what was typed (§5v)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -127,6 +128,9 @@
 #  endif
 #  ifndef WSK_NO_TEXTSEL
 #    define WSK_NO_TEXTSEL 1       /* a finger in a field scrolls (§5s) */
+#  endif
+#  ifndef WSK_NO_UNDO
+#    define WSK_NO_UNDO 1          /* a desktop's, as the clipboard is */
 #  endif
 #endif
 #ifdef WSK_MINIMAL
@@ -183,6 +187,9 @@
 #endif
 #if (defined(WSK_NO_INPUT) || defined(WSK_NO_FIELD)) && !defined(WSK_NO_TEXTSEL)
 #  define WSK_NO_TEXTSEL 1         /* a selection is edited by the toolkit */
+#endif
+#if (defined(WSK_NO_INPUT) || defined(WSK_NO_FIELD)) && !defined(WSK_NO_UNDO)
+#  define WSK_NO_UNDO 1            /* and so is what undo undoes */
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -318,15 +325,30 @@ typedef struct {
  * and which the toolkit never writes. `b` holds `cap` bytes including the
  * NUL, so a field takes cap - 1 characters; `caret` is where the next goes.
  */
+/*
+ * Undo (§5v): a byte array the CALLER gives a buffer, holding the edits the
+ * toolkit made -- each what was removed and what was put in, where -- up to
+ * `used` to undo and from there to `end` to redo. Full, the oldest go.
+ */
+typedef struct {
+	char *b;
+	int   cap, used, end;
+	unsigned char join;          /* the last step may grow: typing */
+} wsk_undo_t;
+
 typedef struct {
 	char  *b;
-	short  cap, len, caret;
-	short  top;                  /* a memo's first line shown (§5o) */
-	short  span;                 /* the selection: caret to caret + span,
+	int    cap, len, caret;      /* int, not short: Studio's own files are
+	                                200-326 KB (§5v) */
+	int    top;                  /* a memo's first line shown (§5o) */
+	int    span;                 /* the selection: caret to caret + span,
 	                                either way; 0, none (§5s). A program that
 	                                writes the text sets it back to 0. */
 	unsigned char wrap;          /* a memo: 1 wraps long lines at its width,
 	                                0 slides sideways to the caret (§5u) */
+#ifndef WSK_NO_UNDO
+	wsk_undo_t   *undo;          /* what Ctrl-Z undoes, or 0 for none (§5v) */
+#endif
 } wsk_buf_t;
 
 typedef struct wsk_tree {
@@ -3598,8 +3620,8 @@ typedef struct {
 	/* The clipboard's copy (§5s rule 6): the CALLER's memory, set after
 	   wsk_ui_init, which Ctrl-C and Ctrl-X copy a selection into. 0, none. */
 	char             *clip;
-	short             clipcap;
-	short             anchor;    /* a drag's selection: the end it started at */
+	int               clipcap;
+	int               anchor;    /* a drag's selection: the end it started at */
 	unsigned char     selecting; /* a press in the focused field, selecting */
 #endif
 } wsk_ui_t;
@@ -3882,6 +3904,109 @@ static inline void wsk__shift(char *b, int from, int to, int n)
 		}
 }
 
+#ifndef WSK_NO_UNDO
+/* A step's numbers, four bytes each, written a byte at a time: the array is
+   the caller's chars, with no alignment to lean on. */
+static inline void wsk__u4(char *p, int v)
+{
+	for (int k = 0; k < 4; k++) p[k] = (char)((unsigned)v >> (8 * k));
+}
+static inline int wsk__g4(const char *p)
+{
+	unsigned v = 0;
+	for (int k = 0; k < 4; k++) v |= (unsigned)(unsigned char)p[k] << (8 * k);
+	return (int)v;
+}
+
+/*
+ * A step is  at, removed, inserted | the removed bytes | the inserted |
+ * its own size  -- 16 bytes and the text, the size last so that undo can
+ * walk back from `used`. Typing at the end of the last step's insertion
+ * grows that step rather than adding one, so a word -- with the space
+ * before it -- is one undo.
+ */
+static inline void wsk__urec(wsk_undo_t *u, const char *txt, int at, int del,
+                             const char *ins, int n, int typing)
+{
+	int need = 16 + del + n, p;
+
+	u->end = u->used;                        /* a new edit ends redo */
+	if (u->join && typing && u->used >= 16) {
+		int size = wsk__g4(u->b + u->used - 4), st = u->used - size;
+		int pat = wsk__g4(u->b + st), pdel = wsk__g4(u->b + st + 4), pins = wsk__g4(u->b + st + 8);
+		/* a space after a word starts the next step, which it is part of */
+		if (pdel == 0 && pat + pins == at && u->used + 1 <= u->cap &&
+		    !(ins[0] == ' ' && u->b[u->used - 5] != ' ')) {
+			u->b[u->used - 4] = ins[0];          /* over the old size... */
+			wsk__u4(u->b + st + 8, pins + 1);
+			wsk__u4(u->b + u->used - 3, size + 1);   /* ...and a new one after */
+			u->used++;
+			u->end = u->used;
+			return;
+		}
+	}
+	u->join = (unsigned char)typing;
+	if (need > u->cap) { u->used = u->end = 0; u->join = 0; return; }
+	while (u->used + need > u->cap) {        /* the oldest go */
+		int first = 16 + wsk__g4(u->b + 4) + wsk__g4(u->b + 8);
+		wsk__shift(u->b, first, 0, u->used - first);
+		u->used -= first;
+	}
+	p = u->used;
+	wsk__u4(u->b + p, at); wsk__u4(u->b + p + 4, del); wsk__u4(u->b + p + 8, n);
+	for (int j = 0; j < del; j++) u->b[p + 12 + j] = txt[at + j];
+	for (int j = 0; j < n; j++) u->b[p + 12 + del + j] = ins[j];
+	wsk__u4(u->b + p + 12 + del + n, need);
+	u->used = u->end = p + need;
+}
+#endif
+
+/*
+ * Every edit the toolkit makes to a buffer: `del` bytes at `at` replaced by
+ * the n bytes of `ins` -- recorded for undo first, when the buffer has an
+ * undo array. The caller has checked there is room.
+ */
+static inline void wsk__put(wsk_buf_t *b, int at, int del, const char *ins, int n, int typing)
+{
+#ifndef WSK_NO_UNDO
+	if (b->undo != 0) wsk__urec(b->undo, b->b, at, del, ins, n, typing);
+#else
+	(void)typing;
+#endif
+	if (n != del) wsk__shift(b->b, at + del, at + n, b->len - at - del + 1);
+	for (int j = 0; j < n; j++) b->b[at + j] = ins[j];
+	b->len += n - del;
+}
+
+#ifndef WSK_NO_UNDO
+/*
+ * Undo (back = 1) or redo the next step: the text put back as it was, the
+ * caret after what came back. 0 if there was nothing to do, or no room for
+ * it -- a buffer the program has since filled -- in which case nothing.
+ */
+static inline int wsk__undo(wsk_buf_t *b, int back)
+{
+	wsk_undo_t *u = b->undo;
+	int st, at, del, ins, from, to;
+
+	if (u == 0 || (back ? u->used == 0 : u->used == u->end)) return 0;
+	st = back ? u->used - wsk__g4(u->b + u->used - 4) : u->used;
+	at = wsk__g4(u->b + st); del = wsk__g4(u->b + st + 4); ins = wsk__g4(u->b + st + 8);
+	/* undo takes out what was inserted and puts back what was removed */
+	from = back ? ins : del;
+	to = back ? del : ins;
+	if (at + from > b->len || b->len - from + to >= b->cap) return 0;
+	if (from != to) wsk__shift(b->b, at + from, at + to, b->len - at - from + 1);
+	for (int j = 0; j < to; j++) b->b[at + j] = u->b[st + 12 + (back ? 0 : del) + j];
+	b->len += to - from;
+	b->caret = at + to;
+	b->span = 0;
+	u->used = back ? st : st + 16 + del + ins;
+	u->join = 0;
+	return 1;
+}
+#endif
+
 /*
  * The character a point is nearest in field k of `lay`, laid out at `whole`:
  * in a memo, on the line under it, with the memo's view kept where it is --
@@ -3906,7 +4031,7 @@ static inline int wsk__char_at(const wsk_tree_t *lay, int k, wsk_buf_t *b,
 		c = left + (x - (whole.x + WSK_FIELD_PAD) + adv / 2) / adv;
 		if (c < 0) c = 0;
 		c = (at + c > end) ? end : at + c;
-		b->top = (short)top;
+		b->top = top;
 		return c;
 	}
 #endif
@@ -3934,14 +4059,14 @@ static inline int wsk__press_field(wsk_ui_t *ui, const wsk_tree_t *in, int k,
 #ifndef WSK_NO_TEXTSEL
 	{
 		int anchor = (extend && !changed) ? b->caret + b->span : c;
-		b->span = (short)(anchor - c);
-		ui->anchor = (short)anchor;
+		b->span = (anchor - c);
+		ui->anchor = anchor;
 		ui->selecting = 1;
 	}
 #else
 	(void)extend;
 #endif
-	b->caret = (short)c;
+	b->caret = c;
 	wsk__focus_now(ui);
 	wsk__refocus(ui, in, k, rect, b, lo, hi);
 	if (changed) n = wsk__note(note, max, n, WSK_NOTE_FOCUS, in, k, 0);
@@ -3958,7 +4083,7 @@ static inline void wsk__follow(wsk_ui_t *ui)
 	if (ui->focus_in->item[ui->focus_item].kind != WSK_MEMO) return;
 	wsk__where(b->b, b->len, b->caret, wsk__mroom(ui->focus_in, ui->focus_r, b),
 	           &line, &col, &lines);
-	b->top = (short)wsk__top(b, wsk__vis(ui->focus_in, ui->focus_r), line, lines);
+	b->top = wsk__top(b, wsk__vis(ui->focus_in, ui->focus_r), line, lines);
 }
 #endif
 
@@ -3975,9 +4100,8 @@ static inline int wsk__drop(wsk_buf_t *b)
 	int s0, s1, m = wsk__selr(b, &s0, &s1);
 	b->span = 0;
 	if (m == 0) return 0;
-	wsk__shift(b->b, s1, s0, b->len - s1 + 1);
-	b->len = (short)(b->len - m);
-	b->caret = (short)s0;
+	wsk__put(b, s0, m, "", 0, 0);
+	b->caret = s0;
 	return 1;
 }
 #endif
@@ -4038,11 +4162,9 @@ static inline int wsk_ui_paste(wsk_ui_t *ui, const char *text, int len,
 	}
 	sel = wsk__selr(b, &s0, &s1);
 	if (b->len - sel + len >= b->cap) return WSK_E_BUDGET;
-	(void)wsk__drop(b);
-	wsk__shift(b->b, b->caret, b->caret + len, b->len - b->caret + 1);
-	for (int i = 0; i < len; i++) b->b[b->caret + i] = text[i];
-	b->len = (short)(b->len + len);
-	b->caret = (short)(b->caret + len);
+	wsk__put(b, s0, sel, text, len, 0);          /* one step: the selection replaced */
+	b->caret = s0 + len;
+	b->span = 0;
 #ifndef WSK_NO_MEMO
 	if (memo) wsk__follow(ui);
 #endif
@@ -4239,8 +4361,8 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 					wsk_buf_t *b = ui->focus_b;
 					int c = wsk__char_at(lay, k, b, wsk_rect(lay, k), x, y);
 					if (c != b->caret) {
-						b->caret = (short)c;
-						b->span = (short)(ui->anchor - c);
+						b->caret = c;
+						b->span = (ui->anchor - c);
 #ifndef WSK_NO_MEMO
 						wsk__follow(ui);
 #endif
@@ -4374,9 +4496,9 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	}
 	else if ((ev->kind == WSK_EV_TEXT || ev->kind == WSK_EV_KEY) && ui->focus_b != 0) {
 		wsk_buf_t *b;
-		int edit = 0, moved = 0, memo = 0, key = ev->key, sel = 0;
+		int edit = 0, moved = 0, memo = 0, key = ev->key, sel = 0, s0 = 0;
 #ifndef WSK_NO_TEXTSEL
-		int ext = 0, anchor, s0 = 0, s1 = 0;
+		int ext = 0, anchor, s1 = 0;
 #endif
 		wsk__focus_now(ui);
 		b = ui->focus_b;
@@ -4406,23 +4528,31 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 				m++;
 			}
 			if (ok && m > 0 && b->len - sel + m < b->cap) {
-#ifndef WSK_NO_TEXTSEL
-				(void)wsk__drop(b);
-#endif
-				wsk__shift(b->b, b->caret, b->caret + m, b->len - b->caret + 1);
-				for (int j = 0; j < m; j++) b->b[b->caret + j] = ev->text[j];
-				b->len = (short)(b->len + m);
-				b->caret = (short)(b->caret + m);
+				int at = sel ? s0 : b->caret;
+				/* one character, replacing nothing: typing, which undo
+				   groups; anything else is a step of its own */
+				wsk__put(b, at, sel, ev->text, m, sel == 0 && m == 1);
+				b->caret = at + m;
+				b->span = 0;
 				edit = 1;
 			}
 		}
+#ifndef WSK_NO_UNDO
+		/* undo and redo (§5v), when the buffer keeps steps; else the
+		   chords are the program's */
+		else if (b->undo != 0 && (key == ('z' | WSK_MOD_CTRL) || key == ('y' | WSK_MOD_CTRL) ||
+		                          key == ('z' | WSK_MOD_CTRL | WSK_MOD_SHIFT))) {
+			used = 1;
+			edit = wsk__undo(b, key == ('z' | WSK_MOD_CTRL));
+		}
+#endif
 #ifndef WSK_NO_TEXTSEL
 		/* the chords a field uses (§5s rule 6); any other is the program's */
 		else if (key == ('a' | WSK_MOD_CTRL)) {
 			used = 1;
 			if (b->caret != b->len || b->span != -b->len) {
 				b->caret = b->len;
-				b->span = (short)-b->len;
+				b->span = -b->len;
 				moved = 1;
 			}
 		} else if ((key == ('c' | WSK_MOD_CTRL) || key == ('x' | WSK_MOD_CTRL)) && ui->clip != 0) {
@@ -4440,7 +4570,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			edit = wsk__drop(b);
 		} else if (!ext && sel > 0 && (key == WSK_KEY_LEFT || key == WSK_KEY_RIGHT)) {
 			/* a selection collapses to the end the arrow points at */
-			b->caret = (short)((key == WSK_KEY_LEFT) ? s0 : s1);
+			b->caret = ((key == WSK_KEY_LEFT) ? s0 : s1);
 			b->span = 0;
 			moved = 1;
 		}
@@ -4450,12 +4580,10 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		   between them keeping the column, Home and End are its ends. */
 		else if (memo && key == WSK_KEY_ENTER) {
 			if (b->len - sel + 1 < b->cap) {
-#ifndef WSK_NO_TEXTSEL
-				(void)wsk__drop(b);
-#endif
-				wsk__shift(b->b, b->caret, b->caret + 1, b->len - b->caret + 1);
-				b->b[b->caret] = '\n';
-				b->len++; b->caret++;
+				int at = sel ? s0 : b->caret;
+				wsk__put(b, at, sel, "\n", 1, 0);
+				b->caret = at + 1;
+				b->span = 0;
 				edit = 1;
 			}
 		} else if (memo && (key == WSK_KEY_UP || key == WSK_KEY_DOWN ||
@@ -4469,7 +4597,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			if (key == WSK_KEY_HOME) to = at;
 			else if (key == WSK_KEY_END) to = end;
 			else to = (at + col > end) ? end : at + col;
-			if (to != b->caret) { b->caret = (short)to; moved = 1; }
+			if (to != b->caret) { b->caret = to; moved = 1; }
 		}
 #endif
 		else if (key == WSK_KEY_LEFT && b->caret > 0) {
@@ -4481,11 +4609,11 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		} else if (key == WSK_KEY_END && b->caret != b->len) {
 			b->caret = b->len; moved = 1;
 		} else if (key == WSK_KEY_BACKSPACE && b->caret > 0) {
-			wsk__shift(b->b, b->caret, b->caret - 1, b->len - b->caret + 1);
-			b->caret--; b->len--; edit = 1;
+			wsk__put(b, b->caret - 1, 1, "", 0, 0);
+			b->caret--; edit = 1;
 		} else if (key == WSK_KEY_DELETE && b->caret < b->len) {
-			wsk__shift(b->b, b->caret + 1, b->caret, b->len - b->caret);
-			b->len--; edit = 1;
+			wsk__put(b, b->caret, 1, "", 0, 0);
+			edit = 1;
 		} else if (key == WSK_KEY_ENTER) {
 			n = wsk__note(note, max, n, WSK_NOTE_ENTER, ui->focus_in, ui->focus_item, b->len);
 		}
@@ -4493,7 +4621,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		/* Shift kept the anchor; any other move lets the selection go --
 		   and so does an edit, which wsk__drop has done if there was one */
 		if (ext) {
-			if (moved) b->span = (short)(anchor - b->caret);
+			if (moved) b->span = (anchor - b->caret);
 		} else if (!used && b->span != 0 && (edit || moved || wsk__moves(key))) {
 			b->span = 0;
 			moved = 1;

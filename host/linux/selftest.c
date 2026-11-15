@@ -251,6 +251,7 @@ int main(void)
 		SDL_Event e;
 		int y0, y1, got = 0;
 
+		memset(buf, 0, sizeof buf);             /* a buffer grows fields: zero it first */
 		buf[0].b = ab; buf[0].cap = 16; buf[0].len = 0; buf[0].caret = 0;
 		buf[1].b = bb; buf[1].cap = 16; buf[1].len = 0; buf[1].caret = 0;
 		wsk_init(&t2, WSK_COL, W, H);

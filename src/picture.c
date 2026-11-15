@@ -1066,6 +1066,7 @@ int main(void)
 		uint32_t v;
 		int y0, y1, good = 1;
 
+		memset(buf, 0, sizeof buf);             /* a buffer grows fields: zero it first */
 		buf[0].b = ab; buf[0].cap = 24; buf[0].len = 0; buf[0].caret = 0;
 		buf[1].b = bb; buf[1].cap = 24; buf[1].len = 0; buf[1].caret = 0;
 		wsk_init(&w, WSK_COL, PW, PH);

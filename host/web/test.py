@@ -166,7 +166,7 @@ try:
     m = ev.until(">Save now</text>")
     ok(m is not None, "Ctrl-S, the program's own shortcut, opens the Save menu")
     post("K 10")                      # Escape closes it
-    post("K %d" % (ord("z") | 0x200))  # a chord nobody uses
+    post("K %d" % (ord("q") | 0x200))  # a chord nobody uses (Ctrl-Z undoes, §5v)
     time.sleep(0.3)
     second = Events()
     replay = second.next()
@@ -190,6 +190,6 @@ ok('paste  name "hi there"' in out, "and the paste went into name")
 ok("paste  refused (-1)" in out, "a line break pasted into a one-line field is refused, not trimmed")
 ok("shortcut save" in out and out.find("close  the menu", out.find("shortcut save")) > 0,
    "Ctrl-S was the program's; Escape, after it, closed what it opened")
-ok("key    0x27a, not ours" in out, "and an unused chord, Ctrl-Z, reached the program as a KEY notice")
+ok("key    0x271, not ours" in out, "and an unused chord, Ctrl-Q, reached the program as a KEY notice")
 print(("\n%d web check(s) failed" % fails) if fails else "\nall web checks passed")
 sys.exit(1 if fails else 0)

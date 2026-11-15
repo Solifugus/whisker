@@ -52,6 +52,7 @@ decline is a finish, not a failure. This map treats it that way throughout.
 | **Trees** (§5p) | built 2026-11-14: depths over a flat list, the program owns expansion, as Studio's `window` does |
 | **World** (§5q) | designed 2026-11-14, not built: placed children over a larger space, view and zoom, bounded/open/toroidal, per-item scale and fade -- games, diagrams, Matthew's virtual conference |
 | **Capabilities** (§5r) | built 2026-11-14: a host declares UTF-8, images, clipping; caps 0 byte-identical; the browser draws Studio's arrows and images |
+| **Undo** (§5v, step 1 of `source`) | built 2026-11-14: `int` buffer positions (Studio's files are 200–326 KB); undo/redo in caller memory for fields and memos |
 | **Memo wrap** (§5u) | built 2026-11-14: soft wrap per memo (`buf.wrap`), caret/view/selection on rows; unwrapped byte-identical; +108 bytes |
 | **Tree arrows** (§5t) | built 2026-11-14: ▸/▾ as marks drawn as one triangle path, on every host; +420 bytes default, refused in `WSK_MINIMAL` |
 | **Desktop plumbing** (§5s) | built 2026-11-14: right-click (MENU), modifiers and shortcuts (KEY), selection in fields and memos, the clipboard through the host; real round trip in headless Chrome; 844 bytes, `WSK_NO_TEXTSEL`, left out of `WSK_PANEL` |

@@ -197,6 +197,14 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
   view and selection move on rows. Off by default (`source` must not wrap),
   and an unwrapped memo runs the same code with a room of 32,767. +108 bytes.
 
+- **§5v — `source`, step 1: `int` positions and undo** (2026-11-14).
+  Studio's files are 200–326 KB, so `wsk_buf_t` positions are `int`. Every
+  edit goes through one primitive (`wsk__put`) that records it in the
+  buffer's **`wsk_undo_t`, caller memory**; Ctrl-Z, Ctrl-Y/Ctrl-Shift-Z.
+  `WSK_NO_UNDO`, set by `WSK_PANEL`. **Zero a buffer before setting its
+  fields** — it grows. Next: `WSK_SOURCE` (gutter, colour runs), then UTF-8
+  editing, which 1.2 % of Studio's lines need.
+
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
 very nice sounds". It found two rules for any board program: **draw little,
@@ -204,7 +212,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **610 checks**, including a step
+`src/run.sh --module` is the whole of it: **631 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 39, including the

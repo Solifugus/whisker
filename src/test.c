@@ -2121,6 +2121,7 @@ int main(void)
 		int n, y0 = 0, y1 = 0;
 		char dd[4096];
 
+		memset(buf, 0, sizeof buf);             /* a buffer grows fields: zero it first */
 		buf[0].b = nb; buf[0].cap = 8;  buf[0].len = 0; buf[0].caret = 0;
 		buf[1].b = cb; buf[1].cap = 48; buf[1].len = 0; buf[1].caret = 0;
 		buf[2].b = tb; buf[2].cap = 32; buf[2].len = 0; buf[2].caret = 0;
@@ -3216,6 +3217,116 @@ int main(void)
 #undef TYPE
 #undef KEY
 #undef SET
+	}
+
+	/* ---- §5v. undo ---- */
+	printf("\n-- §5v  undo and redo\n");
+	{
+		static const wsk_widget_t FU[] = {
+			{ .kind = WSK_FIELD, .id = "f", .sub = 0, .size = 32 },
+			{ .kind = WSK_MEMO,  .id = "m", .sub = 1, .size = 80 },
+		};
+		char fb[32] = "", mb[32] = "", ub[256], small[48], clip[16];
+		wsk_buf_t buf[2];
+		wsk_undo_t u, us;
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int n, y0 = 0, y1 = 0;
+
+		memset(buf, 0, sizeof buf);
+		memset(&u, 0, sizeof u);
+		u.b = ub; u.cap = sizeof ub;
+		buf[0].b = fb; buf[0].cap = 32; buf[0].undo = &u;
+		buf[1].b = mb; buf[1].cap = 32;
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.pad = 4; w.gap = 4; w.item = FU; w.n = 2; w.buf = buf; w.bufs = 2;
+		wsk_ui_init(&ui, &w);
+		ui.clip = clip; ui.clipcap = sizeof clip;
+		wsk_ui_focus(&ui, "f", &y0, &y1);
+		memset(&ev, 0, sizeof ev);
+#define TYPE(T) (ev.kind = WSK_EV_TEXT, snprintf(ev.text, sizeof ev.text, "%s", (T)), \
+                 n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define KEY(K)  (ev.kind = WSK_EV_KEY, ev.key = (unsigned short)(K), n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1))
+#define UNDO    KEY('z' | WSK_MOD_CTRL)
+#define REDO    KEY('y' | WSK_MOD_CTRL)
+
+		for (const char *p = "hello world"; *p; p++) { char c[2] = { *p, 0 }; TYPE(c); }
+		ok(strcmp(fb, "hello world") == 0, "eleven characters typed one at a time");
+		UNDO;
+		ok(n == 1 && nt[0].kind == WSK_NOTE_TEXT && strcmp(fb, "hello") == 0 && buf[0].caret == 5,
+		   "Ctrl-Z: \" world\" goes in one step -- a word and the space before it -- and a TEXT notice");
+		UNDO;
+		ok(fb[0] == '\0' && buf[0].caret == 0, "Ctrl-Z again: \"hello\", the word before");
+		UNDO;
+		ok(n == 0 && fb[0] == '\0', "and again: nothing left to undo, nothing changes, no notice");
+		REDO;
+		ok(strcmp(fb, "hello") == 0 && buf[0].caret == 5, "Ctrl-Y redoes \"hello\", the caret after it");
+		KEY('z' | WSK_MOD_CTRL | WSK_MOD_SHIFT);
+		ok(strcmp(fb, "hello world") == 0 && buf[0].caret == 11, "and Ctrl-Shift-Z \" world\"");
+
+		KEY(WSK_KEY_BACKSPACE); KEY(WSK_KEY_BACKSPACE);
+		ok(strcmp(fb, "hello wor") == 0, "two Backspaces");
+		UNDO;
+		ok(strcmp(fb, "hello worl") == 0 && buf[0].caret == 10, "each is a step: one undo gives back the l");
+		UNDO;
+		KEY(WSK_KEY_HOME); KEY(WSK_KEY_DELETE);
+		UNDO;
+		ok(strcmp(fb, "hello world") == 0 && buf[0].caret == 1, "Delete, undone: the h back, the caret after it");
+
+		/* a selection replaced, cut, pasted: each one step */
+		KEY(WSK_KEY_HOME); for (int i = 0; i < 5; i++) KEY(WSK_KEY_RIGHT | WSK_MOD_SHIFT);
+		TYPE("J");
+		ok(strcmp(fb, "J world") == 0, "\"hello\" selected and typed over");
+		UNDO;
+		ok(strcmp(fb, "hello world") == 0 && buf[0].caret == 5, "one undo puts \"hello\" back -- not the J and the deletion apart");
+		KEY(WSK_KEY_HOME); for (int i = 0; i < 6; i++) KEY(WSK_KEY_RIGHT | WSK_MOD_SHIFT);
+		KEY('x' | WSK_MOD_CTRL);
+		ok(strcmp(fb, "world") == 0, "a cut");
+		UNDO;
+		ok(strcmp(fb, "hello world") == 0, "undone");
+		KEY(WSK_KEY_END);
+		ok(wsk_ui_paste(&ui, "!!", 2, nt, 4, &y0, &y1) == 1 && strcmp(fb, "hello world!!") == 0, "a paste");
+		UNDO;
+		ok(strcmp(fb, "hello world") == 0, "undone in one step");
+
+		/* a new edit ends redo */
+		UNDO;
+		TYPE("x");
+		REDO;
+		ok(strstr(fb, "x") != 0 && strstr(fb, "world") == 0 && n == 0,
+		   "an edit after an undo ends redo: Ctrl-Y changes nothing");
+
+		/* a small array drops its oldest steps */
+		memset(&us, 0, sizeof us);
+		us.b = small; us.cap = sizeof small;
+		snprintf(fb, sizeof fb, "%s", ""); buf[0].len = 0; buf[0].caret = 0; buf[0].span = 0;
+		buf[0].undo = &us;
+		TYPE("aaaaa");                      /* 21 bytes: a step of five */
+		TYPE("bb");                         /* 18: 39 */
+		TYPE("cc");                         /* 18: 57 > 48, so the oldest goes */
+		ok(us.used == 36, "three steps into 48 bytes: the first dropped, two kept (36)");
+		UNDO; UNDO; UNDO;
+		ok(strcmp(fb, "aaaaa") == 0, "so two undos are all there are: \"aaaaa\" stays");
+
+		/* without an array, the chords are the program's */
+		buf[0].undo = 0;
+		UNDO;
+		ok(n == 1 && nt[0].kind == WSK_NOTE_KEY && nt[0].value == ('z' | WSK_MOD_CTRL),
+		   "with no undo array, Ctrl-Z is a KEY notice, for the program");
+
+		/* a memo's line break is a step too */
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		memset(&u, 0, sizeof u); u.b = ub; u.cap = sizeof ub;
+		buf[1].undo = &u;
+		TYPE("ab"); KEY(WSK_KEY_ENTER); TYPE("cd");
+		UNDO; UNDO;
+		ok(strcmp(mb, "ab") == 0 && buf[1].caret == 2, "in a memo: \"cd\" undone, then the line break");
+#undef TYPE
+#undef KEY
+#undef UNDO
+#undef REDO
 	}
 
 	/* Leave the documents where run.sh can hand them to a real XML parser. */

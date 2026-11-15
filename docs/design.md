@@ -3291,6 +3291,93 @@ positions on screen, and the simple choice was taken.
 
 ---
 
+## 5v. Iterations 21–22 — `source`, the code editor
+
+**Written 2026-11-14, before any code.** The one word of Studio's window
+whisker could not answer (`window-gap.md` §7), and the first item of §6.1's
+second bar. Matthew settled the question that decided its shape: *"yes,
+colour runs from the program"* — **whisker never learns gBASIC's syntax**.
+
+Measured first: gBASIC Studio's own files are **200–326 KB**
+(`lib/studio_ui.bas` 325,773 bytes, `app/studio.bas` 208,890), and
+`wsk_buf_t`'s positions were `short` — a 32 KB ceiling, a tenth of the file
+Studio is written in. So the first change is not a feature.
+
+### The rules
+
+1. **A buffer's positions are `int`** (`cap`, `len`, `caret`, `top`,
+   `span`). Nothing drawn changes; a buffer gets a few bytes bigger.
+2. **Undo is the caller's memory too.** A buffer may point to a
+   `wsk_undo_t` — a byte array the program gives it — and every edit the
+   toolkit makes (typing, Backspace, Delete, Enter, a selection replaced, a
+   cut, a paste) is recorded there as *what was removed and what was put
+   in, where*. **Ctrl-Z** undoes, **Ctrl-Y** and **Ctrl-Shift-Z** redo;
+   typing a run of characters is one step, as people expect. When the array
+   is full the oldest steps go. No undo array, no undo: the chords stay the
+   program's (§5s rule 3). `WSK_NO_UNDO`, set by `WSK_PANEL`.
+3. **`WSK_SOURCE` is a memo for code.** It shares the memo's editing,
+   selection and view, and differs in three things: it never wraps; it has
+   a **gutter of line numbers** on its left, in the window's `bg`, so it
+   reads as a column of its own; and its text is drawn in **colour runs**.
+4. **Colour runs are the program's.** A buffer may point to an array of
+   `wsk_ink_t { int at, len; unsigned int ink; }`, sorted, not
+   overlapping — "these characters in this colour". Characters no run
+   covers are in the window's ink. whisker draws each run as its own
+   `<text>` at its column (monospace makes the column the position), so
+   every substrate draws it, RV-9's rasteriser included. The program
+   re-colours when it is told the text changed (a TEXT notice) — before it
+   repaints, so a stale colour is never drawn; a run past the end of the
+   text is ignored, not refused, since the text may have just got shorter.
+5. **The gutter is a place to click.** A press there puts the caret at the
+   start of that line, and the release notes **`WSK_NOTE_GUTTER`**, its
+   `value` the line (from 0) — Studio's breakpoints.
+6. **Profiles**: `WSK_NO_SOURCE`, set by `WSK_PANEL` (and implied by
+   `WSK_NO_MEMO`); a source widget is refused by name without it.
+
+### Done criteria
+
+1. Every earlier output byte-identical (rule 1 included).
+2. Undo and redo of each kind of edit, typing coalesced, the caret put
+   back, a full array dropping its oldest, a new edit ending redo, and with
+   no array Ctrl-Z the program's.
+3. A source widget: the gutter's numbers and width, colour runs drawn as
+   pieces at their columns, unsorted runs refused, stale runs ignored; long
+   lines scroll sideways; the gutter's press and notice.
+4. A 300 KB buffer edited and drawn — Studio's own file size.
+5. At the pixels: a coloured listing through RV-9's rasteriser, a person
+   looking; repaints equal a full redraw.
+6. A demo whose program colours gBASIC itself, on both hosts.
+7. Profiles and cost measured.
+
+### What the first step came to, 2026-11-14: `int` positions and undo
+
+**631 checks** (610 before): 20 in the suite. Every output of the commit
+before — 35 files — byte-identical with the buffer's positions widened to
+`int`.
+
+- **Every edit goes through one primitive** now — `del` bytes at `at`
+  replaced by `n` — which records the step first when the buffer has an
+  undo array. Typing, Backspace, Delete, Enter, a selection typed over, a
+  cut and a paste were seven pieces of code; they are seven calls.
+- **Steps** are what people expect: a word and the space before it is one;
+  a selection typed over is one, not a deletion and an insertion; a cut and
+  a paste one each; each Backspace one. Undo puts the caret after what came
+  back; an edit after an undo ends redo; a full array drops its oldest (three
+  steps in 48 bytes keep two). With no array, Ctrl-Z is the program's.
+- **Found on the way**: three tests set a buffer's fields one by one and
+  left the rest as stack garbage — harmless until the struct grew a pointer.
+  **A buffer is zeroed before its fields are set**; the struct will grow
+  again. (`module_keys.c` does not, and need not: `WSK_PANEL` has neither
+  undo nor selection, and a module cannot call `memset`.)
+- `edit.c`'s three fields keep 2 KB of undo each.
+
+**§7's question**: building *without* undo comes out **92 bytes larger**
+for a toolkit program — the compiler inlines the one edit primitive
+differently — so undo's cost is, as measured, nothing. `WSK_PANEL` +20
+(10,244), from the wider positions; `WSK_MINIMAL` unchanged.
+
+---
+
 ## 6. What would have to be true before gBASIC took this
 
 Recorded so that the bar is set now, while nothing is invested, rather than
