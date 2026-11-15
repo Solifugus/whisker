@@ -3149,6 +3149,73 @@ clipboard, which the page reports in its console rather than hides.
 
 ---
 
+## 5t. Iteration 19 — a tree's arrows, drawn rather than spelled
+
+**Written 2026-11-14, before any code.** Matthew, having tried §5s on both
+hosts: *"the tree view uses "+" and "-" instead of the arrows"* — on the
+desktop window, which draws with RV-9's rasteriser and so has no `▾`/`▸`
+(§5r: it says it cannot draw UTF-8, and the program fell back). Asked
+whether to draw the arrow as a shape instead: *"yes... do that"*.
+
+### The rules
+
+1. **An arrow is a mark, not a character.** Three new values of the
+   widget's existing `mark` byte: `WSK_MARK_SHUT` (▸, a closed folder),
+   `WSK_MARK_OPEN` (▾) and `WSK_MARK_LEAF` (the same room, nothing drawn, so
+   a file's name lines up with its folder's). No new field: a widget is
+   still 64 bytes. The program sets the mark when it hands over its rows, as
+   it already sets `depth` — expansion stays the program's (§5p).
+2. **On a label or a button.** The mark takes a gutter of one font size —
+   two characters, as `"▸ "` did — before the text, and the triangle is
+   drawn in it as **one filled `<path>`** in the widget's ink, which every
+   substrate draws: `/w0`, SDL (the same rasteriser), a browser. The first
+   shape whisker draws that is not a rectangle, and deliberately the only
+   one: a fixed triangle, not a shape language.
+3. **Whole or not at all**, as text is: the triangle and its text are one
+   cell for a scroll's cut (§5e).
+4. **Profiles.** Disclosure marks are marks: `WSK_NO_MARKS` (and so
+   `WSK_MINIMAL`) refuses them by name, `WSK_E_KIND`; a disclosure mark on
+   anything but a label or a button is refused too.
+
+### Done criteria
+
+1. Every earlier output byte-identical.
+2. The three marks: the triangle's points, the gutter, text truncated by
+   two characters more; LEAF draws no path and keeps the room.
+3. At the pixels through RV-9's rasteriser: the triangles are there, in the
+   ink, pointing the right way — and a person looks.
+4. `edit.c` draws its tree with marks on every host: the SDL window shows
+   arrows, the browser the same; the browser's UTF-8 is still exercised.
+5. Refusals and cost measured.
+
+### What it came to, 2026-11-14 (late)
+
+Built the same night; criteria 1–5 met. **594 checks** (578 before): 12 in
+the suite, 3 at the pixels, one profile control. Every output of the commit
+before — 33 files — byte-identical.
+
+- **The triangle** is three points in a cell of one font size: ▸ 7/8 of its
+  height wide, ▾ the same turned. In the suite its exact path; in a centred
+  button the mark and text centred together; a label sized by its text is
+  one font size wider marked, so it loses nothing to the mark, and a fixed
+  one loses exactly two characters.
+- **At the pixels through RV-9's rasteriser** — the substrate with no ▸ in
+  its font — each triangle is 8 pixels broad at one end and 0 at its point,
+  so it points the way it says; a leaf's cell holds no ink (the control);
+  and a person looked: ▾ src, ▸ modules, names aligned under their folders.
+- **`edit.c`** marks its rows instead of spelling `▾`/`+`: the desktop
+  window and the browser draw the same arrows. The browser's UTF-8 is still
+  exercised, by the help line (a real dash and ▸).
+- **Refused by name**: on a field (`WSK_E_KIND`), and in `WSK_MINIMAL`
+  (profile control: full draws 429 bytes, minimal refuses at the widget).
+
+**§7's question**: **+420** bytes in the default for a small panel
+(13,092), **+368** in `WSK_PANEL` (10,120) — the P4 gets arrows too — and
+**+4** in `WSK_MINIMAL` (3,788), the refusal's wider test. More than a
+triangle ought to cost, and not yet broken down by where it goes.
+
+---
+
 ## 6. What would have to be true before gBASIC took this
 
 Recorded so that the bar is set now, while nothing is invested, rather than

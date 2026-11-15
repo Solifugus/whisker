@@ -113,8 +113,8 @@ static node_t NODES[] = {
 #define NN ((int)(sizeof NODES / sizeof NODES[0]))
 static int rownode[30];
 
-/* The rows to show: every node not under a closed folder, + or - on a
-   folder in ASCII, which is all the window draws (§5p). */
+/* The rows to show: every node not under a closed folder, a folder's
+   arrow drawn as a mark (§5t) -- a shape, so every host draws it. */
 static int tree_rows(void)
 {
 	int n = 0, hide = 255;
@@ -124,12 +124,8 @@ static int tree_rows(void)
 		hide = 255;
 		items[n].depth = t->depth;
 		items[n].fill = (n % 2) ? 0x1a3048u : 0x15283du;
-		/* Studio's own arrows where the host can draw them (§5r), and +/-
-		   where it cannot -- the window draws 32..126 */
-		snprintf(cells[n][0].text, WSK_TEXT_MAX, "%s%s",
-		         !t->kids ? "  "
-		         : (caps & WH_CAP_UTF8) ? (t->open ? "\xe2\x96\xbe " : "\xe2\x96\xb8 ")
-		         : (t->open ? "- " : "+ "), t->name);
+		cells[n][0].mark = !t->kids ? WSK_MARK_LEAF : t->open ? WSK_MARK_OPEN : WSK_MARK_SHUT;
+		snprintf(cells[n][0].text, WSK_TEXT_MAX, "%s", t->name);
 		snprintf(cells[n][1].text, WSK_TEXT_MAX, "%s", t->size);
 		rownode[n++] = i;
 		if (t->kids && !t->open) hide = t->depth;
@@ -140,6 +136,9 @@ static char name[40], city[40], note[80];
 static unsigned char state[1];          /* Remember me, ticked or not (§5m) */
 static const char *strs[2] = { "Tab between fields, Enter prints a field, right-click a field for Copy and Paste",
                                "/static/logo.svg" };
+/* the same help where a host draws UTF-8 (§5r): a real dash and arrow */
+static const char HELP_UTF8[] = "Tab between fields \xe2\x80\x94 Enter prints a field \xe2\x80\x94 "
+                                "right-click a field \xe2\x96\xb8 Copy, Paste";
 static wsk_buf_t buf[3];
 static wsk_tree_t win, nest[6 + 30 + 1];
 static wsk_ui_t ui;
@@ -262,6 +261,7 @@ int main(int argc, char **argv)
 	buf[2].b = note; buf[2].cap = sizeof note;
 
 	caps = wh_caps();                       /* ask the host first (§5r) */
+	if (caps & WH_CAP_UTF8) strs[0] = HELP_UTF8;
 	wsk_init(&win, WSK_COL, w, h);
 	win.pad = 0; win.gap = 0; win.font = 20; win.ids = 1;
 	win.item = WIN; win.n = 3;

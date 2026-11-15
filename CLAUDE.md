@@ -55,7 +55,7 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
 
 ## Status
 
-**Eighteen iterations are built, and two of them have now run on the C5.**
+**Nineteen iterations are built, and two of them have now run on the C5.**
 
 - **§5 — the renderer.** Labels and buttons in one single-axis stack, column or
   row. Done.
@@ -186,6 +186,12 @@ Studio's window is a pure record. **Recounted 2026-11-12: whisker answers
   `WSK_NO_TEXTSEL` (844 bytes), set by `WSK_PANEL`. Escape is a key on SDL
   now, not a quit.
 
+- **§5t — a tree's arrows** (2026-11-14). `WSK_MARK_SHUT`/`_OPEN`/`_LEAF`
+  on a label or button: a filled triangle in a gutter of one font size, one
+  `<path>` — **whisker's first shape that is not a rectangle, and on
+  purpose its only one**. Every host draws it, so the SDL window and the P4
+  show ▸/▾ where they used to need `+`/`-`. Refused under `WSK_NO_MARKS`.
+
 **`wpiano`** (2026-11-14) — two octaves on the P4's speaker, drawn in
 rectangles (no shapes needed), every finger its own; Matthew: "no delay...
 very nice sounds". It found two rules for any board program: **draw little,
@@ -193,7 +199,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **578 checks**, including a step
+`src/run.sh --module` is the whole of it: **594 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 39, including the

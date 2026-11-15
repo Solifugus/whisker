@@ -96,8 +96,10 @@ try:
        "and it is edit.c's window, drawn by whisker, unchanged")
     # §5r: this host said it draws UTF-8, images and clip paths, and the
     # program used all three
-    ok(first is not None and "\u25be src" in first,
-       "a host that draws UTF-8 is sent Studio's own arrow: \u25be src")
+    ok(first is not None and "fields \u2014 Enter" in first,
+       "a host that draws UTF-8 is sent it: the help line's real dash")
+    ok(first is not None and ">src</text>" in first and first.count("<path d=\"M") >= 4,
+       "and the tree's arrows are marks (\u00a75t), drawn as paths as on every host -- not characters")
     ok(first is not None and '<image href="/static/logo.svg"' in first,
        "and an image, for a host that draws images")
     ok(first is not None and 'clip-path="url(#wsk-c' in first,

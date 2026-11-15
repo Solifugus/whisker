@@ -246,7 +246,12 @@ enum {
  */
 enum {
 	WSK_MARK_CORNERS = 1,        /* a button, pressed */
-	WSK_MARK_CARET   = 2         /* a field, taking input */
+	WSK_MARK_CARET   = 2,        /* a field, taking input */
+	/* a tree's row (§5t): a triangle drawn before a label's or button's
+	   text -- a shape, so every substrate draws it, where a ▸ is UTF-8 */
+	WSK_MARK_SHUT    = 3,        /* ▸ a closed folder */
+	WSK_MARK_OPEN    = 4,        /* ▾ an open one */
+	WSK_MARK_LEAF    = 5         /* the same room, nothing drawn */
 };
 
 /*
@@ -967,7 +972,14 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 		}
 #endif
 #ifdef WSK_NO_MARKS
-		if (t->item[i].mark == WSK_MARK_CORNERS) {
+		if (t->item[i].mark == WSK_MARK_CORNERS || t->item[i].mark >= WSK_MARK_SHUT) {
+			if (which != 0) *which = i;
+			return WSK_E_KIND;
+		}
+#else
+		/* a tree's mark goes before text: a label's or a button's (§5t) */
+		if (t->item[i].mark >= WSK_MARK_SHUT && t->item[i].kind != WSK_LABEL &&
+		    t->item[i].kind != WSK_BUTTON) {
 			if (which != 0) *which = i;
 			return WSK_E_KIND;
 		}
@@ -1215,6 +1227,9 @@ static inline int wsk__natural(const wsk_tree_t *t, int i)
 #ifndef WSK_NO_CHECK
 		if (w->kind == WSK_CHECK) text += t->font + t->font / 2;
 #endif
+#ifndef WSK_NO_MARKS
+		if (w->mark >= WSK_MARK_SHUT) text += t->font;     /* a tree's mark (§5t) */
+#endif
 		return text + 2 * t->pad;
 	}
 	if (w->kind == WSK_BUTTON) return WSK_BTN_ROWS;
@@ -1289,6 +1304,9 @@ static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
 #ifndef WSK_NO_CHECK
 		if (w->kind == WSK_CHECK) text += t->font + t->font / 2;
 #endif
+#ifndef WSK_NO_MARKS
+		if (w->mark >= WSK_MARK_SHUT) text += t->font;     /* a tree's mark (§5t) */
+#endif
 		return text + 2 * t->pad;
 	}
 	if (w->kind == WSK_BUTTON) return WSK_BTN_ROWS;
@@ -1329,6 +1347,9 @@ static inline int wsk__meas(const wsk_tree_t *r, const wsk_tree_t *t, int i,
 		return wsk_text_w(t->font, wsk__chars(wsk__say(r, t, i), wsk__len(wsk__say(r, t, i)))) + 2 * t->pad
 #ifndef WSK_NO_CHECK
 		     + ((w->kind == WSK_CHECK) ? t->font + t->font / 2 : 0)
+#endif
+#ifndef WSK_NO_MARKS
+		     + ((w->mark >= WSK_MARK_SHUT) ? t->font : 0)
 #endif
 		     ;
 	if (w->kind == WSK_BUTTON) return WSK_BTN_ROWS;
@@ -2455,6 +2476,43 @@ static inline void wsk__marks(wsk_sink_t *s, const wsk_tree_t *t,
 	wsk__col(s, (w->ink != WSK_INHERIT) ? w->ink : t->ink);
 	wsk__s(s, "\" stroke-width=\"2\"/>");
 }
+
+/*
+ * A tree's arrow (§5t), in the cell of one font size that starts at x: ▸
+ * for a closed folder, ▾ for an open one -- a filled triangle half the
+ * font high, in the widget's ink, one <path> of three points.
+ */
+static inline void wsk__arrow(wsk_sink_t *s, const wsk_tree_t *t,
+                              const wsk_widget_t *w, int x, int top)
+{
+	int a = t->font / 2, bx = x + (t->font - a) / 2, by = top + (t->font - a) / 2;
+	int px[3], py[3];
+
+	if (w->mark == WSK_MARK_SHUT) {
+		px[0] = bx + a / 8; py[0] = by;
+		px[1] = bx + a / 8; py[1] = by + a;
+		px[2] = bx + a;     py[2] = by + a / 2;
+	} else if (w->mark == WSK_MARK_OPEN) {
+		px[0] = bx;         py[0] = by + a / 8;
+		px[1] = bx + a;     py[1] = by + a / 8;
+		px[2] = bx + a / 2; py[2] = by + a;
+	} else
+		return;                      /* a leaf: the room, and nothing in it */
+	wsk__s(s, "<path d=\"M");
+	for (int k = 0; k < 3; k++) {
+		if (k > 0) wsk__s(s, "L");
+		wsk__n(s, px[k]);
+		wsk__s(s, " ");
+		wsk__n(s, py[k]);
+	}
+	wsk__s(s, "Z\"");
+	if (w->ink != WSK_INHERIT) {
+		wsk__s(s, " fill=\"");
+		wsk__col(s, w->ink);
+		wsk__s(s, "\"");
+	}
+	wsk__s(s, "/>");
+}
 #endif /* WSK_NO_MARKS */
 
 /*
@@ -2520,16 +2578,28 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
 	   slack until 2026-11-11, which cut "OK" to "O" (design.md §5f). Text
 	   at the start of a cell keeps the padding at both ends (§5n). */
 	int room = (start ? r.w - 2 * t->pad : r.w) / wsk_advance(t->font);
-	int top = r.y + (r.h - t->font) / 2;
+	int top = r.y + (r.h - t->font) / 2, g = 0;
 
+#ifndef WSK_NO_MARKS
+	/* a tree's mark takes a gutter of one font size, two characters (§5t) */
+	if (w->mark >= WSK_MARK_SHUT) { g = t->font; room -= 2; }
+#endif
 	if (room < 1) return;
 	if (chars > room) chars = room;
 	if (chars == 0) return;
-	/* the text's own cell, which is all a scroll can cut */
+	/* the text's own cell -- and its mark's -- which is all a scroll can cut */
 	{
 		int tw = wsk_text_w(t->font, chars);
-		int x0 = start ? r.x + t->pad : r.x + r.w / 2 - tw / 2;
-		if (!wsk__shows(t, x0, x0 + tw, top)) return;
+		int x0 = start ? r.x + t->pad : r.x + r.w / 2 - (tw + g) / 2;
+		if (!wsk__shows(t, x0, x0 + g + tw, top)) return;
+#ifndef WSK_NO_MARKS
+		if (g > 0) {
+			wsk__arrow(s, t, w, x0, top);
+			wsk__textel(s, 1, x0 + g, wsk_baseline_of(top, t->font), w->ink, txt,
+			            wsk__byte_of(txt, bytes, chars));
+			return;
+		}
+#endif
 		/* truncated by characters, and so never through one (§5r) */
 		wsk__textel(s, start, start ? x0 : r.x + r.w / 2,
 		            wsk_baseline_of(top, t->font), w->ink, txt,

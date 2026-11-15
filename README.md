@@ -17,7 +17,7 @@ in `design.md` §8, and built since, iteration by iteration (§5i onward).
 **Status of the drawing layer.** `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p, §5r, §5s and §7 — **578 checks** plus the profile gate,
+`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p, §5r, §5s, §5t and §7 — **594 checks** plus the profile gate,
 the pixels through RV-9's own rasteriser, eighteen module builds with the
 double-link, and a person looking at the pictures. `host/linux/run.sh --test`
 adds **39** more, and `host/web/run.sh --test` 28 over HTTP and 18 in
@@ -77,7 +77,8 @@ Unicode, images and clipped panes, and does; RV-9's screen, which cannot, is
 sent exactly what it always was.
 
 **And trees** (§5p): rows indented by depth, as Studio's are — the program
-keeps the tree and hands over the rows it shows.
+keeps the tree and hands over the rows it shows — with ▸ and ▾ drawn as
+shapes (§5t), so they appear on every screen, the board's included.
 
 **And a desktop's plumbing** (§5s): select text with Shift or a drag, Cut,
 Copy and Paste with the system's clipboard, right-click for a context menu,

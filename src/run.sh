@@ -61,7 +61,7 @@ for W in wrapped text; do
 done
 # The controls. Without these, "byte for byte" is satisfied by a minimal build
 # that draws a field as a label and says nothing.
-for W in field marked scrolled nested wrapped text check memo; do
+for W in field marked scrolled nested wrapped text check memo arrow; do
 	F="$(/tmp/wsk_prof_full $W)"; M="$(/tmp/wsk_prof_min $W)"
 	case "$F$M" in
 	drew*refused\ -6*) echo "ok    CONTROL: $W -- full ${F%% bytes*} bytes, minimal ${M}" ;;

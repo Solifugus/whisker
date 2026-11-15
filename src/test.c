@@ -3061,6 +3061,69 @@ int main(void)
 #undef SET
 	}
 
+	/* ---- §5t. a tree's arrows, drawn rather than spelled ---- */
+	printf("\n-- §5t  arrows\n");
+	{
+		static const wsk_widget_t TR[] = {
+			{ .kind = WSK_LABEL,  .id = "a0", .text = "src",  .size = 32, .mark = WSK_MARK_SHUT },
+			{ .kind = WSK_LABEL,  .id = "a1", .text = "docs", .size = 32, .mark = WSK_MARK_OPEN },
+			{ .kind = WSK_LABEL,  .id = "a2", .text = "a.c",  .size = 32, .mark = WSK_MARK_LEAF, .depth = 1 },
+			{ .kind = WSK_BUTTON, .id = "a3", .text = "Go",   .size = 32, .mark = WSK_MARK_SHUT },
+		};
+		static const wsk_widget_t BAD[] = {
+			{ .kind = WSK_FIELD, .id = "f", .size = 32, .mark = WSK_MARK_OPEN },
+		};
+		wsk_widget_t row[2];
+		wsk_tree_t t;
+		char ad[4096];
+		int which = -2;
+
+		/* labels at the start, font 16: the mark's cell is 16 wide from
+		   x0 = 4 + pad 4 = 8; the text's top is 4 + (32 - 16) / 2 = 12, and the
+		   triangle 8 high in the cell, 4 in from each side: x 12, y 16 */
+		wsk_init(&t, WSK_COL, 320, 172);
+		t.pad = 4; t.gap = 4; t.item = TR; t.n = 3; t.talign = WSK_ALIGN_START; t.indent = 16;
+		ok(wsk_check(&t, 0) == WSK_OK, "a closed folder, an open one, a leaf under it");
+		render_into(&t, ad, sizeof ad, 4096);
+		ok(has(ad, "<path d=\"M13 16L13 24L20 20Z\"/>"),
+		   "the closed one: a triangle pointing right, 8 high, in the mark's cell -- in the ink, by inheritance");
+		ok(has(ad, "<text text-anchor=\"start\" x=\"24\" y=\"") && has(ad, ">src</text>"),
+		   "and its text after the cell, at 8 + 16 = 24");
+		ok(has(ad, "<path d=\"M12 53L20 53L16 60Z\"/>"), "the open one: pointing down, on the next row (40..72)");
+		ok(count(ad, "<path") == 2, "the leaf draws no triangle");
+		ok(has(ad, "x=\"40\" y=\"") && has(ad, ">a.c</text>"),
+		   "but keeps the room: its text at 8 + 16 indent + 16 = 40, under its folder's name");
+		t.item = &TR[3]; t.n = 1; t.talign = WSK_MIDDLE;
+		render_into(&t, ad, sizeof ad, 4096);
+		/* centred: "Go" is 16 wide, the mark 16 more: 32, centred on 160 */
+		ok(has(ad, "<path d=\"M149 16L149 24L156 20Z\"/>") && has(ad, "x=\"160\" y=\"") && has(ad, ">Go</text>"),
+		   "on a centred button: the mark and its text centred together, 144..176");
+
+		/* the room: a row, a label 80 wide -- (80 - 8) / 8 = 9 characters, 7 with a mark */
+		memset(row, 0, sizeof row);
+		row[0].kind = WSK_LABEL; snprintf(row[0].id, WSK_ID_MAX, "r0");
+		snprintf(row[0].text, WSK_TEXT_MAX, "abcdefghij"); row[0].size = 80;
+		wsk_init(&t, WSK_ROW, 320, 172);
+		t.pad = 4; t.gap = 4; t.item = row; t.n = 1; t.talign = WSK_ALIGN_START;
+		render_into(&t, ad, sizeof ad, 4096);
+		ok(has(ad, ">abcdefghi</text>"), "CONTROL: unmarked, nine characters fit");
+		row[0].mark = WSK_MARK_SHUT;
+		render_into(&t, ad, sizeof ad, 4096);
+		ok(has(ad, ">abcdefg</text>"), "marked, seven: the mark is two characters' room");
+		row[0].size = 0; snprintf(row[0].text, WSK_TEXT_MAX, "abc");
+		row[1] = row[0]; row[1].mark = 0; snprintf(row[1].id, WSK_ID_MAX, "r1");
+		t.n = 2;
+		ok(wsk_rect(&t, 0).w == wsk_rect(&t, 1).w + 16,
+		   "a label sized by its text is the mark's 16 wider than the same one unmarked");
+		render_into(&t, ad, sizeof ad, 4096);
+		ok(count(ad, ">abc</text>") == 2, "and so loses no characters to it");
+
+		/* refused where there is no text to put it before */
+		wsk_init(&t, WSK_COL, 320, 172);
+		t.item = BAD; t.n = 1;
+		ok(wsk_check(&t, &which) == WSK_E_KIND && which == 0, "a tree's mark on a field is refused, by name");
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

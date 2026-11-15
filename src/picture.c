@@ -1470,6 +1470,57 @@ int main(void)
 		shot("selection_field.ppm");
 	}
 
+	/*
+	 * A tree's arrows, at the pixels (design.md §5t): through RV-9's own
+	 * rasteriser, which has no ▸ in its font -- the reason for drawing one.
+	 */
+	{
+		static const wsk_widget_t T[] = {
+			{ .kind = WSK_LABEL, .id = "t0", .text = "src",       .size = 28, .mark = WSK_MARK_OPEN },
+			{ .kind = WSK_LABEL, .id = "t1", .text = "whisker.h", .size = 28, .mark = WSK_MARK_LEAF, .depth = 1 },
+			{ .kind = WSK_LABEL, .id = "t2", .text = "modules",   .size = 28, .mark = WSK_MARK_SHUT, .depth = 1 },
+			{ .kind = WSK_LABEL, .id = "t3", .text = "docs",      .size = 28, .mark = WSK_MARK_SHUT },
+			{ .kind = WSK_LABEL, .id = "t4", .text = "README.md", .size = 28, .mark = WSK_MARK_LEAF },
+		};
+		wsk_tree_t w;
+		wsk_sink_t s;
+		uint32_t v;
+
+		wsk_init(&w, WSK_COL, PW, PH);
+		w.pad = 4; w.gap = 4; w.bg = 0x10203au; w.font = 20; w.item = T; w.n = 5;
+		w.talign = WSK_ALIGN_START; w.indent = 20;
+		s.put = to_window; s.ctx = &dev;
+		printf("\n  a tree's arrows (§5t)\n");
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&w, &s, 4096);
+		/* the triangle's box: 10 square, 5 in from the mark's cell, whose
+		   left is the row's x + pad + indent; the text's top centred in 28 */
+		for (int i = 0; i < 4; i += 3) {
+			wsk_rect_t r = wsk_rect(&w, i), box;
+			int top = r.y + (r.h - 20) / 2, first = 0, last = 0, lo, hi;
+			box.x = (short)(r.x + 4 + 5); box.y = (short)(top + 5); box.w = 10; box.h = 10;
+			/* how much ink on the box's first and last line, along the way it points */
+			for (int k = 0; k < 10; k++) {
+				wsk_rect_t a = { (short)(box.x + (i == 0 ? k : 1)), (short)(box.y + (i == 0 ? 1 : k)), 1, 1 };
+				wsk_rect_t b = { (short)(box.x + (i == 0 ? k : 8)), (short)(box.y + (i == 0 ? 8 : k)), 1, 1 };
+				first += span(a, pix565(w.ink), &lo, &hi);
+				last += span(b, pix565(w.ink), &lo, &hi);
+			}
+			printf("    %s: %d ink pixels across its broad end, %d across its point\n",
+			       i == 0 ? "open (down)" : "shut (right)", first, last);
+			ok(first >= 6 && last <= 3,
+			   i == 0 ? "the open folder's triangle is broad at the top and narrows down: it points down"
+			          : "the closed one's is broad at the left and narrows right: it points right");
+		}
+		{
+			wsk_rect_t leaf = wsk_rect(&w, 4), cell;
+			int lo, hi;
+			cell.x = (short)(leaf.x + 4); cell.y = leaf.y; cell.w = 20; cell.h = leaf.h;
+			ok(span(cell, pix565(w.ink), &lo, &hi) == 0, "CONTROL: a leaf's cell holds no ink at all");
+		}
+		shot("tree_arrows.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }
