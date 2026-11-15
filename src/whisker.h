@@ -5230,6 +5230,57 @@ static inline int wsk__view_to(wsk_tree_t *orig, wsk_tree_t *at, int vx, int vy,
 }
 #endif
 
+#ifndef WSK_NO_WORLD
+/*
+ * Keep item `item` of a world in view (§5q step 5): at least `margin`
+ * percent of the view from every edge (50, centred), moving `ease`/256 of
+ * the way this call (256, at once; at least a unit). `world` is its id or
+ * path, or 0 for a root that is itself the world. 1 if the view moved, with
+ * y0..y1 the rows to repaint; 0 if not; WSK_E_NOTFOUND if no such world.
+ */
+static inline int wsk_world_follow(wsk_tree_t *root, const char *world, int item,
+                                   int margin, int ease, int *y0, int *y1)
+{
+	wsk_tree_t at, c, *o;
+	int i, vw, vh, dx, dy, iw, ih, sx, sy;
+	*y0 = *y1 = 0;
+	if (world == 0) { wsk__tcopy(&c, root); o = root; }
+	else {
+		if ((i = wsk__lookup(root, world, &at, 0)) < 0 || at.item[i].kind != WSK_STACK ||
+		    !wsk__child(&at, i, &c))
+			return WSK_E_NOTFOUND;
+		o = (wsk_tree_t *)&at.nest[at.item[i].sub];
+	}
+	if (c.overflow != WSK_WORLD || c.place == 0 || c.zoom <= 0 || item < 0 || item >= c.n)
+		return WSK_E_NOTFOUND;
+	if (margin < 0) margin = 0;
+	if (margin > 50) margin = 50;
+	if (ease < 1) ease = 1;
+	if (ease > 256) ease = 256;
+	vw = c.aw * 256 / c.zoom; vh = c.ah * 256 / c.zoom;
+	iw = (int)(((long long)c.place[item].w * c.place[item].scale) >> 8);
+	ih = (int)(((long long)c.place[item].h * c.place[item].scale) >> 8);
+	dx = c.place[item].x - c.vx;
+	dy = c.place[item].y - c.vy;
+	if (c.wspace == WSK_TORUS) {               /* the short way round the seam */
+		dx = wsk__wrap(dx + c.ww / 2, c.ww) - c.ww / 2;
+		dy = wsk__wrap(dy + c.wh / 2, c.wh) - c.wh / 2;
+	}
+	/* how far the view must move along each axis to keep the margin */
+	{
+		int lo = vw * margin / 100, hi = vw - lo - iw;
+		sx = (margin >= 50 || hi < lo) ? dx - (vw - iw) / 2 : (dx < lo) ? dx - lo : (dx > hi) ? dx - hi : 0;
+		lo = vh * margin / 100; hi = vh - lo - ih;
+		sy = (margin >= 50 || hi < lo) ? dy - (vh - ih) / 2 : (dy < lo) ? dy - lo : (dy > hi) ? dy - hi : 0;
+	}
+	if (sx != 0) { int e = sx * ease / 256; sx = (e != 0) ? e : (sx > 0 ? 1 : -1); }
+	if (sy != 0) { int e = sy * ease / 256; sy = (e != 0) ? e : (sy > 0 ? 1 : -1); }
+	if ((sx == 0 && sy == 0) || !wsk__view_to(o, &c, c.vx + sx, c.vy + sy, c.zoom)) return 0;
+	if (wsk_area_rows(&c, y0, y1) != WSK_OK) *y0 = *y1 = 0;
+	return 1;
+}
+#endif
+
 #ifndef WSK_NO_SPLIT
 /*
  * A held divider moved `d` pixels along its stack (§5x rules 3 and 4): the

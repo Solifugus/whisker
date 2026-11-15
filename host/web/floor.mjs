@@ -104,10 +104,10 @@ try {
   await sleep(1500);
   await snap('floor_first.png');
 
-  // "You" start at world 500,400; the view at 100,0, the floor from 4,36
+  // "You" start at world 500,300; the view at 100,0, the floor from 4,36
   // (the window's padding, then a 32-px status line), puts them at
-  // 404..474, 436..466
-  await click(435, 447);
+  // 404..474, 336..366
+  await click(435, 351);
   await sleep(400);
   ok(said.includes('meet   You waves.'), 'a click on a person meets them: "You waves."');
 
@@ -125,6 +125,18 @@ try {
   await sleep(1500);
   ok(said.includes('walk   to 696,150') && said.includes('bump   You reach "Damage, banded".'),
      'walking into a poster: whisker says what the step would touch, the program stops you there');
+
+  // §5q step 5: walk toward the right edge -- world 1096,364. Unfollowed,
+  // you would end at screen x 965..1035, off the edge; followed with a 30%
+  // margin, the view glides so you stay within 1016 - 305 - 70 + 4 = 645
+  await click(1000, 400);
+  await sleep(3000);
+  const gold = await js(`(()=>{const d=whisker.canvas.getContext("2d").getImageData(0,36,1024,564).data;
+    let lo=9999,hi=-1;for(let i=0;i<d.length;i+=4){if(Math.abs(d[i]-0xd0)<6&&Math.abs(d[i+1]-0xa0)<6&&Math.abs(d[i+2]-0x20)<6){const x=(i/4)%1024;if(x<lo)lo=x;if(x>hi)hi=x;}}return [lo,hi];})()`);
+  console.log(`      you, in gold, from x ${gold[0]} to ${gold[1]}`);
+  ok(said.includes('walk   to 1096,364') && gold[1] > 0 && gold[1] <= 720,
+     'the view follows you: walked toward the right edge, you are kept 30% in from it');
+  await snap('floor_follow.png');
 
   // the wheel zooms about the pointer
   {
@@ -146,6 +158,7 @@ try {
     await sleep(500);
     ok((said.match(/view   /g) || []).length > before && !said.slice(said.length - 200).includes('walk   to 8'),
        'a drag pans the floor -- VIEW notices -- and is not a walk');
+    ok(said.includes('follow off'), 'and looking around stops the view following you');
   }
   // §5z: the floor has the keyboard from the start -- the arrows look around
   {

@@ -3116,6 +3116,43 @@ poster stops you at y 149 — the next step, to 139, would touch it — and
 the program says *You reach "Damage, banded"*. (The check first failed for
 the demo's own reason: it printed the bump without flushing.)
 
+### Step 5, written before its code (2026-11-15): a view that follows
+
+Matthew: an RTS wants a view the player pans; the conference wants it to
+follow your avatar. **Following is the program's decision, the arithmetic
+whisker's** — so a call, not a mode:
+
+    wsk_world_follow(root, "floor", item, margin, ease, &y0, &y1)
+
+1. `root` and the world's id or path (0 for a root that is itself the
+   world), so a program need not hold a laid-out tree.
+2. **`margin`**, 0..50: the item is kept at least that percentage of the
+   view from every edge; the view moves only when it would come closer. 50
+   keeps it centred; 0 moves only when it would leave the view. A margin is
+   what lets most steps repaint only the item's own rows — a pan repaints
+   the whole view, about 200 ms on the P4.
+3. **`ease`**, 1..256: how much of the way to go this call, 256 all of it;
+   less glides, a call per frame. At least one unit, so it always arrives.
+4. Kept inside as every view change is: bounded clamped, a torus wrapped —
+   and on a torus the item is followed the short way round the seam.
+5. Returns whether the view moved, with the rows to repaint. No notice: the
+   program asked. What a drag or a key does while following — stop, look
+   around, carry on — is the program's (it hears VIEW).
+6. The floor demo follows you with a margin of 30 and an ease of 64, stops
+   following when you drag or use the arrows, and starts again when you
+   walk or click yourself.
+
+**What it came to**: as written. 11 checks — still within the margin, no
+move; past it, the view moves just enough (66); centred at 50; a quarter
+of the way at ease 64, and arriving exactly when called each frame; a
+bounded view stopping at its corner; zoomed 2, centred in a view half as
+wide; on a torus, 10 on across the seam rather than 850 back; a nested
+world by id repainting only its own rows; a non-world refused. In Chrome,
+walking toward the right edge leaves you at x 646 — exactly 4 + 1016 −
+304 − 70, the margin's edge — where unfollowed you would be off the
+screen; a drag then says `follow off`. **906 checks**; every earlier
+output byte-identical (41 files).
+
 ### An independent read, and what it found (2026-11-15)
 
 The night's `whisker.h` diff was read by a second agent given the code and

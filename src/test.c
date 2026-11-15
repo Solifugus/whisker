@@ -4620,6 +4620,70 @@ int main(void)
 		ok(wsk_world_overlaps(&w, 0, out, 4) == 0, "CONTROL: the same places in an open world do not touch");
 	}
 
+	/* ---- §5q step 5. a view that follows ---- */
+	printf("\n-- §5q  a world, step 5: a view that follows\n");
+	{
+		static const wsk_widget_t WF5[] = { { .kind = WSK_BUTTON, .id = "me", .text = "Me" } };
+		wsk_place_t pl[1] = { { .x = 100, .y = 80, .w = 40, .h = 20, .scale = 256 } };
+		wsk_tree_t w;
+		int y0, y1, r, calls = 0;
+
+		/* a root world, 320 x 200 at 1:1, bounded 1000 x 800 */
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.item = WF5; w.n = 1; w.overflow = WSK_WORLD; w.place = pl;
+		w.wspace = WSK_BOUNDED; w.ww = 1000; w.wh = 800;
+		r = wsk_world_follow(&w, 0, 0, 30, 256, &y0, &y1);
+		ok(r == 0 && w.vx == 0 && w.vy == 0,
+		   "margin 30%: an item at 100,80 is 96 and 60 from the edges it must keep -- the view does not move");
+		pl[0].x = 250;
+		r = wsk_world_follow(&w, 0, 0, 30, 256, &y0, &y1);
+		ok(r == 1 && w.vx == 66 && w.vy == 0 && y0 == 0 && y1 == 200,
+		   "walked to 250: past 320 - 96 - 40 = 184, so the view moves 66 -- and the world's rows to repaint");
+		pl[0].x = 500; pl[0].y = 300;
+		wsk_world_follow(&w, 0, 0, 50, 256, &y0, &y1);
+		ok(w.vx == 360 && w.vy == 210, "margin 50: centred -- 500 - (320 - 40) / 2 = 360, 300 - (200 - 20) / 2 = 210");
+		w.vx = 0; w.vy = 0;
+		wsk_world_follow(&w, 0, 0, 50, 64, &y0, &y1);
+		ok(w.vx == 90 && w.vy == 52, "ease 64: a quarter of the way this call -- 90 of 360, 52 of 210");
+		while (wsk_world_follow(&w, 0, 0, 50, 64, &y0, &y1) == 1 && calls < 100) calls++;
+		ok(w.vx == 360 && w.vy == 210 && calls < 40,
+		   "and called again each frame it arrives exactly, not stopping a unit short");
+		pl[0].x = 980; pl[0].y = 790;
+		wsk_world_follow(&w, 0, 0, 50, 256, &y0, &y1);
+		ok(w.vx == 680 && w.vy == 600, "near the world's corner: the bounded view stops at its edge, 680,600");
+		w.zoom = 512;
+		pl[0].x = 500; pl[0].y = 300;
+		wsk_world_follow(&w, 0, 0, 50, 256, &y0, &y1);
+		ok(w.vx == 500 - (160 - 40) / 2, "zoomed 2, the view is 160 wide: centred at 440");
+		w.zoom = 256;
+
+		/* a torus: the short way round the seam */
+		w.wspace = WSK_TORUS; w.vx = 900; w.vy = 0;
+		pl[0].x = 50; pl[0].y = 90;
+		wsk_world_follow(&w, 0, 0, 50, 256, &y0, &y1);
+		ok(w.vx == 910, "a torus, the view at 900, the item at 50: 150 ahead across the seam, so 10 on -- not 850 back");
+		w.wspace = WSK_OPEN;
+
+		ok(wsk_world_follow(&w, 0, 3, 50, 256, &y0, &y1) == WSK_E_NOTFOUND, "an item that is not there: WSK_E_NOTFOUND");
+		{
+			static const wsk_widget_t TOPF[] = {
+				{ .kind = WSK_LABEL, .id = "bar", .text = "bar", .size = 40 },
+				{ .kind = WSK_STACK, .id = "floor", .sub = 0, .weight = 1 },
+			};
+			wsk_tree_t root, k[1];
+			wsk_init(&root, WSK_COL, 320, 200);
+			root.pad = 0; root.gap = 0; root.item = TOPF; root.n = 2; root.nest = k; root.nests = 1;
+			wsk_nest_init(&k[0], &root, WSK_COL);
+			k[0].pad = 0; k[0].item = WF5; k[0].n = 1; k[0].overflow = WSK_WORLD; k[0].place = pl;
+			pl[0].x = 500; pl[0].y = 300;
+			r = wsk_world_follow(&root, "floor", 0, 50, 256, &y0, &y1);
+			ok(r == 1 && k[0].vx == 360 && k[0].vy == 300 - (160 - 20) / 2 && y0 == 40 && y1 == 200,
+			   "a world in a window, by its id: centred in its 320 x 160 -- and only its rows, 40..200, to repaint");
+			ok(wsk_world_follow(&root, "bar", 0, 50, 256, &y0, &y1) == WSK_E_NOTFOUND,
+			   "CONTROL: asked of something that is not a world, WSK_E_NOTFOUND");
+		}
+	}
+
 	/* ---- what an independent read of the night's code found ---- */
 	printf("\n-- review fixes, 2026-11-15\n");
 	{

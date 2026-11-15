@@ -17,7 +17,7 @@ in `design.md` §8, and built since, iteration by iteration (§5i onward).
 **Status of the drawing layer.** `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p, §5q (steps 1–3), §5r, §5s, §5t, §5u, §5v, §5w, §5x, §5y, §5z and §7 — **895 checks** plus the profile gate,
+`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p, §5q (steps 1–3), §5r, §5s, §5t, §5u, §5v, §5w, §5x, §5y, §5z and §7 — **906 checks** plus the profile gate,
 the pixels through RV-9's own rasteriser, eighteen module builds with the
 double-link, and a person looking at the pictures. `host/linux/run.sh --test`
 adds **39** more, and `host/web/run.sh --test` 28 over HTTP and 18 in

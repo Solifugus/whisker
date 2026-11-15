@@ -260,6 +260,11 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   `wsk_world_overlaps` — items overlapping a world rectangle, own scale and
   torus wrap included; what a collision does is the program's. The floor
   demo stops you at whoever or whatever you walk into.
+- **§5q step 5 — a view that follows** (2026-11-15):
+  `wsk_world_follow(root, "floor", item, margin, ease, &y0, &y1)` — the
+  program decides when to follow (an RTS never does), whisker does the
+  arithmetic: a margin % the item is kept from every edge, an easing per
+  call, bounded clamp, torus short way round. The floor demo follows you.
 - **§5z — a list or a world from the keyboard** (2026-11-15, Matthew chose
   "one Tab stop"): a selecting list or a world is one Tab stop with a ring;
   a list's Up/Down/Home/End/Enter, a world's arrows and `+`/`-`.
@@ -273,13 +278,13 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **895 checks**, including a step
+`src/run.sh --module` is the whole of it: **906 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 46 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
-the code editor (`code.mjs`) and 8 for the conference floor (`floor.mjs`).
+the code editor (`code.mjs`) and 10 for the conference floor (`floor.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

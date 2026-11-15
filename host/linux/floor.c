@@ -12,6 +12,11 @@
  * a person or a poster to meet it. The floor has the keyboard from the
  * start: the arrows look around, + and - zoom (§5z).
  *
+ * The view follows you (wsk_world_follow, §5q step 5): you may wander the
+ * middle of the screen, and it glides when you come within 30% of an edge.
+ * Looking around -- a drag or the arrows -- stops it following; walking, or
+ * a click on yourself, starts it again. Zooming does not stop it.
+ *
  * Nobody walks through anybody: whisker says what a step would touch
  * (wsk_world_in, §5q step 4) and this program decides -- you stop and meet
  * whoever it is; the others choose somewhere else to go.
@@ -68,6 +73,7 @@ static wsk_tree_t win, nest[1];
 static wsk_ui_t ui;
 static int px[PEOPLE], py[PEOPLE], tx[PEOPLE], ty[PEOPLE];   /* where, and where to */
 static unsigned int seed = 12345;
+static int following = 1;
 
 static int rnd(int n) { seed = seed * 1103515245u + 12345u; return (int)((seed >> 16) % (unsigned)n); }
 static int iabs(int v) { return v < 0 ? -v : v; }
@@ -173,7 +179,7 @@ int main(void)
 		place[POSTERS + PEOPLE + i].w = SW_; place[POSTERS + PEOPLE + i].h = SH_;
 		place[POSTERS + PEOPLE + i].scale = 256;
 		px[i] = tx[i] = (i == 0) ? 500 : 150 + rnd(FLOOR_W - 300);
-		py[i] = ty[i] = (i == 0) ? 400 : 280 + rnd(FLOOR_H - 380);
+		py[i] = ty[i] = (i == 0) ? 300 : 280 + rnd(FLOOR_H - 380);
 	}
 	place_all();
 
@@ -214,7 +220,13 @@ int main(void)
 		if (k == WH_NOTHING) {
 			/* a frame: everyone takes a step, and the floor is drawn again */
 			wh_wait(40);
-			if (step()) { wh_clip(0, 0); wsk_render(&win, &s, 0); }
+			{
+				int moved = step(), fy0, fy1;
+				/* the view glides after you: 30% margin, a quarter of the way a frame */
+				if (following && wsk_world_follow(&win, "floor", POSTERS + 0, 30, 64, &fy0, &fy1) == 1)
+					moved = 1;
+				if (moved) { wh_clip(0, 0); wsk_render(&win, &s, 0); }
+			}
 			continue;
 		}
 		if (k == WH_EXPOSE) { wh_clip(0, 0); wsk_render(&win, &s, 0); continue; }
@@ -234,6 +246,7 @@ int main(void)
 			char m[96];
 			if (t->kind == WSK_NOTE_CLICK && t->in == &nest[0] && t->item >= 0) {
 				int j = t->item;
+				if (j == POSTERS) following = 1;            /* a click on yourself */
 				if (j < POSTERS) snprintf(m, sizeof m, "%s: %s", TITLES[j], ABSTRACTS[j]);
 				else if (j < POSTERS + PEOPLE) {
 					j -= POSTERS;
@@ -251,11 +264,18 @@ int main(void)
 					if (tx[0] < 0) tx[0] = 0;
 					if (ty[0] < 0) ty[0] = 0;
 					printf("walk   to %d,%d\n", wx, wy);
+					following = 1;
 					say("Walking...");
 					all = 1;
 				}
-			} else if (t->kind == WSK_NOTE_VIEW)
+			} else if (t->kind == WSK_NOTE_VIEW) {
+				/* the person looked around: stop following -- unless it was a zoom */
+				if (ev.kind == WSK_EV_MOVE || ev.kind == WSK_EV_KEY) {
+					if (following) printf("follow off\n");
+					following = 0;
+				}
 				printf("view   %d,%d at %d/256\n", nest[0].vx, nest[0].vy, t->value);
+			}
 		}
 		fflush(stdout);
 		if (all) { wh_clip(0, 0); wsk_render(&win, &s, 0); }
