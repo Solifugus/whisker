@@ -22,6 +22,10 @@
  * whisker brings it to the front of the floor's order -- this program then
  * raises the people and what they say back above it, its own layering.
  *
+ * Point at a poster and the status line gives its abstract; at a person,
+ * their name (hover, §5aa) -- shown at once, since nothing here needs a
+ * tooltip's delay.
+ *
  * Nobody walks through anybody: whisker says what a step would touch
  * (wsk_world_in, §5q step 4) and this program decides -- you stop and meet
  * whoever it is; the others choose somewhere else to go.
@@ -68,7 +72,7 @@ static const unsigned int FILLS[PEOPLE] = {
 };
 
 static const wsk_widget_t WIN[] = {
-	{ .kind = WSK_LABEL, .id = "status", .size = 32 },
+	{ .kind = WSK_TEXT, .id = "status", .sub = POSTERS, .size = 32 },   /* strs[POSTERS] */
 	{ .kind = WSK_STACK, .id = "floor", .sub = 0, .weight = 1 },
 };
 
@@ -88,7 +92,13 @@ static int split_told;
 static int rnd(int n) { seed = seed * 1103515245u + 12345u; return (int)((seed >> 16) % (unsigned)n); }
 static int iabs(int v) { return v < 0 ? -v : v; }
 
-static void say(const char *s) { snprintf(win_items[0].text, WSK_TEXT_MAX, "%.31s", s); }
+/* The strings text items name: the posters' abstracts, then the status
+   line -- a text item, so a poster's whole abstract fits where a label's
+   31 characters did not. */
+static char status[160];
+static const char *strs[POSTERS + 1];
+
+static void say(const char *s) { snprintf(status, sizeof status, "%s", s); }
 
 /* What each says sits over them, at a scale and a fade for its distance from
    you: the program's policy. Near: 1:1 and clear. Far: down to 3/8, and up
@@ -226,7 +236,9 @@ int main(void)
 	win.pad = 4; win.gap = 0; win.ids = 1;
 	win.item = win_items; win.n = 2;
 	win.nest = nest; win.nests = 1 + 2 * POSTERS;
-	win.str = ABSTRACTS; win.strs = POSTERS;
+	for (int i = 0; i < POSTERS; i++) strs[i] = ABSTRACTS[i];
+	strs[POSTERS] = status;
+	win.str = strs; win.strs = POSTERS + 1;
 	win.caps = (unsigned char)wh_caps();
 	win.talign = WSK_ALIGN_START;
 	wsk_nest_init(&nest[0], &win, WSK_COL);
@@ -247,7 +259,7 @@ int main(void)
 		a->item = abstract[i]; a->n = 1; a->overflow = WSK_WRAP;
 		a->pad = 0; a->gap = 8; a->lgap = 0; a->talign = WSK_ALIGN_START;
 	}
-	say("drag:look wheel:zoom click:walk");      /* a label holds 31 */
+	say("drag: look around   wheel: zoom   click: walk   point: read");
 	if ((e = wsk_check_in(&win, &which, &in)) != WSK_OK) {
 		fprintf(stderr, "floor: refused (%d) at %d\n", e, which);
 		return 1;
@@ -262,7 +274,7 @@ int main(void)
 		wh_event_t he;
 		wsk_event_t ev;
 		wsk_note_t note[4];
-		int k = wh_poll(&he), n, all = 0;
+		int k = wh_poll(&he), n, all = 0, status_only = 0;
 
 		if (k == WH_QUIT) break;
 		if (k == WH_NOTHING) {
@@ -286,6 +298,7 @@ int main(void)
 		else if (k == WH_WHEEL) { ev.kind = WSK_EV_WHEEL; ev.d = (short)he.d; }
 		else if (k == WH_KEY) { ev.kind = WSK_EV_KEY; ev.key = (unsigned short)he.key; }
 		else if (k == WH_TEXT) { ev.kind = WSK_EV_TEXT; memcpy(ev.text, he.text, sizeof ev.text); }
+		else if (k == WH_HOVER) ev.kind = WSK_EV_HOVER;
 		else continue;
 
 		n = wsk_feed(&ui, &ev, note, 4, &y0, &y1);
@@ -326,6 +339,22 @@ int main(void)
 					say("Walking...");
 					all = 1;
 				}
+			} else if (t->kind == WSK_NOTE_HOVER) {
+				/* what the pointer rests on: a poster -- anywhere on it --
+				   gives its abstract, a person their name; anything else
+				   leaves the line as it was */
+				int j = -1;
+				m[0] = '\0';
+				if (t->in == &nest[0] && t->item >= 0) j = t->item;
+				else if (t->in > &nest[0] && t->in < &nest[1 + 2 * POSTERS])
+					j = (int)((t->in - &nest[1]) / 2);
+				if (j >= 0 && j < POSTERS) snprintf(m, sizeof m, "%s: %s", TITLES[j], ABSTRACTS[j]);
+				else if (j >= POSTERS && j < POSTERS + PEOPLE) snprintf(m, sizeof m, "%s", NAMES[j - POSTERS]);
+				if (m[0] != '\0') {
+					say(m);
+					printf("hover  %s\n", m);
+					status_only = 1;
+				}
 			} else if (t->kind == WSK_NOTE_RAISE) {
 				/* a poster to the front of the posters -- but people and their
 				   words stay above every poster: this program's layering */
@@ -345,6 +374,7 @@ int main(void)
 		}
 		fflush(stdout);
 		if (all) draw(&s, 0, h);
+		else if (status_only) draw(&s, 0, 40);            /* the status line's rows */
 		else if (y1 > y0) draw(&s, y0, y1);
 	}
 	wh_close();

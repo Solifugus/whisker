@@ -20,12 +20,25 @@ static void ok(int cond, const char *what)
 }
 
 /* WH_NOTHING means "not yet", not "never": see host.h. */
+/* The next event, hover aside: the window says where the pointer rests as
+   it opens and as it is left (§5aa), which no check below is about. */
 static int poll_until(wh_event_t *ev, int tries)
 {
 	for (int i = 0; i < tries; i++) {
 		int k = wh_poll(ev);
-		if (k != WH_NOTHING) return k;
-		SDL_Delay(5);
+		if (k != WH_NOTHING && k != WH_HOVER) return k;
+		if (k == WH_NOTHING) SDL_Delay(5);
+	}
+	return WH_NOTHING;
+}
+
+/* The next hover, everything else aside. */
+static int poll_hover(wh_event_t *ev, int tries)
+{
+	for (int i = 0; i < tries; i++) {
+		int k = wh_poll(ev);
+		if (k == WH_HOVER) return k;
+		if (k == WH_NOTHING) SDL_Delay(5);
 	}
 	return WH_NOTHING;
 }
@@ -344,6 +357,23 @@ int main(void)
 		e.type = SDL_MOUSEBUTTONUP;
 		SDL_PushEvent(&e);
 		ok(poll_until(&ev, 5) == WH_NOTHING, "CONTROL: and its release is nothing at all");
+
+		/* §5aa: motion with nothing held is hover; with the button, a drag */
+		memset(&e, 0, sizeof e);
+		e.type = SDL_MOUSEMOTION;
+		e.motion.x = 40 * SCALE; e.motion.y = 25 * SCALE; e.motion.state = 0;
+		SDL_PushEvent(&e);
+		ok(poll_hover(&ev, 20) == WH_HOVER && ev.x == 40 && ev.y == 25,
+		   "the mouse moved with no button held: WH_HOVER, at the point");
+		e.motion.state = SDL_BUTTON_LMASK;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_MOVE, "CONTROL: with the button held, WH_MOVE -- a drag, not hover");
+		memset(&e, 0, sizeof e);
+		e.type = SDL_WINDOWEVENT;
+		e.window.event = SDL_WINDOWEVENT_LEAVE;
+		SDL_PushEvent(&e);
+		ok(poll_hover(&ev, 20) == WH_HOVER && ev.x == -1 && ev.y == -1,
+		   "the pointer leaves the window: WH_HOVER at -1, -1");
 
 		memset(&e, 0, sizeof e);
 		e.type = SDL_KEYDOWN;

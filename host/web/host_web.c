@@ -119,7 +119,9 @@ static const char PAGE[] =
 "c.addEventListener('pointerdown',e=>{if(e.button!==0)return;c.focus();c.setPointerCapture(e.pointerId);\n"
 "  if(e.pointerType!=='mouse')send('D '+pt(e)+' '+(e.shiftKey?256:0)+' 1');});\n"
 "c.addEventListener('mousedown',e=>{if(e.button===0)send('D '+pt(e)+' '+(e.shiftKey?256:0)+' '+e.detail);});\n"
-"c.addEventListener('pointermove',e=>{if(e.buttons&1)send('M '+pt(e));});\n"
+"c.addEventListener('pointermove',e=>{if(e.buttons&1)send('M '+pt(e));\n"
+"  else if(e.buttons===0&&e.pointerType!=='touch')send('H '+pt(e));});\n"
+"c.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')send('H -1 -1');});\n"
 "c.addEventListener('pointerup',e=>{if(e.button===0)send('U '+pt(e));});\n"
 "c.addEventListener('contextmenu',e=>{e.preventDefault();send('R '+pt(e));});\n"
 "document.addEventListener('paste',e=>{const t=e.clipboardData&&e.clipboardData.getData('text');\n"
@@ -245,6 +247,7 @@ static void event_line(const char *l)
 		break;
 	}
 	case 'M': e.kind = WH_MOVE;    sscanf(l + 1, "%d %d", &e.x, &e.y); break;
+	case 'H': e.kind = WH_HOVER;   sscanf(l + 1, "%d %d", &e.x, &e.y); break;   /* §5aa */
 	case 'U': e.kind = WH_RELEASE; sscanf(l + 1, "%d %d", &e.x, &e.y); break;
 	case 'W': e.kind = WH_WHEEL;   sscanf(l + 1, "%d %d %d", &e.x, &e.y, &e.d); break;
 	case 'K': e.kind = WH_KEY;     sscanf(l + 1, "%d", &e.key); break;

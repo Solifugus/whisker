@@ -3325,6 +3325,70 @@ board tiers unchanged.
 lowers by raising everything else, as the floor does); a move is not
 undone by Escape.
 
+## 5aa. Hover (2026-11-15), written before its code
+
+Matthew chose it after moving items. A desktop needs to know what the
+pointer is resting on — for a tooltip, a status line, a poster's abstract
+on the conference floor — and whisker has never been told: both hosts
+report motion **only while a button is held**, because a finger only
+moves while it is down (D7: the mouse stands in for touch).
+
+1. **The host says so**: `WH_HOVER`, the pointer moved with no button held,
+   at x, y — or left the window, at -1, -1. A host that cannot hover (a
+   touch panel, the P4) never sends it; the contract needs nothing else.
+   SDL: motion with no button, and the window's LEAVE. The browser: a
+   *mouse or pen* `pointermove` with no buttons, and `pointerleave`.
+2. **`WSK_EV_HOVER`** into `wsk_feed`. The toolkit keeps what is under the
+   pointer — the deepest widget, as a press would find it, and its tree —
+   in the caller's `wsk_ui_t`, and says **`WSK_NOTE_HOVER`** (the tree, the
+   item, the word on a paragraph) **only when that changes**; `in` 0 and
+   item -1 when it comes to rest on nothing. A hover over a pressed button
+   or during a drag is not sent by a host, and is ignored if it is.
+3. **Nothing is drawn.** Hover costs no repaint and no byte of any
+   document: what it means — a tooltip after a dwell, a lit button, a
+   status line — is the program's, which owns the clock (whisker has none).
+   A hover highlight drawn by whisker is a later question with a price: a
+   repaint of two widgets' rows on every crossing, which on the P4 is a
+   finger the panel does not have.
+4. **`WSK_NO_HOVER`**, set by `WSK_PANEL` and implied by `WSK_NO_INPUT`.
+
+Done when: a hover onto a button, along it (nothing said), off it onto
+bare background (in 0), into a nested stack, onto a world's item and a
+poster's button; a hover while pressed ignored; the hosts: SDL's motion
+without a button is HOVER and with one is MOVE (the control), and the
+browser's; the floor says what you point at — a poster's abstract, a
+person's name — in Chrome.
+
+### What it came to, 2026-11-15
+
+As written. **963 checks** (950 before): 12 in the suite and a 25th
+switch built; the Linux host 51 (+3), the web 85 (+3). Every earlier
+output — 42 files — byte-identical.
+
+- In the suite: onto a button (HOVER, nothing to repaint), along it
+  (silence), onto bare background (in 0, item -1 — at first -3, hit's
+  "not found", which the check caught and the toolkit now says as -1), on
+  along nothing (silence), into a nested row's button (its own tree), out
+  of the window (nothing); a hover while pressed ignored, and the same one
+  after release heard (the control); in a world zoomed 2, a poster's
+  button where it is drawn and the poster in its padding.
+- **SDL**: motion with no button is `WH_HOVER` at the point; with the
+  button, `WH_MOVE` (the control); the window's LEAVE is hover at -1,-1.
+  The window says where the pointer rests as it opens, which shifted every
+  later check by one event until the harness set hover aside — a program
+  that does not want hover ignores it the same way.
+- **Chrome**: resting on a poster prints its whole abstract — the floor's
+  status line became a text item, since a label holds 31 characters —
+  bare floor says nothing new (the control), a person gives their name.
+
+**§7's question**: 48 bytes to a toolkit program; `WSK_PANEL` and below
+have none (`WSK_NO_HOVER`).
+
+**Named, not done**: hover is not re-asked when the world moves under a
+still pointer (a pan, a walk, a MOVE) — the next motion says it; whisker
+draws no hover highlight; a tooltip is the program's (an overlay, or a
+status line as here).
+
 
 ---
 

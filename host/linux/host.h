@@ -37,8 +37,11 @@ enum {
 	WH_EXPOSE,               /* draw everything again: a screen has come
 	                            that has not seen the picture (§5k) -- X's
 	                            Expose, for the same reason */
-	WH_MENU                  /* a right-click, or what the platform calls
+	WH_MENU,                 /* a right-click, or what the platform calls
 	                            asking for a context menu: at x, y (§5s) */
+	WH_HOVER                 /* the pointer moved with no button held, at
+	                            x, y -- or left the window, at -1, -1. A
+	                            host with no pointer never sends it (§5aa) */
 };
 
 /* The keys a field cares about. The same numbers as whisker's WSK_KEY_*, so

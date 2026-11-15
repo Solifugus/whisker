@@ -113,6 +113,7 @@
  *     -DWSK_NO_MENUKEYS Up, Down, Enter in an open menu (§5y)
  *     -DWSK_NO_WORLD    a world: placed items, a view and a zoom (§5q)
  *     -DWSK_NO_LISTKEYS a list or a world as one Tab stop, and its keys (§5z)
+ *     -DWSK_NO_HOVER    what the pointer rests on, for a host that has one (§5aa)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -156,6 +157,9 @@
 #  endif
 #  ifndef WSK_NO_LISTKEYS
 #    define WSK_NO_LISTKEYS 1      /* no arrow keys on its keyboard (§5z) */
+#  endif
+#  ifndef WSK_NO_HOVER
+#    define WSK_NO_HOVER 1         /* a finger is only where it touches (§5aa) */
 #  endif
 #endif
 #ifdef WSK_MINIMAL
@@ -244,6 +248,9 @@
 #endif
 #if (defined(WSK_NO_INPUT) || defined(WSK_NO_FIELD)) && !defined(WSK_NO_WORDS)
 #  define WSK_NO_WORDS 1           /* and words are the toolkit's moves (§5w) */
+#endif
+#if defined(WSK_NO_INPUT) && !defined(WSK_NO_HOVER)
+#  define WSK_NO_HOVER 1           /* hover is an event the toolkit takes (§5aa) */
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -4572,7 +4579,9 @@ static inline int wsk_compose(wsk_body_t body, void *ctx, wsk_sink_t *sink,
  * change nothing.
  */
 enum { WSK_EV_DOWN = 1, WSK_EV_MOVE, WSK_EV_UP, WSK_EV_WHEEL, WSK_EV_KEY, WSK_EV_TEXT,
-       WSK_EV_MENU };             /* a right-click, or a long press: at x, y (§5s) */
+       WSK_EV_MENU,               /* a right-click, or a long press: at x, y (§5s) */
+       WSK_EV_HOVER };            /* the pointer moved with nothing held: at x, y, or
+                                     -1, -1 when it left the window (§5aa) */
 
 typedef struct {
 	unsigned char  kind;
@@ -4599,7 +4608,9 @@ enum { WSK_NOTE_CLICK = 1, WSK_NOTE_SCROLL, WSK_NOTE_TEXT, WSK_NOTE_ENTER,
        WSK_NOTE_VIEW,             /* a world panned or zoomed: in, the world; value,
                                      its zoom (§5q step 3) */
        WSK_NOTE_MOVE,             /* a world's item dragged: in, the world; item (step 6) */
-       WSK_NOTE_RAISE };          /* ... and brought to the top of its order */
+       WSK_NOTE_RAISE,            /* ... and brought to the top of its order */
+       WSK_NOTE_HOVER };          /* the pointer rests on something else: in, item and
+                                     value (the word) as a click's; in 0, nothing (§5aa) */
 
 /* The keys that mean something to a field (§5j). A character typed is TEXT,
    not a key, so that a keyboard layout stays the host's business. */
@@ -4665,6 +4676,10 @@ typedef struct {
 #ifndef WSK_NO_SOURCE
 	int               gline;     /* a press in a source's gutter: its line, or -1 */
 #endif
+#ifndef WSK_NO_HOVER
+	const wsk_tree_t *hover_in;  /* what the pointer rests on: its tree, or 0, */
+	short             hover_item, hover_word; /* its index and word (§5aa) */
+#endif
 #ifndef WSK_NO_SPLIT
 	const wsk_tree_t *split;     /* a divider held: its stack, or 0 (§5x) */
 	wsk_tree_t        split_at;  /* ... as laid out: its area */
@@ -4692,6 +4707,10 @@ static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
 	root->focus = 0;
 #ifndef WSK_NO_SOURCE
 	ui->gline = -1;
+#endif
+#ifndef WSK_NO_HOVER
+	ui->hover_in = 0;
+	ui->hover_item = ui->hover_word = -1;
 #endif
 #ifndef WSK_NO_SPLIT
 	ui->split = 0;
@@ -5771,6 +5790,24 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		ui->selecting = 0;
 #endif
 		n = wsk__note(note, max, n, WSK_NOTE_MENU, (k >= 0) ? in : r, (k >= 0) ? k : -1, word);
+#ifndef WSK_NO_HOVER
+	} else if (ev->kind == WSK_EV_HOVER) {
+		/* what the pointer rests on (§5aa): said when it changes, drawn
+		   never -- what hover means is the program's. A host sends none
+		   while a button is held, and one that does is ignored. */
+		const wsk_tree_t *in = 0, *lay = r;
+		wsk_tree_t at;
+		wsk_rect_t rect = { 0, 0, 0, 0 };
+		int word = -1, k = -1;
+		if (!ui->down && x >= 0 && y >= 0) k = wsk__ui_hit(r, x, y, &in, &rect, &word, &at, &lay);
+		if (k < 0) { in = 0; k = -1; word = -1; }
+		if (!ui->down && (in != ui->hover_in || k != ui->hover_item || word != ui->hover_word)) {
+			ui->hover_in = in;
+			ui->hover_item = (short)k;
+			ui->hover_word = (short)word;
+			n = wsk__note(note, max, n, WSK_NOTE_HOVER, in, k, word);
+		}
+#endif
 	} else if (ev->kind == WSK_EV_DOWN) {
 		const wsk_tree_t *in = 0, *lay = r;
 		wsk_tree_t at;

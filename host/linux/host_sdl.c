@@ -239,6 +239,13 @@ int wh_poll(wh_event_t *out)
 				out->kind = WH_MOVE;
 				return WH_MOVE;
 			}
+			/* with nothing held it is hover (§5aa): a mouse can rest on
+			   something, which a finger cannot */
+			if (e.motion.state == 0) {
+				if (!point_of(e.motion.x, e.motion.y, out)) out->x = out->y = -1;
+				out->kind = WH_HOVER;
+				return WH_HOVER;
+			}
 			break;
 		case SDL_MOUSEWHEEL: {
 			int mx, my;
@@ -252,6 +259,11 @@ int wh_poll(wh_event_t *out)
 		}
 		case SDL_WINDOWEVENT:
 			if (e.window.event == SDL_WINDOWEVENT_EXPOSED) present();
+			if (e.window.event == SDL_WINDOWEVENT_LEAVE) {   /* rests on nothing */
+				out->x = out->y = -1;
+				out->kind = WH_HOVER;
+				return WH_HOVER;
+			}
 			break;
 		/* A mouse is a one-point pointer and so is a finger: the contract
 		   wants a point, and does not care which produced it. The panel

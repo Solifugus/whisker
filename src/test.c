@@ -4927,6 +4927,83 @@ int main(void)
 		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
 	}
 
+	printf("\n-- §5aa  hover\n");
+	{
+		static const wsk_widget_t HV[] = {
+			{ .kind = WSK_LABEL,  .id = "hi",  .text = "hello", .size = 40 },
+			{ .kind = WSK_BUTTON, .id = "go",  .text = "Go",    .size = 40 },
+			{ .kind = WSK_STACK,  .id = "bar", .sub = 0,        .size = 60 },
+		};
+		static const wsk_widget_t HB[] = { { .kind = WSK_BUTTON, .id = "x", .text = "X", .weight = 1 } };
+		static const wsk_widget_t HW[] = { { .kind = WSK_STACK, .id = "poster", .sub = 0 } };
+		static const wsk_widget_t HP[] = {
+			{ .kind = WSK_LABEL,  .id = "title", .text = "Title", .size = 24 },
+			{ .kind = WSK_BUTTON, .id = "go",    .text = "Go",    .size = 32 },
+		};
+		wsk_tree_t t2, k[1];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0 = 0, y1 = 0, n;
+
+		wsk_init(&t2, WSK_COL, 320, 200);
+		t2.pad = 0; t2.gap = 0; t2.item = HV; t2.n = 3; t2.nest = k; t2.nests = 1;
+		wsk_nest_init(&k[0], &t2, WSK_ROW);
+		k[0].pad = 0; k[0].item = HB; k[0].n = 1;
+		ok(wsk_check(&t2, 0) == WSK_OK, "a label, a button and a row holding a button, 0..140 of 200");
+		wsk_ui_init(&ui, &t2);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_HOVER; ev.x = 100; ev.y = 60;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_HOVER && nt[0].in == &t2 && nt[0].item == 1,
+		   "the pointer comes to rest on Go: HOVER, Go");
+		ok(y1 <= y0 && t2.held == 0, "and nothing to repaint: hover draws nothing");
+		ev.x = 200; ev.y = 70;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0, "moving along Go: nothing said");
+		ev.x = 100; ev.y = 170;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_HOVER && nt[0].in == 0 && nt[0].item == -1,
+		   "off it, onto bare background: HOVER, nothing");
+		ev.y = 180;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0, "and on along nothing: nothing said");
+		ev.y = 100;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].in == &k[0] && nt[0].item == 0, "into the row: its button X, in the row's own tree");
+		ev.x = -1; ev.y = -1;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_HOVER && nt[0].in == 0, "the pointer leaves the window, -1,-1: nothing");
+		ev.kind = WSK_EV_DOWN; ev.x = 100; ev.y = 60;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_HOVER; ev.y = 20;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0 && ui.hover_in == 0, "a hover while a button is held is ignored -- a host sends none");
+		ev.kind = WSK_EV_UP; ev.y = 60;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_HOVER; ev.y = 20;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].in == &t2 && nt[0].item == 0, "CONTROL: released, the same hover: the label");
+
+		/* in a world: an item, and a poster's button */
+		{
+			wsk_place_t pl[1] = { { .x = 20, .y = 20, .w = 100, .h = 80, .scale = 256 } };
+			wsk_tree_t w, kp[1];
+			wsk_init(&w, WSK_COL, 320, 200);
+			w.item = HW; w.n = 1; w.overflow = WSK_WORLD; w.place = pl; w.nest = kp; w.nests = 1;
+			wsk_nest_init(&kp[0], &w, WSK_COL);
+			kp[0].item = HP; kp[0].n = 2; kp[0].pad = 4; kp[0].gap = 4;
+			w.zoom = 512;
+			wsk_ui_init(&ui, &w);
+			ev.kind = WSK_EV_HOVER; ev.x = 100; ev.y = 120;
+			n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			ok(n == 1 && nt[0].in == &kp[0] && nt[0].item == 1, "in a world zoomed 2: a poster's button, where it is drawn");
+			ev.x = 44; ev.y = 44;
+			n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			ok(n == 1 && nt[0].in == &w && nt[0].item == 0, "its padding: the poster, an item of the world");
+		}
+	}
+
 	/* ---- what an independent read of the night's code found ---- */
 	printf("\n-- review fixes, 2026-11-15\n");
 	{

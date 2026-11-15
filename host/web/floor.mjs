@@ -111,6 +111,26 @@ try {
   await sleep(400);
   ok(said.includes('meet   You waves.'), 'a click on a person meets them: "You waves."');
 
+  // §5aa: point without pressing -- hover. On the first poster's title
+  // (24..324, 56..172 on the screen) its abstract; on You, a name; and the
+  // control, bare floor between, says nothing
+  {
+    const hover = async (x, y) => { const [px, py] = await at(x, y);
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: px, y: py, button: 'none', buttons: 0 }); };
+    await hover(100, 72);
+    await sleep(400);
+    ok(said.includes('hover  Tiny GUIs on RISC-V: a GUI in 3.8 KB on a C5'),
+       'the pointer resting on a poster, nothing pressed: the program shows its abstract');
+    const before = (said.match(/hover  /g) || []).length;
+    await hover(600, 230);
+    await sleep(300);
+    ok((said.match(/hover  /g) || []).length === before, 'CONTROL: on bare floor it says nothing new');
+    await hover(435, 351);
+    await sleep(400);
+    ok(said.slice(-200).includes('hover  You\n'), 'and on a person, their name');
+    await snap('floor_hover.png');
+  }
+
   // §5q step 2b: a poster is a stack -- world 120,20, 300 x 116, so on the
   // screen 24..324, 56..172; its Visit button 30..318, 140..166
   await click(174, 153);

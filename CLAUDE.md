@@ -281,6 +281,14 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   caller's, is the z order (0 = array order, byte-identical), and
   `wsk_world_raise` or a press on a movable item puts it on top
   (`WSK_NOTE_RAISE`). The floor's posters are arranged by hand. +184 bytes.
+- **§5aa — hover** (2026-11-15): hosts say `WH_HOVER` (motion with nothing
+  held; -1,-1 on leaving) — SDL and the browser, never a touch panel; the
+  toolkit takes `WSK_EV_HOVER` and says `WSK_NOTE_HOVER` only when what the
+  pointer rests on changes (in 0 for nothing). **Nothing is drawn** — a
+  tooltip, a lit button, a status line are the program's. The floor shows
+  a poster's abstract as you point. 48 bytes; `WSK_NO_HOVER`, in
+  `WSK_PANEL`. **A host test's poll must set hover aside**: the window
+  reports the pointer as it opens.
 - **§5z — a list or a world from the keyboard** (2026-11-15, Matthew chose
   "one Tab stop"): a selecting list or a world is one Tab stop with a ring;
   a list's Up/Down/Home/End/Enter, a world's arrows and `+`/`-`.
@@ -294,13 +302,13 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **950 checks**, including a step
+`src/run.sh --module` is the whole of it: **963 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 48 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 51 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
-the code editor (`code.mjs`) and 15 for the conference floor (`floor.mjs`).
+the code editor (`code.mjs`) and 18 for the conference floor (`floor.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one
