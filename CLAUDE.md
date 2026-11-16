@@ -312,7 +312,8 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   folder — in slots of the root the program sets aside, and reads folders
   only through a lister the program gives (POSIX: `host/linux/lister.h`).
   Cancel answers *cancelled*, never an empty path. The code editor opens by
-  Ctrl-O and saves as by Ctrl-Shift-S, in both hosts.
+  Ctrl-O and saves as by Ctrl-Shift-S, in both hosts. **Matthew used it in
+  the SDL window, 2026-11-16: Cancel, then a file chosen and opened.**
 - **A desktop program's frames must fit 4 KB too**: RV-9's window — the
   SDL host compiles it — drops a document over 4,096 bytes, so a program
   whose picture can grow (an editor scrolled to busy lines, a floor zoomed

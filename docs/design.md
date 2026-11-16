@@ -3563,6 +3563,9 @@ left the window behind the pointer. `host/web/docsize.py` walks the caret
 80 lines down: 114 documents, the largest 4,082 bytes — and run against
 the editor before the fix, it fails.
 
+**Used by Matthew, 2026-11-16**, in the SDL window: Ctrl-O, Cancel; then
+a file chosen and opened.
+
 **Named, not done**: no keyboard path into a row from the name field but
 Tab; the list has no type-to-find; a chooser's strings are one-line
 (a long path is cut at the window's edge); gBASIC's `qt.dialog()` oracle
