@@ -5455,6 +5455,13 @@ int main(void)
 		wsk_chooser_feed(&ch, &ui, nt, wsk_feed(&ui, &ev, nt, 4, &y0, &y1), &y0, &y1))
 		r = CH_CLICK(200, 190);
 		ok(r == 0 && strcmp(ch.name, "a.bas") == 0 && root.over == 0, "a click on a.bas: its name in the field, still open");
+		render_into(&root, cd, sizeof cd, 8192);
+		{
+			char want[96];
+			snprintf(want, sizeof want, "height=\"24\" fill=\"#%06x\"/><text text-anchor=\"start\"", root.selfill);
+			ok(k[2].sel == 2 && has(cd, want) && has(cd, ">a.bas</text>"),
+			   "and drawn chosen: its row in the selection's fill, its name over it -- a text item, as a label is");
+		}
 		r = CH_CLICK(200, 190);
 		ok(r == WSK_CHOSEN && strcmp(ch.path, "/home/me/a.bas") == 0 && root.over == WSK_NONE,
 		   "a.bas clicked again: chosen -- /home/me/a.bas -- and the dialog closed");

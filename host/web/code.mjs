@@ -284,6 +284,22 @@ try {
     await sleep(400);
     ok(said.includes('nothing chosen') && (said.match(/opened /g) || []).length === before,
        'CONTROL: Ctrl-O then Escape: nothing chosen, nothing opened');
+    // Down past the bottom of the list: the choice is always seen
+    await key('o', 'KeyO', 2);
+    await sleep(300);
+    await key('Tab', 'Tab'); await key('Tab', 'Tab');
+    for (let i = 0; i < 12; i++) {
+      await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
+      await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown' });
+    }
+    await sleep(400);
+    await settle();
+    const chosen = await js(`(()=>{const d=whisker.canvas.getContext("2d").getImageData(200,166,624,264).data;
+      let n=0;for(let i=0;i<d.length;i+=4)if(Math.abs(d[i]-0xb0)<4&&Math.abs(d[i+1]-0x6a)<4&&Math.abs(d[i+2]-0x2a)<4)n++;return n;})()`);
+    await snap('code_chooser_down.png');
+    ok(chosen > 2000, `Down twelve times, past the list's bottom: the chosen row is drawn, in view (${chosen} pixels of it)`);
+    await key('Escape', 'Escape');
+    await sleep(300);
     void shows;
   }
 } finally {

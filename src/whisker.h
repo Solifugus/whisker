@@ -4340,11 +4340,13 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 		if (w->kind == WSK_DIVIDER) { wsk__rect(s, t, w, v); continue; }
 #endif
 #ifndef WSK_NO_INPUT
-		/* the chosen item of a selecting stack, in its own fill (§5m) */
+		/* the chosen item of a selecting stack, in its own fill (§5m) -- a
+		   text item too, which a chooser's rows are (§5ae): leaving it out
+		   left a choice moved by the arrows nowhere to be seen */
 		if (t->select && i == t->sel &&
-		    (w->kind == WSK_BUTTON || w->kind == WSK_LABEL)) {
+		    (w->kind == WSK_BUTTON || w->kind == WSK_LABEL || w->kind == WSK_TEXT)) {
 			wsk__box(s, t->ids ? w->id : 0, v, t->selfill);
-			if (w->kind == WSK_LABEL) { wsk__text(s, t, w, wsk__say(t, t, i), r); continue; }
+			if (w->kind != WSK_BUTTON) { wsk__text(s, t, w, wsk__say(t, t, i), r); continue; }
 		} else
 #endif
 #ifdef WSK_NO_FIELD

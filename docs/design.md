@@ -3535,6 +3535,17 @@ every earlier output — 43 files — byte-identical; web 126 (122).
 dialog); `WSK_PANEL` 4. The chooser is a second header, paid only by a
 program that includes it.
 
+**Afterwards, Matthew**: *"seems functional until I push the down arrow
+past the bottom."* The chosen row was **never drawn** — a selecting stack
+painted its choice for a button or a label, and the chooser's rows are
+text items (so a long name is not cut at a label's 31 characters). The
+arrows moved an invisible choice, and past the list's bottom the list
+scrolled to keep in sight something nobody could see. A chosen text item
+is drawn as a label's is now; a check on the chooser asserts its row in
+the selection's fill (and fails on the header without the fix), and in
+Chrome, Down twelve times past the bottom leaves the chosen row drawn and
+in view. 1,054 checks; web 127; 44 earlier outputs byte-identical.
+
 **Named, not done**: no keyboard path into a row from the name field but
 Tab; the list has no type-to-find; a chooser's strings are one-line
 (a long path is cut at the window's edge); gBASIC's `qt.dialog()` oracle
