@@ -161,6 +161,27 @@ try {
     await snap('floor_arranged.png');
   }
 
+  // and a poster may not be put down on anybody, as nobody may walk into
+  // one: dragged 300 down toward You (500..570, 300..330 in the world), in
+  // steps of 50, it stops at y 170 -- the last place that touched no one --
+  // then is dragged back up to 20, where the walks below expect it
+  {
+    const drag = async (x, y0, y1) => {
+      const [ax, ay] = await at(x, y0), [, by] = await at(x, y1);
+      await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: ax, y: ay, button: 'left', buttons: 1, clickCount: 1 });
+      for (let k = 1; k <= 6; k++)
+        await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ax, y: ay + (by - ay) * k / 6, button: 'left', buttons: 1 });
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: ax, y: by, button: 'left', buttons: 0, clickCount: 1 });
+      await sleep(500);
+    };
+    await drag(300, 100, 400);
+    ok(said.includes('move   p0 to 270,170') && said.includes('block  p0 by You') && !said.includes('move   p0 to 270,220'),
+       'a poster dragged onto a person stops against them: at 270,170, blocked by You');
+    await snap('floor_blocked.png');
+    await drag(300, 250, 100);
+    ok(said.slice(-300).includes('move   p0 to 270,20'), 'CONTROL: dragged back up, clear of everyone, it moves');
+  }
+
   // bare floor between the posters (to 172) and where anyone walks (from 284)
   await click(600, 230);
   await sleep(400);

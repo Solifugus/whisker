@@ -20,8 +20,8 @@ field you can type into. `src/run.sh --module` runs every done-criterion in
 `design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p, §5q (steps 1–6, posters), §5r, §5s, §5t, §5u, §5v, §5w, §5x, §5y, §5z, §5aa and §7 — **963 checks** plus the profile gate,
 the pixels through RV-9's own rasteriser, eighteen module builds with the
 double-link, and a person looking at the pictures. `host/linux/run.sh --test`
-adds **51** more, and `host/web/run.sh --test` **85**: 32 over HTTP, 19 in
-headless Chrome, 16 for the code editor and 18 for the conference floor.
+adds **51** more, and `host/web/run.sh --test` **87**: 32 over HTTP, 19 in
+headless Chrome, 16 for the code editor and 20 for the conference floor.
 
 **And any stack can scroll** (§5e, 2026-10-24) — the first step toward
 gBASIC's Qt-era `window` and a desktop. `overflow = WSK_SCROLL` and an offset

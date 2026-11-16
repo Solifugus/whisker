@@ -3321,6 +3321,17 @@ suite; every earlier output — 42 files — byte-identical.
 **§7's question**: the world is **2,900 bytes** in the default (+184); the
 board tiers unchanged.
 
+**Afterwards, Matthew**: *"The posters drag... even over an avatar... but
+then the avatars cannot go into them."* The floor's two rules disagreed:
+a walk stopped at a poster and a move did not stop at a person. Fixed in
+the program, which is where step 6 put the meaning of a move: on MOVE it
+asks `wsk_world_overlaps`, and a poster that would touch a person goes
+back to its last place that touched no one — it stops against them. In
+Chrome: dragged 300 toward You in steps of 50, it stops at y 170 and says
+`block p0 by You`; dragged back, it moves (the control). A fast drag stops
+where its last clear step was, not flush against the person; a program
+wanting flush would search between the two.
+
 **Named, not done**: no keyboard for moving an item; no lowering (a program
 lowers by raising everything else, as the floor does); a move is not
 undone by Escape.

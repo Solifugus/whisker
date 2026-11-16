@@ -308,7 +308,7 @@ RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 51 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
-the code editor (`code.mjs`) and 18 for the conference floor (`floor.mjs`).
+the code editor (`code.mjs`) and 20 for the conference floor (`floor.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

@@ -21,6 +21,9 @@
  * Posters may be arranged by hand (§5q step 6): a drag on one moves it, and
  * whisker brings it to the front of the floor's order -- this program then
  * raises the people and what they say back above it, its own layering.
+ * And since nobody may walk into a poster, no poster may be put down on
+ * anybody: a move that would touch a person is written back to the last
+ * place that touched no one, so the poster stops against them.
  *
  * Point at a poster and the status line gives its abstract; at a person,
  * their name (hover, §5aa) -- shown at once, since nothing here needs a
@@ -82,6 +85,7 @@ static const wsk_widget_t ABSTRACT[1] = { { .kind = WSK_TEXT, .id = "abstract" }
 static wsk_widget_t win_items[2], items[ITEMS], poster[POSTERS][3], abstract[POSTERS][1];
 static wsk_place_t place[ITEMS];
 static short order[ITEMS];                      /* bottom first: posters, people, speech */
+static int okx[POSTERS], oky[POSTERS];          /* each poster's last place clear of people */
 static wsk_tree_t win, nest[1 + 2 * POSTERS];    /* the floor; each poster and its abstract */
 static wsk_ui_t ui;
 static int px[PEOPLE], py[PEOPLE], tx[PEOPLE], ty[PEOPLE];   /* where, and where to */
@@ -205,6 +209,7 @@ int main(void)
 		place[i].x = 120 + i * 380; place[i].y = 20;
 		place[i].w = 300; place[i].h = 116; place[i].scale = 256;
 		place[i].move = 1;                                       /* arranged by hand */
+		okx[i] = place[i].x; oky[i] = place[i].y;
 		p[0].kind = WSK_LABEL; snprintf(p[0].id, WSK_ID_MAX, "t%d", i);
 		snprintf(p[0].text, WSK_TEXT_MAX, "%.31s", TITLES[i]); p[0].size = 22;
 		p[1].kind = WSK_STACK; snprintf(p[1].id, WSK_ID_MAX, "x%d", i);
@@ -361,8 +366,21 @@ int main(void)
 				for (int j = POSTERS; j < ITEMS; j++) wsk_world_raise(&nest[0], j);
 				printf("raise  p%d\n", t->item);
 				all = 1;
-			} else if (t->kind == WSK_NOTE_MOVE) {
-				printf("move   p%d to %d,%d\n", t->item, place[t->item].x, place[t->item].y);
+			} else if (t->kind == WSK_NOTE_MOVE && t->item < POSTERS) {
+				/* the same rule as walking, the other way round: a poster
+				   that would touch a person goes back to where it touched
+				   no one (whisker says what touches, §5q step 4) */
+				int j = t->item, out[32], c = wsk_world_overlaps(&nest[0], j, out, 32), who = -1;
+				for (int q = 0; q < c && q < 32; q++)
+					if (out[q] >= POSTERS && out[q] < POSTERS + PEOPLE) { who = out[q] - POSTERS; break; }
+				if (who >= 0) {
+					place[j].x = okx[j]; place[j].y = oky[j];
+					printf("block  p%d by %s\n", j, NAMES[who]);
+					all = 1;
+				} else {
+					okx[j] = place[j].x; oky[j] = place[j].y;
+					printf("move   p%d to %d,%d\n", j, place[j].x, place[j].y);
+				}
 			} else if (t->kind == WSK_NOTE_VIEW) {
 				/* the person looked around: stop following -- unless it was a zoom */
 				if (ev.kind == WSK_EV_MOVE || ev.kind == WSK_EV_KEY) {
