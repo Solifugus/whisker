@@ -3581,6 +3581,9 @@ the control that a one-window program is the host it was.
   its window and the host never put the number on the event, so the pad's
   typing went into the editor — which the check on typing caught at once.
 
+**Used by Matthew, 2026-11-16**: Ctrl-N in the SDL window -- the scratch
+pad works.
+
 **Named, not done**: each window keeps its own focus, so the editor's
 caret shows while the pad has the keys; a window for one seat only; a
 late page is sent the windows and the program asked to draw each, but a

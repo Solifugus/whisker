@@ -320,7 +320,7 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   program that never opens a second window is the host it was (QUIT). SDL:
   a real window each, with its own `/w0`; the browser: a floating panel
   each, dragged by its bar, closed by its ×. **No change to `whisker.h`.**
-  The code editor's Ctrl-N opens a scratch pad.
+  The code editor's Ctrl-N opens a scratch pad (Matthew, SDL: works).
 - **A second independent read, 2026-11-16** (design, before §5af): a lost
   finger's lifting froze all input; a menu over a dialog broke it; the
   chooser cut long paths and answered the clicked file not the arrows';
