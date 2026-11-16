@@ -281,6 +281,15 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   caller's, is the z order (0 = array order, byte-identical), and
   `wsk_world_raise` or a press on a movable item puts it on top
   (`WSK_NOTE_RAISE`). The floor's posters are arranged by hand. +184 bytes.
+- **§5ab — seats: several people at one program** (2026-11-15): the host
+  contract gains `seat` on each event, `wh_seats(1)`, `WH_JOIN`/`WH_GONE`
+  and `wh_to(seat)`; the browser host makes each page's event stream a
+  seat (seatless programs mirror as before); SDL is one seat, 0. **No
+  change to `whisker.h`** — whisker keeps no state (D5), so a seat is the
+  program's second set of trees over the same widgets. The floor gives each
+  page a person, its own view, status and speech fading; `seats.mjs`
+  drives two Chrome pages. A page navigated away (not closed) keeps its
+  seat — the host has no timeout yet.
 - **§5aa — hover** (2026-11-15): hosts say `WH_HOVER` (motion with nothing
   held; -1,-1 on leaving) — SDL and the browser, never a touch panel; the
   toolkit takes `WSK_EV_HOVER` and says `WSK_NOTE_HOVER` only when what the
@@ -308,7 +317,7 @@ RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 51 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
-the code editor (`code.mjs`) and 20 for the conference floor (`floor.mjs`).
+the code editor (`code.mjs`) and 20 for the conference floor (`floor.mjs`), 9 for two people on it (`seats.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

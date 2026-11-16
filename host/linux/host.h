@@ -39,9 +39,12 @@ enum {
 	                            Expose, for the same reason */
 	WH_MENU,                 /* a right-click, or what the platform calls
 	                            asking for a context menu: at x, y (§5s) */
-	WH_HOVER                 /* the pointer moved with no button held, at
+	WH_HOVER,                /* the pointer moved with no button held, at
 	                            x, y -- or left the window, at -1, -1. A
 	                            host with no pointer never sends it (§5aa) */
+	WH_JOIN,                 /* a screen arrived: `seat` (§5ab) -- only to a
+	                            program that called wh_seats(1) */
+	WH_GONE                  /* ... and went */
 };
 
 /* The keys a field cares about. The same numbers as whisker's WSK_KEY_*, so
@@ -67,7 +70,19 @@ typedef struct {
 	                            the platform's double-click, counted (§5w) */
 	int  key;                /* WH_KEY; on WH_PRESS, WH_MOD_SHIFT or 0 */
 	char text[8];            /* WH_TEXT */
+	int  seat;               /* the screen it came from: 0 .. WH_SEATS-1 (§5ab) */
 } wh_event_t;
+
+/*
+ * Seats (§5ab): one person's screen and input. A program that serves several
+ * people calls wh_seats(1), then hears WH_JOIN and WH_GONE with each event's
+ * `seat`, and sends a document to one screen with wh_to(seat) before it
+ * (-1, every screen). One that never calls it sees one screen, mirrored to
+ * every page -- the host as it always was. SDL has one seat, 0.
+ */
+#define WH_SEATS 16
+void wh_seats(int on);
+void wh_to(int seat);
 
 /* What this host can draw beyond /w0, as whisker's WSK_CAP_* bits (§5r): a
    program puts it in its root's `caps`. The host says; whisker never guesses.

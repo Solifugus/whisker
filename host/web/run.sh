@@ -40,6 +40,7 @@ if [[ "${1:-}" == "--test" ]]; then
 		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-floor-web" \
 			"$HERE/../linux/floor.c" "$HERE/host_web.c" -I"$HERE/../linux" -I"$HERE/../../src"
 		node "$HERE/floor.mjs" "$OUT/whisker-floor-web" "$OUT"
+		node "$HERE/seats.mjs" "$OUT/whisker-floor-web" "$OUT"
 	else
 		echo "      no google-chrome or node: the real-browser check was skipped"
 	fi

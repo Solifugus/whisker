@@ -104,12 +104,12 @@ try {
   await sleep(1500);
   await snap('floor_first.png');
 
-  // "You" start at world 500,300; the view at 100,0, the floor from 4,36
+  // Max, this page's person, starts at world 500,300; the view at 100,0, the floor from 4,36
   // (the window's padding, then a 32-px status line), puts them at
   // 404..474, 336..366
   await click(435, 351);
   await sleep(400);
-  ok(said.includes('meet   You waves.'), 'a click on a person meets them: "You waves."');
+  ok(said.includes('meet   Max waves.'), 'a click on a person meets them: "Max waves." -- the person this page walks');
 
   // §5aa: point without pressing -- hover. On the first poster's title
   // (24..324, 56..172 on the screen) its abstract; on You, a name; and the
@@ -127,7 +127,7 @@ try {
     ok((said.match(/hover  /g) || []).length === before, 'CONTROL: on bare floor it says nothing new');
     await hover(435, 351);
     await sleep(400);
-    ok(said.slice(-200).includes('hover  You\n'), 'and on a person, their name');
+    ok(said.slice(-200).includes('hover  Max\n'), 'and on a person, their name');
     await snap('floor_hover.png');
   }
 
@@ -175,8 +175,8 @@ try {
       await sleep(500);
     };
     await drag(300, 100, 400);
-    ok(said.includes('move   p0 to 270,170') && said.includes('block  p0 by You') && !said.includes('move   p0 to 270,220'),
-       'a poster dragged onto a person stops against them: at 270,170, blocked by You');
+    ok(said.includes('move   p0 to 270,170') && said.includes('block  p0 by Max') && !said.includes('move   p0 to 270,220'),
+       'a poster dragged onto a person stops against them: at 270,170, blocked by Max');
     await snap('floor_blocked.png');
     await drag(300, 250, 100);
     ok(said.slice(-300).includes('move   p0 to 270,20'), 'CONTROL: dragged back up, clear of everyone, it moves');
@@ -185,7 +185,7 @@ try {
   // bare floor between the posters (to 172) and where anyone walks (from 284)
   await click(600, 230);
   await sleep(400);
-  ok(said.includes('walk   to 696,194'), 'a click on bare floor walks you there: world 696,194 -- 100 + 600 - 4, 230 - 36');
+  ok(said.includes('walk   Max to 696,194'), 'a click on bare floor walks you there: world 696,194 -- 100 + 600 - 4, 230 - 36');
   await sleep(2500);
   await snap('floor_walked.png');
 
@@ -194,7 +194,7 @@ try {
   // 136: you stop against it, and the program says so
   await click(600, 186);
   await sleep(1500);
-  ok(said.includes('walk   to 696,150') && said.includes('bump   You reach "Damage, banded".'),
+  ok(said.includes('walk   Max to 696,150') && said.includes('bump   You reach "Damage, banded".'),
      'walking into a poster: whisker says what the step would touch, the program stops you there');
 
   // §5q step 5: walk toward the right edge -- world 1096,364. Unfollowed,
@@ -205,7 +205,7 @@ try {
   const gold = await js(`(()=>{const d=whisker.canvas.getContext("2d").getImageData(0,36,1024,564).data;
     let lo=9999,hi=-1;for(let i=0;i<d.length;i+=4){if(Math.abs(d[i]-0xd0)<6&&Math.abs(d[i+1]-0xa0)<6&&Math.abs(d[i+2]-0x20)<6){const x=(i/4)%1024;if(x<lo)lo=x;if(x>hi)hi=x;}}return [lo,hi];})()`);
   console.log(`      you, in gold, from x ${gold[0]} to ${gold[1]}`);
-  ok(said.includes('walk   to 1096,364') && gold[1] > 0 && gold[1] <= 720,
+  ok(said.includes('walk   Max to 1096,364') && gold[1] > 0 && gold[1] <= 720,
      'the view follows you: walked toward the right edge, you are kept 30% in from it');
   await snap('floor_follow.png');
 
@@ -227,7 +227,7 @@ try {
       await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ax + (bx - ax) * k / 5, y: ay, button: 'left', buttons: 1 });
     await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bx, y: ay, button: 'left', buttons: 0, clickCount: 1 });
     await sleep(500);
-    ok((said.match(/view   /g) || []).length > before && !said.slice(said.length - 200).includes('walk   to 8'),
+    ok((said.match(/view   /g) || []).length > before && !said.slice(said.length - 200).includes('walk   Max to 8'),
        'a drag pans the floor -- VIEW notices -- and is not a walk');
     ok(said.includes('follow off'), 'and looking around stops the view following you');
   }

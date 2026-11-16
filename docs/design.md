@@ -3336,6 +3336,97 @@ wanting flush would search between the two.
 lowers by raising everything else, as the floor does); a move is not
 undone by Escape.
 
+## 5ab. Seats — several people at one program (2026-11-15), written before its code
+
+Matthew chose it from five: the step toward the conference he means to
+make, which is many people on one floor. §9.6 named the shape — the
+application where its data is, a screen wherever a person is — and the
+browser host (§5k) is already half of it: but **every page it serves is
+the same screen**. Each document goes to every page and every page's
+events go into one queue, so two browsers are one person with two
+monitors. What is missing is a *seat*: one person's screen and input.
+
+**whisker itself needs nothing**, and that is D5's payoff rather than an
+accident: whisker keeps no state, so a program with several seats keeps
+several — a root tree and its nest copies, a `wsk_ui_t`, a view — each
+pointing at the **same** widgets and the same `place` arrays where they
+are shared. What has to change is the host contract and the program.
+
+1. **The contract** (`host.h`): `wh_event_t` gains **`seat`**, which screen
+   an event came from. **`wh_seats(1)`** says the program serves seats;
+   from then on the host sends **`WH_JOIN`** when a screen arrives (for
+   each one already there, at once) and **`WH_GONE`** when it goes, and
+   **`wh_to(seat)`** sends the documents after it to that screen alone
+   (-1, every screen). Seats are small numbers below **`WH_SEATS`** (16),
+   reused after GONE, so a program can index arrays by them. A program that
+   never calls `wh_seats` sees exactly today's host: every page mirrors
+   one screen, and a late page is sent the picture so far.
+2. **SDL**: one seat, 0 — `wh_seats(1)` sends one JOIN, `wh_to` does
+   nothing. A seated program runs unchanged in the desktop window.
+3. **The browser**: a page's seat is its `/events` connection. The host
+   tells the page its number first (`S n`), and the page posts its events
+   to `/ev?s=n`; an event from a seat that is not connected is dropped.
+   The page reconnecting (a reload, a network blip) is a GONE and a new
+   JOIN. The clipboard goes to the seat that copied.
+4. **The floor** serves seats: a screen that joins **takes over a person**
+   walking the floor — the first one free — and that person stops
+   wandering; leaving gives them back. Each seat has its own view, its own
+   following, its own status line and hover, and **its own speech scaled
+   and faded by distance from its own person**, so each seat keeps its own
+   copy of `place` (the people's and posters' positions copied in from
+   the program's model every frame). The drawing order is shared, as a
+   moved poster is: one floor. Person 0 is renamed Max — every seat's
+   person is "you" to that seat alone.
+
+Not in this step, and named: seats of different sizes (every seat is the
+program's one device size, and the page scales it); any authentication
+(a page may post as any connected seat — a LAN demo, not a service); a
+repaint narrower than a seat's whole view when someone else moves.
+
+Done when: a seatless program mirrors as before (the existing web checks,
+unchanged, are the control); in Chrome two pages are two people — each
+told who it is, a click in one walks its own person and not the other's,
+the second page sees the first's person move, each has its own view and
+its own hover; a page closed gives its person back; and the SDL window
+runs the seated floor as seat 0.
+
+### What it came to, 2026-11-15
+
+As written, and **not a byte of `whisker.h` changed** — D5 carried it. The
+web host's 87 checks pass unchanged (the control: a seatless program is
+the host it was), plus **9 in a new `seats.mjs`**, two Chrome pages on one
+floor:
+
+- each joins as its own seat — the first walks Max, the second Ana;
+- Right on each pans that page's view alone: both say `view 227,0`, where
+  one shared view would have gone to 354;
+- a click on the first walks Max, not Ana; **the second page sees Max
+  walk**, from x 277 to 565 on its own canvas — exactly where its view puts
+  him — and its own status line says "You are Ana.", with Max's words small
+  and faded because Ana is far from him (looked at);
+- the second points at Max and its hover names him; a click there walks
+  Ana and leaves Max's walk alone;
+- the page closed, Ana walks on by herself; a new page is Ana again.
+
+Two things the run taught:
+
+- **A page navigated away did not leave.** Chrome kept the event stream's
+  connection open after `about:blank`, so the host never saw it close and
+  the page's return was a third seat. Closing the tab closes it; a reload
+  does too. A seat that goes quietly is the host's to time out — named,
+  not done.
+- **Max wandered off before anyone came**, so where he stood depended on
+  how fast Chrome connected. He now waits at the door until the first
+  screen takes him — which is also the right thing for a real hall.
+
+Person 0 is Max now ("You" was every seat's name for itself); the floor's
+existing checks say Max. In the SDL window the floor is one seat, 0, and
+draws as before (2,076 bytes a frame).
+
+**Named, not done**: seats of different sizes; authentication; a seat's
+quiet departure (a timeout or a heartbeat); every seat redrawn whole on a
+frame where anyone moved — at 16 seats, 16 documents a frame.
+
 ## 5aa. Hover (2026-11-15), written before its code
 
 Matthew chose it after moving items. A desktop needs to know what the

@@ -164,6 +164,11 @@ void wh_write(const void *bytes, int n)
 	if (S.dirty) present();
 }
 
+/* One seat, 0 (§5ab): a program that asks for seats hears it join, once. */
+static int seat_join;
+void wh_seats(int on) { if (on) seat_join = 1; }
+void wh_to(int seat) { (void)seat; }
+
 static int point_of(int wx, int wy, wh_event_t *out)
 {
 	out->x = wx / S.scale;
@@ -176,6 +181,12 @@ int wh_poll(wh_event_t *out)
 	SDL_Event e;
 
 	out->kind = WH_NOTHING;
+	out->seat = 0;
+	if (seat_join) {
+		seat_join = 0;
+		out->kind = WH_JOIN;
+		return WH_JOIN;
+	}
 	while (SDL_PollEvent(&e)) {
 		switch (e.type) {
 		case SDL_QUIT:

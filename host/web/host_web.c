@@ -22,6 +22,13 @@
  *           only when it is pasted into, so a paste comes to the host as
  *           "P", which keeps it and turns it into Ctrl-V (§5s rule 7).
  *
+ * Seats (§5ab): a page's /events connection is its seat, a slot below
+ * WH_SEATS, which the host tells it ("S n") once the program serves seats;
+ * it posts to /ev?s=n from then on, and a post naming no seat is dropped. A
+ * program that calls wh_seats(1) hears each seat JOIN and GONE and sends a
+ * document to one of them with wh_to; one that does not sees every page as
+ * the same screen, as below.
+ *
  * Plain HTTP both ways: no WebSocket handshake, no library, no thread. One
  * poll() over the sockets, run whenever the program polls or waits. A page
  * that connects late is sent every document since the last full one, and the
@@ -45,7 +52,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#define MAXC 16
+#define MAXC WH_SEATS                    /* a slot is a seat (§5ab) */
 
 static const char PAGE[] =
 "<!doctype html><html><head><meta charset=utf-8>"
@@ -55,7 +62,7 @@ static const char PAGE[] =
 "canvas{display:block;margin:auto;max-width:100vw;max-height:100vh;touch-action:none;outline:none}"
 "</style></head><body><canvas id=c tabindex=0></canvas><script>\n"
 "const c=document.getElementById('c'),g=c.getContext('2d');\n"
-"let W=0,H=0,chain=Promise.resolve(),sent=Promise.resolve(),drawn=0;\n"
+"let W=0,H=0,chain=Promise.resolve(),sent=Promise.resolve(),drawn=0,seat=-1;\n"
 /* whisker's advance is half the font size; make the browser's monospace
    agree -- and keep runs of spaces, which an SVG collapses and /w0 does not
    (§5v: measured, xml:space on the root did nothing in Chrome; this does) */
@@ -101,12 +108,13 @@ static const char PAGE[] =
 "  else old();\n"
 "}\n"
 "new EventSource('/events').onmessage=e=>{\n"
+"  if(e.data.startsWith('S ')){seat=+e.data.slice(2);return;}\n"
 "  if(e.data.startsWith('C ')){copy(unesc(e.data.slice(2)));return;}\n"
 "  const m=/^(\\d+) (\\d+) (\\d+) (\\d+) /.exec(e.data);\n"
 "  if(m) draw(+m[1],+m[2],+m[3],+m[4],e.data.slice(m[0].length));\n"
 "};\n"
 /* events, in order: each POST waits for the one before */
-"function send(line){sent=sent.then(()=>fetch('/ev',{method:'POST',body:line}).catch(()=>{}));}\n"
+"function send(line){sent=sent.then(()=>fetch(seat<0?'/ev':'/ev?s='+seat,{method:'POST',body:line}).catch(()=>{}));}\n"
 "function pt(e){const r=c.getBoundingClientRect();\n"
 "  return Math.floor((e.clientX-r.left)*W/r.width)+' '+Math.floor((e.clientY-r.top)*H/r.height);}\n"
 /* the primary button presses; the secondary asks for a context menu, which
@@ -149,7 +157,7 @@ static const char PAGE[] =
 "  }\n"
 "  if([...e.key].length===1&&!m){e.preventDefault();send('T '+e.key);}\n"
 "});\n"
-"window.whisker={send,canvas:c,drawn:()=>drawn,idle:()=>chain,images:()=>Object.keys(IMG).filter(k=>IMG[k]).length,\n"
+"window.whisker={send,seat:()=>seat,canvas:c,drawn:()=>drawn,idle:()=>chain,images:()=>Object.keys(IMG).filter(k=>IMG[k]).length,\n"
 "  clip:()=>clip,copied:()=>copied};\n"
 "c.focus();\n"
 "</script></body></html>\n";
@@ -170,6 +178,7 @@ static struct {
 	int       llen, lcap;
 	wh_event_t q[64];
 	int       qh, qt;
+	int       seats, to;     /* serving seats (§5ab); the seat wh_to named, or -1 */
 	char     *clip;          /* the clipboard: the last copied or pasted */
 	int       clen;
 } S;
@@ -204,6 +213,13 @@ static int send_all(int fd, const char *b, int n)
 
 static void drop(int i)
 {
+	if (S.c[i].sub && S.seats) {            /* a seat goes (§5ab) */
+		wh_event_t e;
+		memset(&e, 0, sizeof e);
+		e.kind = WH_GONE;
+		e.seat = i;
+		push(&e);
+	}
 	close(S.c[i].fd);
 	S.c[i].fd = -1;
 	S.c[i].sub = 0;
@@ -223,10 +239,11 @@ static void keep(const char *t, int n)
 }
 
 /* One line of /ev: a pointer, a key, text, a paste, or "draw it all again". */
-static void event_line(const char *l)
+static void event_line(const char *l, int seat)
 {
 	wh_event_t e;
 	memset(&e, 0, sizeof e);
+	e.seat = (seat < 0) ? 0 : seat;      /* a seatless page is the one screen */
 	switch (l[0]) {
 	case 'D': e.kind = WH_PRESS;   sscanf(l + 1, "%d %d %d %d", &e.x, &e.y, &e.key, &e.d); break;
 	case 'R': e.kind = WH_MENU;    sscanf(l + 1, "%d %d", &e.x, &e.y); break;
@@ -284,13 +301,16 @@ static void respond(int i)
 		len = atoi(cl + 15);
 	if (c->got < (int)(end + 4 - c->req) + len) return;   /* body not all here */
 
-	if (strcmp(method, "POST") == 0 && strcmp(path, "/ev") == 0) {
+	if (strcmp(method, "POST") == 0 && (strcmp(path, "/ev") == 0 || strncmp(path, "/ev?s=", 6) == 0)) {
 		char *p = end + 4, *stop = p + len;
+		int seat = (path[3] == '?') ? atoi(path + 6) : -1;
 		*stop = '\0';
+		/* serving seats, an event is from a screen that is here, or nothing */
+		if (S.seats && (seat < 0 || seat >= MAXC || S.c[seat].fd < 0 || !S.c[seat].sub)) p = stop;
 		while (p < stop) {
 			char *nl = strchr(p, '\n');
 			if (nl) *nl = '\0';
-			event_line(p);
+			event_line(p, seat);
 			if (!nl) break;
 			p = nl + 1;
 		}
@@ -300,12 +320,15 @@ static void respond(int i)
 		static const char H[] = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
 		                        "Cache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n";
 		wh_event_t e;
+		char sn[32];
 		send_all(c->fd, H, (int)sizeof H - 1);
-		if (S.llen > 0) send_all(c->fd, S.log, S.llen);
+		if (S.seats) send_all(c->fd, sn, snprintf(sn, sizeof sn, "data: S %d\n\n", i));   /* its seat */
+		if (!S.seats && S.llen > 0) send_all(c->fd, S.log, S.llen);
 		c->sub = 1;
 		c->got = 0;
 		memset(&e, 0, sizeof e);
-		e.kind = WH_EXPOSE;
+		e.kind = S.seats ? WH_JOIN : WH_EXPOSE;
+		e.seat = i;
 		push(&e);
 	} else if (strncmp(path, "/static/", 8) == 0) {
 		/* Files a page's images name (§5r): from WHISKER_STATIC, or ./static,
@@ -414,6 +437,31 @@ int wh_open(int w, int h, int scale, const char *title)
 
 void wh_clip(int y0, int y1) { S.y0 = y0; S.y1 = y1; }
 
+/* Serve seats (§5ab): every page already here joins now. */
+void wh_seats(int on)
+{
+	S.seats = on;
+	S.to = -1;
+	for (int i = 0; on && i < MAXC; i++)
+		if (S.c[i].fd >= 0 && S.c[i].sub) {
+			wh_event_t e;
+			char sn[32];
+			send_all(S.c[i].fd, sn, snprintf(sn, sizeof sn, "data: S %d\n\n", i));   /* its seat */
+			memset(&e, 0, sizeof e);
+			e.kind = WH_JOIN;
+			e.seat = i;
+			push(&e);
+		}
+}
+
+void wh_to(int seat) { S.to = seat; }
+
+/* Whether a page is one the next message goes to. */
+static int aimed(int i)
+{
+	return S.c[i].fd >= 0 && S.c[i].sub && (!S.seats || S.to < 0 || S.to == i);
+}
+
 /* A browser draws UTF-8, images and clip paths (§5r), and decodes entities,
    so text may hold < > & (§5v). Not opacity yet: the page composites by
    rows onto a canvas, and nothing whisker draws uses it. */
@@ -434,14 +482,15 @@ void wh_write(const void *bytes, int n)
 		for (int i = 0; i < S.dlen; i++) if (S.doc[i] == '\n' || S.doc[i] == '\r') S.doc[i] = ' ';
 		hn = snprintf(head, sizeof head, "data: %d %d %d %d ", S.y0, S.y1, S.w, S.h);
 		mn = hn + S.dlen + 2;
-		if (full) S.llen = 0;               /* a full document: the log starts again */
+		/* a full document: the log starts again -- and serving seats there
+		   is none, since a seat that joins is drawn whole by its program */
+		if (full || S.seats) S.llen = 0;
 		grow(&S.log, &S.lcap, S.llen + mn);
 		memcpy(S.log + S.llen, head, (size_t)hn);
 		memcpy(S.log + S.llen + hn, S.doc, (size_t)S.dlen);
 		memcpy(S.log + S.llen + hn + S.dlen, "\n\n", 2);
 		for (int i = 0; i < MAXC; i++)
-			if (S.c[i].fd >= 0 && S.c[i].sub &&
-			    send_all(S.c[i].fd, S.log + S.llen, mn) < 0) drop(i);
+			if (aimed(i) && send_all(S.c[i].fd, S.log + S.llen, mn) < 0) drop(i);
 		S.llen += mn;
 	}
 	S.dlen = 0;
@@ -476,7 +525,7 @@ int wh_copy(const char *s, int n)
 	}
 	m[k++] = '\n'; m[k++] = '\n';
 	for (int i = 0; i < MAXC; i++)
-		if (S.c[i].fd >= 0 && S.c[i].sub && send_all(S.c[i].fd, m, k) < 0) drop(i);
+		if (aimed(i) && send_all(S.c[i].fd, m, k) < 0) drop(i);
 	free(m);
 	return 0;
 }
