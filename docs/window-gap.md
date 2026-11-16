@@ -288,8 +288,12 @@ what each lacks is an interaction a person expects for free:
    §5y)**: Up, Down, Home, End and Enter walk and choose in any open
    overlay — `choice` answered directly: **twenty-one directly, four by
    composition** (`tabs`, `tab`, `docks`, `dock`).
-3. **`docks` / `dock`: docking and floating.** Areas, never moved — and
-   floating needs more than one window, which is a host's (§4).
+3. ~~**`docks` / `dock`: docking and floating.**~~ **Docking built
+   2026-11-16 (design §5ag)**: `whisker_dock.h` — panes dragged by their
+   captions to any edge, closed, shown, resized, the layout saved as a
+   line — so `docks` and `dock` are answered directly: **twenty-three
+   directly, two by composition** (`tabs`, `tab`). Floating a pane into
+   a window of its own (§5af gave the windows) is §5ag's step 2.
 4. `tabs` / `tab`: nothing missing that a person would name; the program
    swaps the body, as `wkeys` does.
 

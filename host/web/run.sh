@@ -9,6 +9,7 @@
 #   WHISKER_PORT=9000 ./run.sh
 #   ./run.sh --code [file]    the code editor (§5v), code.c, in a browser
 #   ./run.sh --floor          a conference floor (§5q), floor.c, in a browser
+#   ./run.sh --dock           docked panes (§5ag), dock.c, in a browser
 #   ./run.sh --test           the headless checks (test.py), and headless
 #                             Chrome (chrome.mjs) when it is installed
 set -euo pipefail
@@ -30,6 +31,12 @@ if [[ "${1:-}" == "--floor" ]]; then
 		-I"$HERE/../linux" -I"$HERE/../../src"
 	exec "$OUT/whisker-floor-web"
 fi
+if [[ "${1:-}" == "--dock" ]]; then
+	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-dock-web" \
+		"$HERE/../linux/dock.c" "$HERE/host_web.c" \
+		-I"$HERE/../linux" -I"$HERE/../../src"
+	exec "$OUT/whisker-dock-web"
+fi
 if [[ "${1:-}" == "--test" ]]; then
 	python3 "$HERE/test.py" "$OUT/whisker-edit-web"
 	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-floor-web" \
@@ -49,6 +56,9 @@ if [[ "${1:-}" == "--test" ]]; then
 		node "$HERE/floor.mjs" "$OUT/whisker-floor-web" "$OUT"
 		node "$HERE/seats.mjs" "$OUT/whisker-floor-web" "$OUT"
 		node "$HERE/repaint.mjs" "$OUT/whisker-floor-web"
+		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-dock-web" \
+			"$HERE/../linux/dock.c" "$HERE/host_web.c" -I"$HERE/../linux" -I"$HERE/../../src"
+		node "$HERE/dock.mjs" "$OUT/whisker-dock-web" "$OUT"
 	else
 		echo "      no google-chrome or node: the real-browser check was skipped"
 	fi

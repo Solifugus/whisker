@@ -3513,6 +3513,98 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5ag. Docking (2026-11-16), written before its code
+
+Matthew chose it: the last of Studio's 25 `window` words whisker answered
+only by composition (`window-gap.md` §8). gBASIC's Qt backend (its
+`qt_gui_design.md` §0.30) says what it is: `docks right` an edge area of
+the window, `dock name "Caption"` a pane in it — a name and a caption both,
+since the name is what a program addresses and what a saved layout is
+keyed by — the layout saved and restored, and `qt.dock(win, name)` to ask
+which edge a pane is on. The interaction is a desktop's: **drag a pane by
+its caption to another edge**.
+
+1. **whisker: grabbing.** A tree may be marked **`grab`**: a press in it
+   that moves past the slop **drags the tree itself** — `WSK_NOTE_GRAB`
+   once, `WSK_NOTE_DRAG` with each move, **`WSK_NOTE_DROP`** on release,
+   each naming the tree; the program reads the point from the event it
+   fed. A press that does not move is what it always was (a button in the
+   caption still clicks). Drag and drop in general, of which docking is
+   the first use. `WSK_NO_GRAB`, in `WSK_MINIMAL` by its lack of input.
+2. **`src/whisker_dock.h`**, a third header in the chooser's shape and
+   under the same rules: the caller declares **panes** — a content tree in
+   `nest`, a caption, a name, an area (left, right, top, bottom), a size —
+   and a **centre** tree; the dock builds the window's frame from them in
+   tree and string slots the program sets aside: the four edge areas
+   around the centre, each with a divider (§5x) to resize it; within an
+   area its panes one after another, divided too; each pane a caption row
+   — its title and a close button — over its content. An empty area takes
+   no room.
+3. **Docking**: a caption dragged shows where it would go — a bar along
+   the edge the pointer is nearest, within a quarter of the window — and
+   dropped there the pane moves to that edge's end; dropped anywhere else
+   it stays. Its close button hides it (`wsk_dock_show` brings it back).
+   A divider dragged resizes an area, kept in the layout.
+4. **The layout is the caller's** (D5): the panes' areas, orders, sizes and
+   shown-or-not, read and written as one line of text by
+   **`wsk_dock_save` / `wsk_dock_load`** — what gBASIC's base64 blob is to
+   Qt, but readable — and **`wsk_dock_area(dock, name)`** the oracle.
+5. **Floating** a pane into a window of its own (§5af) is step 2.
+6. A demo, `host/linux/dock.c`: an editor in the centre, Files and Outline
+   on the left, Output at the bottom — in both hosts.
+
+Done when: the frame built from a layout, by the rectangles; a caption
+dragged to each edge and dropped there, the drop bar shown on the way; a
+drop in the middle changing nothing (the control); a button in a caption
+still clicking; a pane closed and shown again; an area resized by its
+divider; a layout saved, changed and loaded back to the same frame; in
+Chrome, a pane dragged from the left to the right.
+
+**What it came to** (2026-11-16): as written, with four things the code
+found that the design had not said.
+
+- **The dock sets aside one tree more** — `WSK_DOCK_TREES`, 6 + 2 ×
+  `WSK_DOCK_MAX` — for the drop bar: a label draws no fill, a stack
+  does, so the bar is a stack widget over an empty tree of its own.
+  It runs between the top and bottom areas at a side, and across the
+  window at the top or bottom.
+- **Every slot is a tree, used or not**: `wsk_check` reads all of
+  `nest`, and a slot no pane used was garbage until the build set it
+  to an empty tree (found by a crash, before any check was written).
+- **A side keeps room for its widest caption** — the title, the close
+  button, the padding — or the caption row is refused (`WSK_E_FIT`);
+  at 320 × 172 a fifth of the width (64) was narrower than "Files" and
+  its ×. Clamped, never refused, as a divider is.
+- **A pane may be shorter than what is in it only if it says so**: its
+  content tree scrolls (`overflow = WSK_SCROLL`) or it is refused, as
+  any stack is — whisker's rule (D18), not the dock's; the demo's lists
+  scroll.
+
+Grabbing is 304 bytes of RISC-V (`module_nest` at the default, with and
+without `WSK_NO_GRAB`), and `WSK_PANEL` now leaves it out, as it leaves
+out dividers. The frame is rebuilt whole on a change — a drop, a close,
+the bar moving to another edge — and the program draws it whole; a drag
+that stays near one edge changes nothing and draws nothing.
+
+**43 checks** (1,069 → 1,112): the root too small for the dock's slots
+and a centre inside them (refused), the frame by its rectangles, a grab
+within the slop and past it, the bar following the pointer to the top,
+into the middle (gone) and back, the drop; **a drop in the middle
+leaving the layout's line unchanged** (the control); each edge in turn
+and back; a click on a caption's × closing its pane and **the same ×
+pressed and dragged grabbing instead**; a pane shown again where it
+was; a divider dragged 100 px and the size kept through a rebuild; the
+layout saved, changed, refused as junk, loaded back to the same frame,
+and a line naming a pane the program has not passed over. In the
+picture (`dock.ppm`, RV-9's rasteriser): the frame at the C5's size
+under 4 KB, and the drop bar the right edge's height in the accent,
+absent before. The demo, `host/linux/dock.c` (`run.sh --dock`, both
+hosts), is started by the Linux suite (59); `host/web/dock.mjs` (8)
+drags Files from the left to the right in headless Chrome, sees the bar
+on the canvas on the way and the caption at the top right after (none
+there before), and drops Outline in the middle as the control (web
+146). Every earlier output — 34 files of the main suite — byte-identical.
+
 ## 5af. Several windows (2026-11-16), written before its code
 
 Matthew chose it after the second review. gBASIC's Qt backend measured

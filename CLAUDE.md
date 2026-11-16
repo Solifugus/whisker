@@ -52,7 +52,8 @@ Studio's window is a pure record. **Recounted 2026-11-15 (`window-gap.md`
 §8): whisker answers all 25 of its words** — 19 directly, 6 by
 composition (21 of 25 on 2026-11-12). What is left is three interactions,
 not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
-~~keyboard in a menu (`choice`)~~ (§5y), docking (`docks`).
+~~keyboard in a menu (`choice`)~~ (§5y), ~~docking (`docks`)~~ (§5ag;
+floating a pane into its own window is its step 2).
 
 ## Status
 
@@ -314,6 +315,20 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   Cancel answers *cancelled*, never an empty path. The code editor opens by
   Ctrl-O and saves as by Ctrl-Shift-S, in both hosts. **Matthew used it in
   the SDL window, 2026-11-16: Cancel, then a file chosen and opened.**
+- **§5ag — docking** (2026-11-16, Matthew: "docking sounds good"): a
+  tree marked **`grab`** is dragged by itself — `WSK_NOTE_GRAB`, `DRAG`,
+  `DROP`, the point the event's; a press that does not move is what it
+  was, so a button in it still clicks (304 bytes; `WSK_NO_GRAB`, in
+  `WSK_PANEL`). **`src/whisker_dock.h`**, a third header in the
+  chooser's shape: panes (a name, a caption, a content tree, an edge)
+  around a centre, built in `WSK_DOCK_TREES` slots the program sets
+  aside; a caption dragged shows a bar in the accent at the nearest edge
+  and dropped there the pane moves; dropped in the middle it stays; ×
+  closes, `wsk_dock_show` reopens, dividers resize; **the layout is one
+  readable line** (`wsk_dock_save`/`_load`). A pane's content must
+  scroll or fit — whisker's rule, not the dock's. Demo
+  `host/linux/dock.c` (`run.sh --dock`, both hosts); `dock.mjs` drags a
+  pane left to right in Chrome. Floating is step 2.
 - **§5af — several windows** (2026-11-16): the host contract gains
   `wh_window`, `wh_window_close`, `wh_on` (which window documents go to),
   `win` on every event, and **`WH_CLOSE`** — the program decides; a
@@ -386,13 +401,14 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,069 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,112 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 58 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 59 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
-the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`).
+the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
+8 for docking (`dock.mjs`) — 146 in all.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

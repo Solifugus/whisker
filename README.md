@@ -17,11 +17,11 @@ in `design.md` §8, and built since, iteration by iteration (§5i onward).
 **Status of the drawing layer.** `src/whisker.h` renders a panel, repaints one band of it, says which widget is
 under a point, composes several stacks into one document, and draws a text
 field you can type into. `src/run.sh --module` runs every done-criterion in
-`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p, §5q (steps 1–6, posters), §5r, §5s, §5t, §5u, §5v, §5w, §5x, §5y, §5z, §5aa, §5ab, §5ac, §5ad, §5ae and §7 — **1,069 checks** plus the profile gate,
+`design.md` §5, §5b, §5c, §5d, §5e, §5f, §5g, §5h, §5i, §5j, §5l, §5m, §5n, §5o, §5p, §5q (steps 1–6, posters), §5r, §5s, §5t, §5u, §5v, §5w, §5x, §5y, §5z, §5aa, §5ab, §5ac, §5ad, §5ae, §5ag and §7 — **1,112 checks** plus the profile gate,
 the pixels through RV-9's own rasteriser, eighteen module builds with the
 double-link, and a person looking at the pictures. `host/linux/run.sh --test`
-adds **58** more, and `host/web/run.sh --test` **138**: 32 over HTTP, 10 over raw sockets for seats, 19 in
-headless Chrome, 25 for the code editor, 24 for the conference floor 14 for two people on it at once and 4 that partial repaints leave a canvas a full redraw would.
+adds **59** more, and `host/web/run.sh --test` **146**: 32 over HTTP, 10 over raw sockets for seats, 19 in
+headless Chrome, 25 for the code editor, 24 for the conference floor 14 for two people on it at once, 4 that partial repaints leave a canvas a full redraw would, and 8 for a pane docked from the left to the right.
 
 **And any stack can scroll** (§5e, 2026-10-24) — the first step toward
 gBASIC's Qt-era `window` and a desktop. `overflow = WSK_SCROLL` and an offset

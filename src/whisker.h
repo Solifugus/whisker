@@ -115,6 +115,7 @@
  *     -DWSK_NO_LISTKEYS a list or a world as one Tab stop, and its keys (§5z)
  *     -DWSK_NO_HOVER    what the pointer rests on, for a host that has one (§5aa)
  *     -DWSK_NO_TIP      tooltips: a rest, a hold, a key's focus (§5ac)
+ *     -DWSK_NO_GRAB     a tree dragged by itself: GRAB, DRAG, DROP (§5ag)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -161,6 +162,9 @@
 #  endif
 #  ifndef WSK_NO_HOVER
 #    define WSK_NO_HOVER 1         /* a finger is only where it touches (§5aa) */
+#  endif
+#  ifndef WSK_NO_GRAB
+#    define WSK_NO_GRAB 1          /* docking is a desktop's, as dividers are (§5ag) */
 #  endif
 #endif
 #ifdef WSK_MINIMAL
@@ -249,6 +253,9 @@
 #endif
 #if (defined(WSK_NO_INPUT) || defined(WSK_NO_FIELD)) && !defined(WSK_NO_WORDS)
 #  define WSK_NO_WORDS 1           /* and words are the toolkit's moves (§5w) */
+#endif
+#if defined(WSK_NO_INPUT) && !defined(WSK_NO_GRAB)
+#  define WSK_NO_GRAB 1            /* a grab is a press the toolkit follows (§5ag) */
 #endif
 #if defined(WSK_NO_INPUT) && !defined(WSK_NO_TIP)
 #  define WSK_NO_TIP 1             /* a tip answers a rest the toolkit counts (§5ac) */
@@ -631,6 +638,9 @@ typedef struct wsk_tree {
 	short         states;
 	unsigned char select;
 	short         sel;
+#ifndef WSK_NO_GRAB
+	unsigned char grab;          /* a press here that moves drags this tree (§5ag) */
+#endif
 	unsigned int  selfill;
 
 	/*
@@ -1614,6 +1624,9 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->states = 0;
 	t->select = 0;
 	t->sel = WSK_NONE;
+#ifndef WSK_NO_GRAB
+	t->grab = 0;
+#endif
 	t->selfill = 0xb06a2au;
 	t->head = WSK_NONE;
 	t->talign = WSK_MIDDLE;
@@ -4701,8 +4714,11 @@ enum { WSK_NOTE_CLICK = 1, WSK_NOTE_SCROLL, WSK_NOTE_TEXT, WSK_NOTE_ENTER,
        WSK_NOTE_RAISE,            /* ... and brought to the top of its order */
        WSK_NOTE_HOVER,            /* the pointer rests on something else: in, item and
                                      value (the word) as a click's; in 0, nothing (§5aa) */
-       WSK_NOTE_TIP };            /* it has rested long enough for a tip: answer with
+       WSK_NOTE_TIP,              /* it has rested long enough for a tip: answer with
                                      wsk_ui_tip, or do not (§5ac) */
+       WSK_NOTE_GRAB,             /* a grab tree pressed and moved: in, the tree (§5ag) */
+       WSK_NOTE_DRAG,             /* ... moved again: the point is the event's */
+       WSK_NOTE_DROP };           /* ... let go: the point is the event's */
 
 /* The keys that mean something to a field (§5j). A character typed is TEXT,
    not a key, so that a keyboard layout stays the host's business. */
@@ -4757,6 +4773,10 @@ typedef struct {
 
 #ifndef WSK_NO_OVER
 	const void       *dfocus;    /* what had focus before a dialog opened (§5ae) */
+#endif
+#ifndef WSK_NO_GRAB
+	const wsk_tree_t *gin;       /* the grab tree a press is in, or 0 (§5ag) */
+	unsigned char     grabbing;  /* ...and it has moved: GRAB said */
 #endif
 	const wsk_tree_t *focus_in;  /* the focused field: its tree and index, */
 	short             focus_item;
@@ -4818,6 +4838,10 @@ static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
 	ui->focus_b = 0;
 #ifndef WSK_NO_OVER
 	ui->dfocus = 0;
+#endif
+#ifndef WSK_NO_GRAB
+	ui->gin = 0;
+	ui->grabbing = 0;
 #endif
 	root->held = 0;
 	root->focus = 0;
@@ -5192,6 +5216,10 @@ static inline void wsk__press_end(wsk_ui_t *ui, int *lo, int *hi)
 #endif
 #ifndef WSK_NO_SOURCE
 	ui->gline = -1;
+#endif
+#ifndef WSK_NO_GRAB
+	ui->gin = 0;
+	ui->grabbing = 0;
 #endif
 }
 
@@ -6507,6 +6535,20 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		ui->hit = (short)k;
 		ui->hit_in = in;
 		ui->word = (short)word;
+#ifndef WSK_NO_GRAB
+		/* in a tree marked grab -- the widget's own, or the stack widget
+		   pressed in its padding: moved, it is dragged (§5ag) */
+		ui->gin = 0;
+		ui->grabbing = 0;
+		if (k >= 0) {
+			if (in->grab) ui->gin = in;
+#ifndef WSK_NO_NEST
+			else if (in->item[k].kind == WSK_STACK && r->nest != 0 && in->item[k].sub >= 0 &&
+			         in->item[k].sub < r->nests && r->nest[in->item[k].sub].grab)
+				ui->gin = &r->nest[in->item[k].sub];
+#endif
+		}
+#endif
 #ifndef WSK_NO_TIP
 		/* a finger held is a rest; a mouse's press never is (§5ac rule 1) */
 		if ((ev->key & WSK_MOD_TOUCH) && k >= 0) wsk__tip_rest(ui, in, k, rect, 1, &lo, &hi);
@@ -6620,6 +6662,24 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 #endif
 	} else if (ev->kind == WSK_EV_MOVE && ui->down) {
 		int took = 0;
+#ifndef WSK_NO_GRAB
+		/* a grab tree moved past the slop: the tree is dragged, and nothing
+		   else this press could have done -- no click, scroll or pan */
+		if (ui->gin != 0) {
+			if (!ui->grabbing && (x - ui->x0 > ui->slop || ui->x0 - x > ui->slop ||
+			                      y - ui->y0 > ui->slop || ui->y0 - y > ui->slop)) {
+				ui->grabbing = 1;
+				ui->dragging = 1;
+				if (r->held != 0) {
+					r->held = 0;
+					wsk__span(&lo, &hi, ui->held.y, ui->held.y + ui->held.h);
+				}
+				n = wsk__note(note, max, n, WSK_NOTE_GRAB, ui->gin, -1, 0);
+			} else if (ui->grabbing)
+				n = wsk__note(note, max, n, WSK_NOTE_DRAG, ui->gin, -1, 0);
+			if (ui->grabbing) goto rows;
+		}
+#endif
 #ifndef WSK_NO_TIP
 		/* a finger that moves past the slop is dragging, not holding */
 		if (ui->tip_hold && (x - ui->x0 > ui->slop || ui->x0 - x > ui->slop ||
@@ -6727,6 +6787,16 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		(void)took;
 	} else if (ev->kind == WSK_EV_UP && ui->down) {
 		ui->down = 0;
+#ifndef WSK_NO_GRAB
+		if (ui->grabbing) {
+			n = wsk__note(note, max, n, WSK_NOTE_DROP, ui->gin, -1, 0);
+			ui->grabbing = 0;
+			ui->gin = 0;
+			ui->dragging = 0;
+			goto rows;
+		}
+		ui->gin = 0;
+#endif
 #ifndef WSK_NO_TIP
 		/* a finger lifted after its tip showed: the hold was used, and it
 		   does not click (§5ac rule 5); lifted before, or with no tip, it does */
@@ -7064,7 +7134,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	if (ev->kind == WSK_EV_KEY && (ev->key & (WSK_MOD_CTRL | WSK_MOD_ALT)) && !used)
 		n = wsk__note(note, max, n, WSK_NOTE_KEY, r, -1, ev->key);
 	(void)ate;
-#if !defined(WSK_NO_WORLD) || !defined(WSK_NO_OVER)
+#if !defined(WSK_NO_WORLD) || !defined(WSK_NO_OVER) || !defined(WSK_NO_GRAB)
 rows:
 #endif
 	if (hi > lo) {

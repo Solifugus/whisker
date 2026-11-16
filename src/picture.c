@@ -14,6 +14,7 @@
 #include "drv_svgwin.c"
 #include "whisker.h"
 #include "whisker_chooser.h"
+#include "whisker_dock.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -2017,6 +2018,54 @@ int main(void)
 		printf("    the list's trough: %d pixels; the buttons' accent: %d\n", trough, accent);
 		ok(trough > 2000 && accent > 1000, "the list in its trough, the buttons in the accent");
 		shot("chooser.ppm");
+	}
+
+	/*
+	 * Docking (§5ag) at the pixels: Files and Outline on the left, Output
+	 * at the bottom, a centre -- and a caption being dragged to the right,
+	 * the drop bar in the accent along that edge.
+	 */
+	{
+		static const wsk_widget_t CW[] = { { .kind = WSK_LABEL, .id = "centre", .text = "the centre", .weight = 1 } };
+		static const wsk_widget_t FW[] = { { .kind = WSK_LABEL, .id = "fbody", .text = "main.bas", .weight = 1 } };
+		static const wsk_widget_t OW[] = { { .kind = WSK_LABEL, .id = "obody", .text = "sub draw", .weight = 1 } };
+		static const wsk_widget_t PW_[] = { { .kind = WSK_LABEL, .id = "pbody", .text = "ok", .weight = 1 } };
+		static wsk_dock_t d;
+		static const char *strs[WSK_DOCK_MAX];
+		wsk_tree_t root, k[4 + WSK_DOCK_TREES];
+		wsk_sink_t s;
+		uint32_t v;
+		int lo, hi, accent, accent0;
+		wsk_rect_t right = { PW - 6, 0, 6, 100 };     /* the right edge, above Output */
+
+		wsk_init(&root, WSK_COL, PW, PH);
+		root.bg = 0x10203au; root.font = 12;
+		root.nest = k; root.nests = 4 + WSK_DOCK_TREES; root.str = strs; root.strs = WSK_DOCK_MAX;
+		for (int i = 0; i < 4; i++) wsk_nest_init(&k[i], &root, WSK_COL);
+		k[0].item = CW; k[0].n = 1; k[1].item = FW; k[1].n = 1;
+		k[2].item = OW; k[2].n = 1; k[3].item = PW_; k[3].n = 1;
+		k[0].bg = 0x24344cu;
+		for (int i = 1; i < 4; i++) { k[i].pad = 2; k[i].overflow = WSK_SCROLL; }   /* a pane may be shorter than what is in it */
+		wsk_dock_init(&d, &root, strs, 4, 0, 0);
+		d.asize[WSK_DOCK_BOTTOM] = 48;
+		wsk_dock_pane(&d, "files", "Files", 1, WSK_DOCK_LEFT);
+		wsk_dock_pane(&d, "outline", "Outline", 2, WSK_DOCK_LEFT);
+		wsk_dock_pane(&d, "output", "Output", 3, WSK_DOCK_BOTTOM);
+		wsk_dock_build(&d);
+		printf("\n  docking (§5ag)\n");
+		s.put = to_window; s.ctx = &dev;
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		ok(wsk_render(&root, &s, 4096) > 0, "the frame, in one document under 4 KB");
+		accent0 = span(right, pix565(root.accent), &lo, &hi);
+		d.hint = WSK_DOCK_RIGHT;                 /* as a drag near the right edge sets it */
+		wsk_dock_build(&d);
+		s.len = 0;
+		ok(wsk_render(&root, &s, 4096) > 0, "and with a pane being dragged to the right");
+		accent = span(right, pix565(root.accent), &lo, &hi);
+		printf("    the accent along the right edge: %d pixels before, %d during\n", accent0, accent);
+		ok(accent0 == 0 && accent == 6 * 100, "the drop bar: the right edge in the accent, 6 wide -- and not before");
+		shot("dock.ppm");
 	}
 
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);

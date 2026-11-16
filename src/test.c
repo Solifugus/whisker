@@ -7,6 +7,7 @@
  */
 #include "whisker.h"
 #include "whisker_chooser.h"
+#include "whisker_dock.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -5940,6 +5941,164 @@ int main(void)
 		ids[0] = "ok";
 		clip_into(&g, ids, 1, clip, sizeof clip, 4096);
 		f = fopen("/tmp/wsk_clip.svg", "wb"); fputs(clip, f); fclose(f);
+	}
+
+	printf("\n-- §5ag  docking\n");
+	{
+		static const wsk_widget_t CW[] = { { .kind = WSK_LABEL, .id = "centre", .text = "the centre", .weight = 1 } };
+		static const wsk_widget_t FW[] = { { .kind = WSK_LABEL, .id = "fbody", .text = "main.bas", .weight = 1 } };
+		static const wsk_widget_t OW[] = { { .kind = WSK_LABEL, .id = "obody", .text = "sub draw", .weight = 1 } };
+		static const wsk_widget_t PW[] = { { .kind = WSK_LABEL, .id = "pbody", .text = "ok", .weight = 1 } };
+		static wsk_dock_t d;
+		static const char *strs[WSK_DOCK_MAX];
+		wsk_tree_t root, k[4 + WSK_DOCK_TREES];
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		int y0, y1, n, which;
+		char doc[8192], lay[256], lay2[256];
+
+		wsk_init(&root, WSK_COL, 640, 400);
+		root.nest = k; root.nests = 4 + WSK_DOCK_TREES; root.str = strs; root.strs = WSK_DOCK_MAX;
+		for (int i = 0; i < 4; i++) { wsk_nest_init(&k[i], &root, WSK_COL); k[i].overflow = WSK_SCROLL; }
+		k[0].item = CW; k[0].n = 1; k[1].item = FW; k[1].n = 1;
+		k[2].item = OW; k[2].n = 1; k[3].item = PW; k[3].n = 1;
+		k[1].pad = k[2].pad = k[3].pad = 2;
+		root.nests = 3 + WSK_DOCK_TREES;
+		ok(wsk_dock_init(&d, &root, strs, 4, 0, 0) == WSK_E_KIND, "a root one tree slot short of the dock's: refused, WSK_E_KIND");
+		root.nests = 4 + WSK_DOCK_TREES;
+		ok(wsk_dock_init(&d, &root, strs, 4, 0, 5) == WSK_E_KIND, "a centre inside the dock's own slots: refused");
+		ok(wsk_dock_init(&d, &root, strs, 4, 0, 0) == WSK_OK, "CONTROL: with enough, and the centre the program's own");
+		ok(wsk_dock_pane(&d, "files", "Files", 1, WSK_DOCK_LEFT) == 0 &&
+		   wsk_dock_pane(&d, "outline", "Outline", 2, WSK_DOCK_LEFT) == 1 &&
+		   wsk_dock_pane(&d, "output", "Output", 3, WSK_DOCK_BOTTOM) == 2, "three panes: Files and Outline on the left, Output at the bottom");
+		ok(wsk_dock_pane(&d, "files", "Again", 1, WSK_DOCK_RIGHT) == -1 && wsk_dock_pane(&d, "x", "X", 1, 4) == -1,
+		   "a name already used, an area there is not: no pane");
+		wsk_dock_build(&d);
+		wsk_ui_init(&ui, &root);
+		which = 0;
+		ok(wsk_check(&root, &which) == WSK_OK, "the frame checks");
+		ok(rect_is(rect_of(&root, "files"), 0, 0, 128, 26) && rect_is(rect_of(&root, "outline"), 0, 150, 128, 26) &&
+		   rect_is(rect_of(&root, "output"), 0, 300, 640, 26),
+		   "the captions: Files at the top left, Outline under a divider, Output across the bottom -- the window's edges, no padding");
+		ok(rect_is(rect_of(&root, "centre"), 142, 8, 490, 278) && rect_is(rect_of(&root, "fbody"), 2, 28, 124, 114) &&
+		   rect_is(rect_of(&root, "pbody"), 2, 328, 636, 70),
+		   "the centre between the left area and the bottom; each content under its caption");
+		render_into(&root, doc, sizeof doc, 8192);
+		ok(has(doc, ">Files</text>") && has(doc, ">Outline</text>") && has(doc, ">Output</text>") && count(doc, ">x</text>") == 3,
+		   "drawn: each caption's title and its close button");
+
+#define DK_EV(K, X, Y) (memset(&ev, 0, sizeof ev), ev.kind = (K), ev.x = (X), ev.y = (Y), \
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1), wsk_dock_feed(&d, &ui, &ev, nt, n))
+		DK_EV(WSK_EV_DOWN, 40, 13);
+		ok(n == 0 && d.drag == -1, "a press on Files' caption: nothing yet");
+		DK_EV(WSK_EV_MOVE, 44, 15);
+		ok(n == 0 && d.drag == -1, "moved within the slop: still nothing");
+		ok(DK_EV(WSK_EV_MOVE, 600, 150) == 1 && n == 1 && nt[0].kind == WSK_NOTE_GRAB && nt[0].in == &k[4 + 5 + WSK_DOCK_MAX] &&
+		   d.drag == 0 && d.hint == WSK_DOCK_RIGHT, "moved past it, near the right edge: GRAB, naming the caption; the drop bar at the right");
+		render_into(&root, doc, sizeof doc, 8192);
+		{
+			char want[96];
+			snprintf(want, sizeof want, "x=\"634\" width=\"6\" height=\"294\" fill=\"#%06x\"", root.accent);
+			ok(has(doc, want), "drawn: a bar 6 wide in the accent, the right edge's height between top and bottom");
+		}
+		ok(DK_EV(WSK_EV_MOVE, 300, 20) == 1 && n == 1 && nt[0].kind == WSK_NOTE_DRAG && d.hint == WSK_DOCK_TOP,
+		   "dragged on to the top: DRAG, and the bar moves there");
+		ok(DK_EV(WSK_EV_MOVE, 320, 200) == 1 && d.hint == -1, "into the middle: no bar");
+		ok(DK_EV(WSK_EV_MOVE, 600, 150) == 1 && d.hint == WSK_DOCK_RIGHT, "back to the right");
+		ok(DK_EV(WSK_EV_UP, 600, 150) == 1 && n == 1 && nt[0].kind == WSK_NOTE_DROP && d.drag == -1 && d.hint == -1 &&
+		   wsk_dock_area(&d, "files") == WSK_DOCK_RIGHT, "let go: DROP, and Files is on the right");
+		ok(rect_is(rect_of(&root, "files"), 512, 0, 128, 26) && rect_is(rect_of(&root, "fbody"), 514, 28, 124, 264) &&
+		   rect_is(rect_of(&root, "outline"), 0, 0, 128, 26),
+		   "drawn so: Files the right area's whole height, Outline alone on the left");
+		ok(rect_of(&root, "centre").x == 142 && rect_of(&root, "centre").w == 356, "and the centre between them, 640 less two areas, two dividers, its padding");
+
+		/* the control: a drop in the middle changes nothing */
+		wsk_dock_save(&d, lay, sizeof lay);
+		DK_EV(WSK_EV_DOWN, 40, 13);
+		DK_EV(WSK_EV_MOVE, 320, 200);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_GRAB && d.drag == 1 && d.hint == -1, "CONTROL: Outline grabbed and taken to the middle");
+		ok(DK_EV(WSK_EV_UP, 320, 200) == 1 && wsk_dock_save(&d, lay2, sizeof lay2) > 0 && strcmp(lay, lay2) == 0,
+		   "dropped there: the layout what it was");
+
+		/* each edge in turn: Output to the top, the left, the right, the bottom */
+		{
+			static const short to[4][2] = { { 320, 10 }, { 10, 150 }, { 630, 150 }, { 320, 395 } };
+			static const unsigned char want[4] = { WSK_DOCK_TOP, WSK_DOCK_LEFT, WSK_DOCK_RIGHT, WSK_DOCK_BOTTOM };
+			int good = 1;
+			for (int e = 0; e < 4; e++) {
+				wsk_rect_t c = rect_of(&root, "output");
+				DK_EV(WSK_EV_DOWN, c.x + 30, c.y + 13);
+				DK_EV(WSK_EV_MOVE, to[e][0], to[e][1]);
+				if (d.hint != want[e]) good = 0;
+				DK_EV(WSK_EV_UP, to[e][0], to[e][1]);
+				if (wsk_dock_area(&d, "output") != want[e] || d.hint != -1) good = 0;
+				which = 0;
+				if (wsk_check(&root, &which) != WSK_OK) good = 0;
+			}
+			ok(good, "Output dragged to the top, the left, the right and the bottom: the bar at each, the pane there after, the frame checking");
+			ok(rect_is(rect_of(&root, "output"), 0, 300, 640, 26), "back at the bottom where it began");
+			ok(rect_is(rect_of(&root, "files"), 512, 0, 128, 26) && rect_is(rect_of(&root, "outline"), 0, 0, 128, 26),
+			   "and the left and right as they were -- an edge's newcomer goes to its end");
+		}
+
+		/* a button in a caption still clicks: Files' close */
+		{
+			wsk_rect_t c = rect_of(&root, "files");
+			DK_EV(WSK_EV_DOWN, c.x + c.w - 10, 13);
+			ok(DK_EV(WSK_EV_UP, c.x + c.w - 10, 13) == 1 && n >= 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].item == 1 &&
+			   wsk_dock_shown(&d, "files") == 0, "a click on Files' x, not moved: CLICK, and the pane closed");
+			ok(rect_of(&root, "centre").w == 490 && rect_of(&root, "files").x == -1,
+			   "drawn so: the right area gone, the centre wider");
+			ok(wsk_dock_show(&d, "files", 1) == WSK_OK && (wsk_dock_build(&d), rect_is(rect_of(&root, "files"), 512, 0, 128, 26)),
+			   "shown again: back where it was");
+			ok(wsk_dock_show(&d, "nope", 1) == WSK_E_NOTFOUND && wsk_dock_area(&d, "nope") == WSK_E_NOTFOUND,
+			   "a pane there is not: WSK_E_NOTFOUND");
+			DK_EV(WSK_EV_DOWN, c.x + c.w - 10, 13);
+			DK_EV(WSK_EV_MOVE, 10, 150);
+			ok(n == 1 && nt[0].kind == WSK_NOTE_GRAB && d.hint == WSK_DOCK_LEFT, "pressed on the x and moved: a grab, not a click");
+			DK_EV(WSK_EV_UP, 10, 150);
+			ok(n == 1 && nt[0].kind == WSK_NOTE_DROP && wsk_dock_shown(&d, "files") == 1 && wsk_dock_area(&d, "files") == WSK_DOCK_LEFT,
+			   "let go: dropped on the left, and still shown");
+			ok(rect_is(rect_of(&root, "outline"), 0, 0, 128, 26) && rect_of(&root, "files").y == 150,
+			   "under Outline, the left's end");
+		}
+
+		/* a divider: the left area made wider, kept in the layout */
+		{
+			wsk_rect_t c = rect_of(&root, "centre");
+			DK_EV(WSK_EV_DOWN, 131, 100);
+			DK_EV(WSK_EV_MOVE, 231, 100);
+			DK_EV(WSK_EV_UP, 231, 100);
+			printf("   the left area after its divider was dragged 100 right: %d; the centre at %d\n", d.asize[WSK_DOCK_LEFT], rect_of(&root, "centre").x);
+			ok(d.asize[WSK_DOCK_LEFT] == 228 && rect_of(&root, "centre").x == c.x + 100, "the divider dragged 100 right: the left area 228, kept");
+			wsk_dock_build(&d);
+			ok(rect_of(&root, "centre").x == c.x + 100, "and built again from the layout, still 228");
+		}
+
+		/* the layout as a line, and back */
+		{
+			int len = wsk_dock_save(&d, lay, sizeof lay);
+			printf("   the layout: %s\n", lay);
+			ok(len > 0 && strcmp(lay, "L228 R128 T100 B100;files:L2:1:0;outline:L1:1:0;output:B0:1:0;") == 0,
+			   "saved: each area's size, then each pane's name, area and order, shown, size");
+			ok(wsk_dock_save(&d, lay2, 20) == -1 && lay2[0] == '\0', "into too little room: -1, and an empty string");
+			DK_EV(WSK_EV_DOWN, 40, 13);
+			DK_EV(WSK_EV_MOVE, 320, 10);
+			DK_EV(WSK_EV_UP, 320, 10);
+			wsk_dock_show(&d, "output", 0);
+			wsk_dock_build(&d);
+			ok(wsk_dock_area(&d, "outline") == WSK_DOCK_TOP && rect_of(&root, "output").x == -1, "changed: Outline to the top, Output closed");
+			ok(wsk_dock_load(&d, "junk") == -1 && wsk_dock_area(&d, "outline") == WSK_DOCK_TOP, "a line that is not a layout: -1, nothing changed");
+			ok(wsk_dock_load(&d, lay) == 3, "the saved line loaded: three panes put back");
+			wsk_dock_build(&d);
+			ok(wsk_dock_save(&d, lay2, sizeof lay2) == len && strcmp(lay, lay2) == 0 &&
+			   rect_is(rect_of(&root, "outline"), 0, 0, 228, 26) && rect_of(&root, "files").y == 150 &&
+			   rect_is(rect_of(&root, "output"), 0, 300, 640, 26), "and the frame what it was when saved");
+			ok(wsk_dock_load(&d, "L200 R128 T100 B100;gone:R0:1:0;files:R0:1:0;") == 1 && wsk_dock_area(&d, "files") == WSK_DOCK_RIGHT &&
+			   d.asize[WSK_DOCK_LEFT] == 200, "a layout naming a pane this program has not: passed over, the rest put back");
+		}
+#undef DK_EV
 	}
 
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);
