@@ -21,7 +21,7 @@ field you can type into. `src/run.sh --module` runs every done-criterion in
 the pixels through RV-9's own rasteriser, eighteen module builds with the
 double-link, and a person looking at the pictures. `host/linux/run.sh --test`
 adds **51** more, and `host/web/run.sh --test` **96**: 32 over HTTP, 19 in
-headless Chrome, 16 for the code editor 20 for the conference floor and 9 for two people on it at once.
+headless Chrome, 16 for the code editor, 20 for the conference floor and 9 for two people on it at once.
 
 **And any stack can scroll** (§5e, 2026-10-24) — the first step toward
 gBASIC's Qt-era `window` and a desktop. `overflow = WSK_SCROLL` and an offset
