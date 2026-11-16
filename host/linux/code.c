@@ -22,7 +22,8 @@
  * this one does not. Ctrl-O opens another file and Ctrl-Shift-S saves this
  * one as a name of your choosing -- the chooser (§5ae), which reads folders
  * through POSIX here (lister.h) because whisker reads none. Ctrl-S says
- * that only Save as writes. Close the window to quit.
+ * that only Save as writes. Ctrl-N opens a second window, a scratch pad
+ * (§5af). Closing the last window quits.
  */
 #include "host.h"
 #include "whisker.h"
@@ -59,6 +60,48 @@ static wsk_tree_t chtrees[4];           /* the chooser's slots (§5ae) */
 static const char *chstrs[2 + WSK_CH_MAX];
 static wsk_chooser_t chooser;
 static int choosing;                    /* 0, or what the chooser was opened for: 'o' or 's' */
+
+/*
+ * A second window (§5af): Ctrl-N opens a scratch pad -- its own root, its
+ * own toolkit, its own text -- typed into apart from the editor. Its close
+ * button closes it; the editor's, with the pad open, closes the editor and
+ * leaves the pad; the last window closed ends the program.
+ */
+#define SW_W 600
+#define SW_H 360
+static const wsk_widget_t PAD[] = {
+	{ .kind = WSK_LABEL, .id = "padline", .text = "scratch: type here", .size = 32 },
+	{ .kind = WSK_MEMO,  .id = "pad",     .sub = 0, .weight = 1 },
+};
+static char padtext[8192];
+static wsk_buf_t padbuf[1];
+static wsk_tree_t padwin;
+static wsk_ui_t padui;
+static int pad = -1, main_open = 1;   /* the pad's window, or -1; the editor's still open */
+
+static void say(const char *line);
+
+static void pad_open(wsk_sink_t *s)
+{
+	int y0, y1;
+	if (pad >= 0) return;
+	pad = wh_window(SW_W, SW_H, "whisker -- scratch");
+	if (pad < 0) { say("no room for another window"); return; }
+	memset(padbuf, 0, sizeof padbuf);
+	padbuf[0].b = padtext; padbuf[0].cap = sizeof padtext;
+	padtext[0] = '\0';
+	wsk_init(&padwin, WSK_COL, SW_W, SW_H);
+	padwin.pad = 4; padwin.gap = 0; padwin.font = 18; padwin.item = PAD; padwin.n = 2;
+	padwin.buf = padbuf; padwin.bufs = 1;
+	padwin.caps = (unsigned char)wh_caps();
+	padwin.talign = WSK_ALIGN_START;
+	wsk_ui_init(&padui, &padwin);
+	wsk_ui_focus(&padui, "pad", &y0, &y1);
+	wh_on(pad);
+	wh_draw_fit(&padwin, s, 0, SW_H);
+	wh_on(0);
+	say("scratch opened");
+}
 static char pathbuf[PATH_MAX];
 static short sizes[4];                  /* the panes, as the divider leaves them */
 static wsk_undo_t undo;
@@ -303,10 +346,43 @@ int main(int argc, char **argv)
 		   left the window behind the pointer */
 		if (k == WH_QUIT) break;
 		if (k == WH_NOTHING) {
-			if (dirty1 > dirty0) { wh_draw_fit(&win, &s, dirty0, dirty1); dirty0 = 32767; dirty1 = 0; }
+			if (dirty1 > dirty0 && main_open) { wh_on(0); wh_draw_fit(&win, &s, dirty0, dirty1); dirty0 = 32767; dirty1 = 0; }
+			fflush(stdout);
 			wh_wait(20);
 			continue;
 		}
+		/* a window's close button (§5af): the pad's closes the pad; the
+		   editor's closes the editor, and the program only when no window
+		   is left */
+		if (k == WH_CLOSE) {
+			if (he.win == pad && pad >= 0) { wh_window_close(pad); pad = -1; say("scratch closed"); }
+			else if (he.win == 0) { wh_window_close(0); main_open = 0; printf("editor closed\n"); }
+			fflush(stdout);
+			if (!main_open && pad < 0) break;
+			continue;
+		}
+		if (he.win != 0 && he.win == pad) {
+			/* the pad's own events, to its own toolkit, drawn in its window */
+			wsk_event_t pe;
+			wsk_note_t pn[4];
+			int p0, p1;
+			if (k == WH_EXPOSE) { p0 = 0; p1 = SW_H; }
+			else {
+				memset(&pe, 0, sizeof pe);
+				pe.x = (short)he.x; pe.y = (short)he.y; pe.finger = (unsigned char)he.finger;
+				if (k == WH_PRESS) { pe.kind = WSK_EV_DOWN; pe.key = (unsigned short)he.key; pe.d = (short)he.d; }
+				else if (k == WH_RELEASE) pe.kind = WSK_EV_UP;
+				else if (k == WH_MOVE) pe.kind = WSK_EV_MOVE;
+				else if (k == WH_WHEEL) { pe.kind = WSK_EV_WHEEL; pe.d = (short)he.d; }
+				else if (k == WH_KEY) { pe.kind = WSK_EV_KEY; pe.key = (unsigned short)he.key; }
+				else if (k == WH_TEXT) { pe.kind = WSK_EV_TEXT; memcpy(pe.text, he.text, sizeof pe.text); }
+				else continue;
+				(void)wsk_feed(&padui, &pe, pn, 4, &p0, &p1);
+			}
+			if (p1 > p0) { wh_on(pad); wh_draw_fit(&padwin, &s, p0, p1); wh_on(0); }
+			continue;
+		}
+		if (!main_open) continue;
 		if (k == WH_EXPOSE) { dirty0 = 0; dirty1 = h; continue; }
 		memset(&ev, 0, sizeof ev);
 		ev.x = (short)he.x; ev.y = (short)he.y;
@@ -372,6 +448,8 @@ int main(int argc, char **argv)
 			} else if (t->kind == WSK_NOTE_KEY && t->value == ('s' | WSK_MOD_CTRL)) {
 				say("save: only Save as (Ctrl-Shift-S) writes, to a name you choose");
 				y0 = 0; y1 = h;
+			} else if (t->kind == WSK_NOTE_KEY && !choosing && t->value == ('n' | WSK_MOD_CTRL)) {
+				pad_open(&s);                       /* a second window (§5af) */
 			} else if (t->kind == WSK_NOTE_KEY && !choosing &&
 			           (t->value == ('o' | WSK_MOD_CTRL) || t->value == ('s' | WSK_MOD_CTRL | WSK_MOD_SHIFT))) {
 				/* the chooser (§5ae): open a file, or save as */

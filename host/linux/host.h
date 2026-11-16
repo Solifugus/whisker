@@ -45,8 +45,11 @@ enum {
 	WH_JOIN,                 /* a screen arrived: `seat` (§5ab) -- only to a
 	                            program that called wh_seats(1) */
 	WH_GONE,                 /* ... and went -- or went quiet (§5ab step 2) */
-	WH_SIZE                  /* a seat's screen is x by y pixels: at its
+	WH_SIZE,                 /* a seat's screen is x by y pixels: at its
 	                            join, and when resized (§5ab step 2) */
+	WH_CLOSE                 /* window `win`'s close button: the program
+	                            decides -- once it has asked for a second
+	                            window; until then it is WH_QUIT (§5af) */
 };
 
 /* The keys a field cares about. The same numbers as whisker's WSK_KEY_*, so
@@ -76,7 +79,20 @@ typedef struct {
 	int  seat;               /* the screen it came from: 0 .. WH_SEATS-1 (§5ab) */
 	int  finger;             /* PRESS, MOVE, RELEASE: which finger, 0..255; a
 	                            mouse is 0 (§5ad) */
+	int  win;                /* the window it came from: 0, wh_open's (§5af) */
 } wh_event_t;
+
+/*
+ * Windows (§5af): wh_open's is 0; wh_window opens another and answers its
+ * number, or -1; wh_window_close closes one; wh_on says which the
+ * documents after it go to (as wh_to says which seat). A program that
+ * opens a second window hears close buttons as WH_CLOSE with their `win`
+ * -- the last one closed, it decides to end. One that never does is the
+ * host as it always was.
+ */
+int  wh_window(int w, int h, const char *title);
+void wh_window_close(int win);
+void wh_on(int win);
 
 /*
  * Seats (§5ab): one person's screen and input. A program that serves several

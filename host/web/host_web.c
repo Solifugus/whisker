@@ -67,12 +67,18 @@ static const char PAGE[] =
 "<title>whisker</title><style>"
 "html,body{margin:0;height:100%;background:#000}"
 "canvas{display:block;margin:auto;max-width:100vw;max-height:100vh;touch-action:none;outline:none}"
+/* a window after the first (§5af): a panel over the page -- a title bar to
+   drag it by, a close button, its canvas */
+".win{position:fixed;background:#1b2433;border:1px solid #567;box-shadow:0 4px 18px #000a}"
+".bar{height:26px;line-height:26px;padding:0 8px;color:#dde;font:14px sans-serif;cursor:move;user-select:none;display:flex}"
+".bar span{flex:1}.bar b{cursor:pointer;padding:0 6px}"
 "</style></head><body><canvas id=c tabindex=0></canvas><script>\n"
 "const c=document.getElementById('c'),g=c.getContext('2d');\n"
-"let W=0,H=0,chain=Promise.resolve(),sent=Promise.resolve(),drawn=0,seat=-1,gen=0,es=null;\n"
+"const V={0:{c,g,W:0,H:0}};let top9=10;\n"
+"let chain=Promise.resolve(),sent=Promise.resolve(),drawn=0,seat=-1,gen=0,es=null;\n"
 /* a seat's posts name it and its generation, so a page that lost its seat
    cannot speak for whoever has the number now */
-"const url=()=>seat<0?'/ev':'/ev?s='+seat+'&g='+gen;\n"
+"const url=(w)=>{const q=[];if(seat>=0)q.push('s='+seat,'g='+gen);if(w)q.push('w='+w);return '/ev'+(q.length?'?'+q.join('&'):'');};\n"
 /* whisker's advance is half the font size; make the browser's monospace
    agree -- and keep runs of spaces, which an SVG collapses and /w0 does not
    (§5v: measured, xml:space on the root did nothing in Chrome; this does) */
@@ -88,15 +94,16 @@ static const char PAGE[] =
 "    const f=new FileReader(); f.onload=()=>{IMG[u]=f.result;ok();}; f.onerror=()=>{IMG[u]='';ok();}; f.readAsDataURL(b);}))\n"
 "    .catch(()=>{IMG[u]='';}))).then(()=>svg.replace(/<image href=\"([^\"]+)\"/g,(m,u)=>'<image href=\"'+(IMG[u]||u)+'\"'));\n"
 "}\n"
-"function draw(y0,y1,w,h,svg){\n"
+"function draw(n,y0,y1,w,h,svg){\n"
 "  svg=svg.replace('<svg ','<svg xmlns=\"http://www.w3.org/2000/svg\" ')\n"
 "         .replace(/^(<svg[^>]*>)/,'$1'+STYLE);\n"
 "  chain=chain.then(()=>inline(svg)).then(svg=>new Promise(done=>{\n"
 "    const img=new Image();\n"
 "    img.onload=()=>{\n"
-"      if(W!==w||H!==h){c.width=W=w;c.height=H=h;}\n"
+"      const v=V[n];if(!v){done();return;}\n"
+"      if(v.W!==w||v.H!==h){v.c.width=v.W=w;v.c.height=v.H=h;}\n"
 "      let a=y0,b=y1; if(b<=a){a=0;b=h;}\n"
-"      g.drawImage(img,0,a,w,b-a,0,a,w,b-a); drawn++; done();\n"
+"      v.g.drawImage(img,0,a,w,b-a,0,a,w,b-a); drawn++; done();\n"
 "    };\n"
 "    img.onerror=()=>done();\n"
 "    img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);\n"
@@ -128,69 +135,96 @@ static const char PAGE[] =
 "  if(e.data.startsWith('S ')){const v=e.data.split(' ');seat=+v[1];gen=+v[2];\n"
 "    if(document.hidden){es.close();es=null;seat=-1;return;}size();return;}\n"
 "  if(e.data.startsWith('C ')){copy(unesc(e.data.slice(2)));return;}\n"
-"  const m=/^(\\d+) (\\d+) (\\d+) (\\d+) /.exec(e.data);\n"
-"  if(m) draw(+m[1],+m[2],+m[3],+m[4],e.data.slice(m[0].length));\n"
+"  if(e.data.startsWith('O ')){const v=e.data.split(' ');panel(+v[1],+v[2],+v[3],v.slice(4).join(' '));return;}\n"
+"  if(e.data.startsWith('Q ')){unpanel(+e.data.slice(2));return;}\n"
+"  const m=/^(?:w(\\d+) )?(\\d+) (\\d+) (\\d+) (\\d+) /.exec(e.data);\n"
+"  if(m) draw(+(m[1]||0),+m[2],+m[3],+m[4],+m[5],e.data.slice(m[0].length));\n"
 "};}\n"
 "document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!es)connect();});\n"
 "connect();\n"
 /* events, in order: each POST waits for the one before */
-"function send(line){sent=sent.then(()=>fetch(url(),{method:'POST',body:line}).catch(()=>{}));}\n"
+"function send(line,w){sent=sent.then(()=>fetch(url(w),{method:'POST',body:line}).catch(()=>{}));}\n"
 "/* which finger (§5ad): a mouse is 0, any other pointer its id */\n"
 "const fid=e=>e.pointerType==='mouse'?0:1+(e.pointerId%255);\n"
-"function pt(e){const r=c.getBoundingClientRect();\n"
-"  return Math.floor((e.clientX-r.left)*W/r.width)+' '+Math.floor((e.clientY-r.top)*H/r.height);}\n"
 /* the primary button presses; the secondary asks for a context menu, which
    is the platform's contextmenu event -- a right-click, or a long press on a
    phone. A page may read the clipboard only when it is pasted into (§5s).
    A mouse's press goes from mousedown, the only event whose detail counts
    clicks -- a pointerdown's is 0, measured in Chrome 156 -- so a double-
    click is the platform's, timing and all (§5w); a finger's, from
-   pointerdown, as a single. */
-"let touched=0;\n"
-"c.addEventListener('pointerdown',e=>{if(e.button!==0)return;c.focus();c.setPointerCapture(e.pointerId);\n"
-"  if(e.pointerType!=='mouse'){touched=Date.now();send('D '+pt(e)+' '+((e.shiftKey?256:0)|(e.pointerType==='touch'?2048:0))+' 1 '+fid(e));}});\n"
-/* a browser follows a tap with a mouse press and release of its own, for
-   pages that know only the mouse; the finger's were already sent, and these
-   would be a second finger -- a pinch -- so any within 800 ms of a touch's
-   last event are not sent (§5ad) */
-"c.addEventListener('mousedown',e=>{if(e.button===0&&Date.now()-touched>800)send('D '+pt(e)+' '+(e.shiftKey?256:0)+' '+e.detail);});\n"
-"c.addEventListener('pointermove',e=>{if(e.pointerType==='touch')touched=Date.now();\n"
-"  if(e.buttons&1)send('M '+pt(e)+' '+fid(e));\n"
-"  else if(e.buttons===0&&e.pointerType!=='touch')send('H '+pt(e));});\n"
-"c.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')send('H -1 -1');});\n"
-/* a touch the platform cancels -- a palm, a system gesture -- lifts, or
-   whisker would think the finger still down (found by review) */
-"c.addEventListener('pointercancel',e=>{if(e.pointerType!=='mouse'){touched=Date.now();send('U '+pt(e)+' '+fid(e));}});\n"
-"c.addEventListener('pointerup',e=>{if(e.pointerType==='touch')touched=Date.now();\n"
-"  else if(e.pointerType==='mouse'&&Date.now()-touched<800)return;\n"
-"  if(e.button===0)send('U '+pt(e)+' '+fid(e));});\n"
-"c.addEventListener('contextmenu',e=>{e.preventDefault();send('R '+pt(e));});\n"
-"document.addEventListener('paste',e=>{const t=e.clipboardData&&e.clipboardData.getData('text');\n"
-"  e.preventDefault();if(t)send('P '+esc(t));});\n"
-"c.addEventListener('wheel',e=>{e.preventDefault();send('W '+pt(e)+' '+Math.round(e.deltaY));},{passive:false});\n"
+   pointerdown, as a single. A browser follows a tap with a mouse press and
+   release of its own, for pages that know only the mouse; the finger's
+   were already sent, and these would be a second finger -- a pinch -- so
+   any within 800 ms of a touch's last event are not sent (§5ad). A touch
+   the platform cancels -- a palm, a system gesture -- lifts, or whisker
+   would think the finger still down. Each window's canvas listens for its
+   own, and says which window it is (§5af). */
+"let touched=0,active=0;\n"
+"const KEYS={ArrowLeft:1,ArrowRight:2,Home:3,End:4,Backspace:5,Delete:6,Enter:7,Escape:10,ArrowUp:11,ArrowDown:12,ContextMenu:13};\n"
+"const MOVES={1:1,2:1,3:1,4:1,11:1,12:1};\n"
+"function attach(cv,n){\n"
+"  const S=(l)=>send(l,n);\n"
+"  const pt=e=>{const r=cv.getBoundingClientRect(),v=V[n];\n"
+"    return Math.floor((e.clientX-r.left)*v.W/r.width)+' '+Math.floor((e.clientY-r.top)*v.H/r.height);};\n"
+"  cv.addEventListener('pointerdown',e=>{active=n;if(e.button!==0)return;cv.focus();cv.setPointerCapture(e.pointerId);\n"
+"    if(e.pointerType!=='mouse'){touched=Date.now();S('D '+pt(e)+' '+((e.shiftKey?256:0)|(e.pointerType==='touch'?2048:0))+' 1 '+fid(e));}});\n"
+"  cv.addEventListener('mousedown',e=>{if(e.button===0&&Date.now()-touched>800)S('D '+pt(e)+' '+(e.shiftKey?256:0)+' '+e.detail);});\n"
+"  cv.addEventListener('pointermove',e=>{if(e.pointerType==='touch')touched=Date.now();\n"
+"    if(e.buttons&1)S('M '+pt(e)+' '+fid(e));\n"
+"    else if(e.buttons===0&&e.pointerType!=='touch')S('H '+pt(e));});\n"
+"  cv.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')S('H -1 -1');});\n"
+"  cv.addEventListener('pointercancel',e=>{if(e.pointerType!=='mouse'){touched=Date.now();S('U '+pt(e)+' '+fid(e));}});\n"
+"  cv.addEventListener('pointerup',e=>{if(e.pointerType==='touch')touched=Date.now();\n"
+"    else if(e.pointerType==='mouse'&&Date.now()-touched<800)return;\n"
+"    if(e.button===0)S('U '+pt(e)+' '+fid(e));});\n"
+"  cv.addEventListener('contextmenu',e=>{e.preventDefault();S('R '+pt(e));});\n"
+"  cv.addEventListener('wheel',e=>{e.preventDefault();S('W '+pt(e)+' '+Math.round(e.deltaY));},{passive:false});\n"
 /* keys with their modifiers (§5s): Shift only where it means something --
    a key that moves the caret, and a chord -- and a chord a printable key
    with Ctrl (or Command) or Alt, lower-case. Ctrl-V is left to the
    browser, whose paste event brings the text. */
-"const KEYS={ArrowLeft:1,ArrowRight:2,Home:3,End:4,Backspace:5,Delete:6,Enter:7,Escape:10,ArrowUp:11,ArrowDown:12,ContextMenu:13};\n"
-"const MOVES={1:1,2:1,3:1,4:1,11:1,12:1};\n"
-"c.addEventListener('keydown',e=>{\n"
-"  const ctl=e.ctrlKey||e.metaKey;\n"
-"  let k=KEYS[e.key],m=(ctl?0x200:0)|(e.altKey?0x400:0);\n"
-"  if(e.key==='Tab')k=e.shiftKey?9:8;\n"
-"  if(e.key==='F10'&&e.shiftKey)k=13;\n"
-"  if(!k&&m&&e.key.length===1&&e.key>' '&&e.key<='~'){\n"
-"    if(ctl&&!e.altKey&&e.key.toLowerCase()==='v')return;\n"
-"    k=e.key.toLowerCase().charCodeAt(0);\n"
-"  }\n"
-"  if(k){\n"
-"    if(e.shiftKey&&(m||MOVES[k]))m|=0x100;\n"
-"    if(k===13)m=0;\n"
-"    e.preventDefault();send('K '+(k|m));return;\n"
-"  }\n"
-"  if([...e.key].length===1&&!m){e.preventDefault();send('T '+e.key);}\n"
-"});\n"
-"window.whisker={send,seat:()=>seat,canvas:c,drawn:()=>drawn,idle:()=>chain,images:()=>Object.keys(IMG).filter(k=>IMG[k]).length,\n"
+"  cv.addEventListener('keydown',e=>{\n"
+"    const ctl=e.ctrlKey||e.metaKey;\n"
+"    let k=KEYS[e.key],m=(ctl?0x200:0)|(e.altKey?0x400:0);\n"
+"    if(e.key==='Tab')k=e.shiftKey?9:8;\n"
+"    if(e.key==='F10'&&e.shiftKey)k=13;\n"
+"    if(!k&&m&&e.key.length===1&&e.key>' '&&e.key<='~'){\n"
+"      if(ctl&&!e.altKey&&e.key.toLowerCase()==='v')return;\n"
+"      k=e.key.toLowerCase().charCodeAt(0);\n"
+"    }\n"
+"    if(k){\n"
+"      if(e.shiftKey&&(m||MOVES[k]))m|=0x100;\n"
+"      if(k===13)m=0;\n"
+"      e.preventDefault();S('K '+(k|m));return;\n"
+"    }\n"
+"    if([...e.key].length===1&&!m){e.preventDefault();S('T '+e.key);}\n"
+"  });\n"
+"}\n"
+"attach(c,0);\n"
+"document.addEventListener('paste',e=>{const t=e.clipboardData&&e.clipboardData.getData('text');\n"
+"  e.preventDefault();if(t)send('P '+esc(t),active);});\n"
+/* a window as a panel (§5af): dragged by its bar, raised by a press, closed
+   by its button -- the program's to obey or not (WH_CLOSE) */
+"function panel(n,w,h,title){\n"
+"  if(V[n])return;\n"
+"  const d=document.createElement('div');d.className='win';d.style.left=(40+30*n)+'px';d.style.top=(40+30*n)+'px';d.style.zIndex=++top9;\n"
+"  const bar=document.createElement('div');bar.className='bar';\n"
+"  const t=document.createElement('span');t.textContent=title;const x=document.createElement('b');x.textContent='×';x.title='close';\n"
+"  bar.appendChild(t);bar.appendChild(x);\n"
+"  const cv=document.createElement('canvas');cv.tabIndex=0;cv.width=w;cv.height=h;\n"
+"  d.appendChild(bar);d.appendChild(cv);document.body.appendChild(d);\n"
+"  V[n]={c:cv,g:cv.getContext('2d'),W:w,H:h,d};\n"
+"  d.addEventListener('pointerdown',()=>{d.style.zIndex=++top9;},true);\n"
+"  x.addEventListener('pointerdown',e=>{e.stopPropagation();});\n"
+"  x.addEventListener('click',()=>send('C',n));\n"
+"  let ox=0,oy=0,dragging=false;\n"
+"  bar.addEventListener('pointerdown',e=>{if(e.target===x)return;dragging=true;bar.setPointerCapture(e.pointerId);ox=e.clientX-d.offsetLeft;oy=e.clientY-d.offsetTop;});\n"
+"  bar.addEventListener('pointermove',e=>{if(dragging){d.style.left=(e.clientX-ox)+'px';d.style.top=(e.clientY-oy)+'px';}});\n"
+"  bar.addEventListener('pointerup',()=>{dragging=false;});\n"
+"  attach(cv,n);cv.focus();active=n;\n"
+"}\n"
+"function unpanel(n){const v=V[n];if(!v||!n)return;v.d.remove();delete V[n];if(active===n){active=0;c.focus();}}\n"
+"window.whisker={send,seat:()=>seat,canvas:c,panel:n=>V[n]&&V[n].c,panels:()=>Object.keys(V).map(Number),drawn:()=>drawn,idle:()=>chain,images:()=>Object.keys(IMG).filter(k=>IMG[k]).length,\n"
 "  clip:()=>clip,copied:()=>copied};\n"
 "c.focus();\n"
 "</script></body></html>\n";
@@ -216,6 +250,8 @@ static struct {
 	int       qh, qt;
 	int       seats, to;     /* serving seats (§5ab); the seat wh_to named, or -1 */
 	unsigned  gen;           /* joinings so far, to number the next */
+	int       on;            /* the window documents go to (§5af) */
+	struct { int open, w, h; char title[64]; } win[8];   /* 0 is wh_open's */
 	char     *clip;          /* the clipboard: the last copied or pasted */
 	int       clen;
 } S;
@@ -288,11 +324,12 @@ static void keep(const char *t, int n)
 }
 
 /* One line of /ev: a pointer, a key, text, a paste, or "draw it all again". */
-static void event_line(const char *l, int seat)
+static void event_line(const char *l, int seat, int win)
 {
 	wh_event_t e;
 	memset(&e, 0, sizeof e);
 	e.seat = (seat < 0) ? 0 : seat;      /* a seatless page is the one screen */
+	e.win = win;                            /* which window (§5af) */
 	switch (l[0]) {
 	case 'D': e.kind = WH_PRESS;   sscanf(l + 1, "%d %d %d %d %d", &e.x, &e.y, &e.key, &e.d, &e.finger); break;
 	case 'R': e.kind = WH_MENU;    sscanf(l + 1, "%d %d", &e.x, &e.y); break;
@@ -318,6 +355,10 @@ static void event_line(const char *l, int seat)
 	case 'W': e.kind = WH_WHEEL;   sscanf(l + 1, "%d %d %d", &e.x, &e.y, &e.d); break;
 	case 'K': e.kind = WH_KEY;     sscanf(l + 1, "%d", &e.key); break;
 	case 'X': e.kind = WH_EXPOSE;  break;
+	case 'C':                               /* a window's close button (§5af) */
+		if (win <= 0) return;
+		e.kind = WH_CLOSE;
+		break;
 	case 'Y': return;                       /* still here: heard, in respond */
 	case 'G':                               /* hidden for good (§5ab step 2) */
 		if (S.seats && seat >= 0 && seat < WH_SEATS && S.c[seat].fd >= 0) drop(seat);
@@ -351,6 +392,7 @@ static void event_line(const char *l, int seat)
 		   and a hover at -1,-1 is the pointer leaving, not a point */
 		int bw = S.w, bh = S.h;
 		if (S.seats && seat >= 0 && seat < WH_SEATS && S.c[seat].w > 0) { bw = S.c[seat].w; bh = S.c[seat].h; }
+		if (win > 0) { bw = S.win[win].w; bh = S.win[win].h; }      /* a window its own size */
 		if (e.kind != WH_EXPOSE && e.kind != WH_KEY && e.kind != WH_TEXT &&
 		    !(e.kind == WH_HOVER && e.x == -1 && e.y == -1) &&
 		    (e.x < 0 || e.y < 0 || e.x >= bw || e.y >= bh)) return;
@@ -378,12 +420,15 @@ static void respond(int i)
 	}
 	if (c->got < head + len) return;        /* body not all here */
 
-	if (strcmp(method, "POST") == 0 && (strcmp(path, "/ev") == 0 || strncmp(path, "/ev?s=", 6) == 0)) {
+	if (strcmp(method, "POST") == 0 && (strcmp(path, "/ev") == 0 || strncmp(path, "/ev?", 4) == 0)) {
 		char *p = end + 4, *stop = p + len;
-		int seat = (path[3] == '?') ? atoi(path + 6) : -1;
-		const char *g = strstr(path, "&g=");
-		unsigned gen = g ? (unsigned)strtoul(g + 3, 0, 10) : 0;
+		const char *sp = strstr(path, "s="), *g = strstr(path, "g="), *wp = strstr(path, "w=");
+		int seat = sp ? atoi(sp + 2) : -1;
+		unsigned gen = g ? (unsigned)strtoul(g + 2, 0, 10) : 0;
+		int win = wp ? atoi(wp + 2) : 0;
 		*stop = '\0';
+		/* a window that is open, or the first (§5af) */
+		if (win < 0 || win >= 8 || !S.win[win].open) p = stop;
 		/* serving seats, an event is from a screen that is here -- the same
 		   joining of it, not a page that once had its number -- or nothing;
 		   not serving them, every page is the one screen, 0 */
@@ -394,7 +439,7 @@ static void respond(int i)
 		while (p < stop) {
 			char *nl = strchr(p, '\n');
 			if (nl) *nl = '\0';
-			event_line(p, seat);
+			event_line(p, seat, win);
 			if (!nl) break;
 			p = nl + 1;
 		}
@@ -423,6 +468,12 @@ static void respond(int i)
 		send_all(c->fd, H, (int)sizeof H - 1);
 		if (S.seats)                            /* its seat, and which joining of it */
 			send_all(c->fd, sn, snprintf(sn, sizeof sn, "data: S %d %u\n\n", i, c->gen));
+		for (int k = 1; k < 8; k++)             /* the windows already open (§5af) */
+			if (S.win[k].open) {
+				char o[128];
+				send_all(c->fd, o, snprintf(o, sizeof o, "data: O %d %d %d %s\n\n",
+				                            k, S.win[k].w, S.win[k].h, S.win[k].title));
+			}
 		if (!S.seats && S.llen > 0) send_all(c->fd, S.log, S.llen);
 		c->sub = 1;
 		c->got = 0;
@@ -431,6 +482,8 @@ static void respond(int i)
 		e.kind = S.seats ? WH_JOIN : WH_EXPOSE;
 		e.seat = i;
 		push(&e);
+		for (int k = 1; !S.seats && k < 8; k++)  /* and each drawn again for it */
+			if (S.win[k].open) { e.win = k; push(&e); }
 	} else if (strncmp(path, "/static/", 8) == 0) {
 		/* Files a page's images name (§5r): from WHISKER_STATIC, or ./static,
 		   by a plain name -- no '/', no "..", nothing above the folder. */
@@ -542,6 +595,7 @@ int wh_open(int w, int h, int scale, const char *title)
 	fprintf(stderr, "whisker-web: %s, %dx%d, at http://<this machine>:%d/\n",
 	        title ? title : "whisker", w, h, port ? atoi(port) : 8090);
 	S.open = 1;
+	S.win[0].open = 1; S.win[0].w = w; S.win[0].h = h;   /* window 0, wh_open's (§5af) */
 	return 0;
 }
 
@@ -566,6 +620,41 @@ void wh_seats(int on)
 }
 
 void wh_to(int seat) { S.to = seat; }
+
+/* A message to every page there is: a window opening or closing. */
+static void to_all(const char *m, int n)
+{
+	for (int i = 0; i < MAXC; i++)
+		if (S.c[i].fd >= 0 && S.c[i].sub && send_all(S.c[i].fd, m, n) < 0) drop(i);
+}
+
+/* Windows (§5af): each a panel in the page, opened on every page there is
+   and on every page that comes later. */
+int wh_window(int w, int h, const char *title)
+{
+	char m[160], t[64];
+	int i, k = 0;
+	for (i = 1; i < 8 && S.win[i].open; i++) ;
+	if (i == 8 || w < 1 || h < 1 || w > 4096 || h > 4096) return -1;
+	for (const char *q = title ? title : "whisker"; *q != '\0' && k < (int)sizeof t - 1; q++)
+		t[k++] = (*q == '\n' || *q == '\r') ? ' ' : *q;
+	t[k] = '\0';
+	S.win[i].open = 1; S.win[i].w = w; S.win[i].h = h;
+	memcpy(S.win[i].title, t, (size_t)k + 1);
+	to_all(m, snprintf(m, sizeof m, "data: O %d %d %d %s\n\n", i, w, h, t));
+	return i;
+}
+
+void wh_window_close(int win)
+{
+	char m[32];
+	if (win <= 0 || win >= 8 || !S.win[win].open) return;
+	S.win[win].open = 0;
+	if (S.on == win) S.on = 0;
+	to_all(m, snprintf(m, sizeof m, "data: Q %d\n\n", win));
+}
+
+void wh_on(int win) { if (win >= 0 && win < 8 && S.win[win].open) S.on = win; }
 
 /* Whether a page is one the next message goes to. */
 static int aimed(int i)
@@ -597,9 +686,28 @@ void wh_write(const void *bytes, int n)
 			static const char VB[] = "viewBox=\"0 0 ";
 			const char *vb = strstr(S.doc, VB);
 			if (vb != 0) sscanf(vb + sizeof VB - 1, "%d %d", &dw, &dh);
-			hn = snprintf(head, sizeof head, "data: %d %d %d %d ", S.y0, S.y1, dw, dh);
+			if (S.on != 0)                  /* another window's (§5af) */
+				hn = snprintf(head, sizeof head, "data: w%d %d %d %d %d ", S.on, S.y0, S.y1, dw, dh);
+			else
+				hn = snprintf(head, sizeof head, "data: %d %d %d %d ", S.y0, S.y1, dw, dh);
 		}
 		mn = hn + S.dlen + 2;
+		if (S.on != 0) {
+			/* not kept for a late page: it is sent the windows, and the
+			   program asked to draw each again */
+			char *m = (char *)malloc((size_t)mn);
+			if (m != 0) {
+				memcpy(m, head, (size_t)hn);
+				memcpy(m + hn, S.doc, (size_t)S.dlen);
+				memcpy(m + hn + S.dlen, "\n\n", 2);
+				for (int i = 0; i < MAXC; i++)
+					if (aimed(i) && send_all(S.c[i].fd, m, mn) < 0) drop(i);
+				free(m);
+			}
+			S.dlen = 0;
+			S.y0 = S.y1 = 0;
+			return;
+		}
 		/* a full document: the log starts again -- and serving seats there
 		   is none, since a seat that joins is drawn whole by its program */
 		if (full || S.seats) S.llen = 0;

@@ -314,6 +314,13 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   Cancel answers *cancelled*, never an empty path. The code editor opens by
   Ctrl-O and saves as by Ctrl-Shift-S, in both hosts. **Matthew used it in
   the SDL window, 2026-11-16: Cancel, then a file chosen and opened.**
+- **§5af — several windows** (2026-11-16): the host contract gains
+  `wh_window`, `wh_window_close`, `wh_on` (which window documents go to),
+  `win` on every event, and **`WH_CLOSE`** — the program decides; a
+  program that never opens a second window is the host it was (QUIT). SDL:
+  a real window each, with its own `/w0`; the browser: a floating panel
+  each, dragged by its bar, closed by its ×. **No change to `whisker.h`.**
+  The code editor's Ctrl-N opens a scratch pad.
 - **A second independent read, 2026-11-16** (design, before §5af): a lost
   finger's lifting froze all input; a menu over a dialog broke it; the
   chooser cut long paths and answered the clicked file not the arrows';
@@ -382,7 +389,7 @@ twice; it needs over 11.7 KB). Design §9.4.
 `src/run.sh --module` is the whole of it: **1,069 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 52 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 58 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`).

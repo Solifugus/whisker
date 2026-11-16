@@ -422,6 +422,46 @@ int main(void)
 		ok(poll_until(&ev, 20) == WH_TEXT, "CONTROL: without it, the same x is");
 	}
 
+	/* §5af: several windows */
+	{
+		SDL_Event e;
+		wh_event_t ev;
+		int second, painted0 = 0, painted1 = 0;
+		static const char DOC[] = "<svg viewBox=\"0 0 200 100\"><rect width=\"200\" height=\"100\" fill=\"#3070b0\"/></svg>";
+		uint16_t before0[64];
+
+		memset(&e, 0, sizeof e);
+		e.type = SDL_WINDOWEVENT;
+		e.window.event = SDL_WINDOWEVENT_CLOSE;
+		e.window.windowID = SW[0].id;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 10) != WH_CLOSE, "CONTROL: one window, never asked for more: its close button is not WH_CLOSE -- the host as it was");
+		second = wh_window(200, 100, "second");
+		ok(second == 1 && SW[1].open && SW[1].id != SW[0].id, "a second window: window 1, an SDL window of its own");
+		memset(&e, 0, sizeof e);
+		e.type = SDL_KEYDOWN;
+		e.key.keysym.sym = SDLK_LEFT;
+		e.key.windowID = SW[1].id;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_KEY && ev.win == 1, "a key pressed in it arrives from window 1");
+		memcpy(before0, SW[0].fb, sizeof before0);
+		wh_on(1);
+		wh_clip(0, 0);
+		wh_write(DOC, (int)sizeof DOC - 1);
+		wh_on(0);
+		for (int i = 0; i < 200 * 100; i++) if (SW[1].fb[i] != 0) painted1++;
+		for (int i = 0; i < 64; i++) if (SW[0].fb[i] != before0[i]) painted0++;
+		ok(painted1 == 200 * 100 && painted0 == 0, "drawn to window 1: its every pixel, and none of window 0's");
+		memset(&e, 0, sizeof e);
+		e.type = SDL_WINDOWEVENT;
+		e.window.event = SDL_WINDOWEVENT_CLOSE;
+		e.window.windowID = SW[1].id;
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_CLOSE && ev.win == 1, "its close button: WH_CLOSE from window 1 -- the program's to obey");
+		wh_window_close(1);
+		ok(!SW[1].open && SW[0].open, "closed by the program: window 1 gone, window 0 still open");
+	}
+
 	wh_close();
 	printf(fails ? "\n%d check(s) failed\n" : "\nall host checks passed\n", fails);
 	return fails != 0;

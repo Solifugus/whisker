@@ -3558,6 +3558,34 @@ before (the existing host suites, unchanged, are the control); in
 Chrome, two panels, the second dragged by its title bar, raised by a
 press, closed by its button.
 
+**What it came to**: as written, and **not a byte of `whisker.h`
+changed** — as with seats, D5 carried it. The main suite is unchanged at
+1,069; every earlier output — 44 files — byte-identical. The Linux host
+58 (52); the web 138 (133). Every existing host check passes unchanged:
+the control that a one-window program is the host it was.
+
+- **SDL** (6 checks in the self test): before any second window, a close
+  button is not WH_CLOSE (the control); a second window is window 1, an
+  SDL window of its own; a key in it arrives from window 1; a document
+  drawn to it fills its every pixel and none of window 0's; its close
+  button is WH_CLOSE from window 1; closed, it is gone and window 0 stays.
+  RV-9's driver draws through panel functions that know no window, so
+  the host keeps a *current* window — `wh_on` — and each window its own
+  `/w0`, a device each.
+- **The browser** (5 checks, in Chrome): Ctrl-N in the code editor opens
+  the scratch pad as a panel; typing goes to it (330 pixels changed);
+  dragged by its title bar it moves exactly 100,50; a click on the editor
+  gives the editor the keys back; its close button closes the pad and the
+  editor goes on. Looked at: the pad floating over the editor, typed into.
+- *Found in the building*: the page sent each panel's events marked with
+  its window and the host never put the number on the event, so the pad's
+  typing went into the editor — which the check on typing caught at once.
+
+**Named, not done**: each window keeps its own focus, so the editor's
+caret shows while the pad has the keys; a window for one seat only; a
+late page is sent the windows and the program asked to draw each, but a
+window's documents are not kept for it; a window's size is fixed.
+
 ## 5ae. Choosing a file (2026-11-16), written before its code
 
 Matthew chose it as the next desktop gap. gBASIC asks it three ways —

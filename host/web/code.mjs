@@ -300,6 +300,41 @@ try {
     ok(chosen > 2000, `Down twelve times, past the list's bottom: the chosen row is drawn, in view (${chosen} pixels of it)`);
     await key('Escape', 'Escape');
     await sleep(300);
+
+    // §5af: a second window, the scratch pad -- a panel over the page
+    await key('n', 'KeyN', 2);                          // Ctrl-N
+    await sleep(500);
+    await settle();
+    const panels = await js('whisker.panels()');
+    ok(said.includes('scratch opened') && panels.includes(1), `Ctrl-N: a second window, a panel over the page (windows ${panels})`);
+    await js(`window.__p=whisker.panel(1).getContext("2d").getImageData(0,0,600,360).data.slice();1`);
+    await type('hello');
+    await sleep(400);
+    await settle();
+    const typedIn = await js(`(()=>{const d=whisker.panel(1).getContext("2d").getImageData(0,0,600,360).data;
+      let n=0;for(let i=0;i<d.length;i+=4)if(d[i]!==__p[i]||d[i+1]!==__p[i+1]||d[i+2]!==__p[i+2])n++;return n;})()`);
+    ok(typedIn > 100, `typing goes to the window in front -- the pad changed by ${typedIn} pixels`);
+    await snap('code_windows.png');
+    const at0 = await js(`(()=>{const d=document.querySelector('.win');return [d.offsetLeft,d.offsetTop];})()`);
+    const bar = await js(`(()=>{const r=document.querySelector('.bar').getBoundingClientRect();return [r.left+60,r.top+12];})()`);
+    await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: bar[0], y: bar[1], button: 'left', buttons: 1, clickCount: 1 });
+    for (let k = 1; k <= 5; k++)
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: bar[0] + 20 * k, y: bar[1] + 10 * k, button: 'left', buttons: 1 });
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bar[0] + 100, y: bar[1] + 50, button: 'left', buttons: 0, clickCount: 1 });
+    await sleep(200);
+    const at1 = await js(`(()=>{const d=document.querySelector('.win');return [d.offsetLeft,d.offsetTop];})()`);
+    ok(at1[0] - at0[0] === 100 && at1[1] - at0[1] === 50, `dragged by its title bar: moved ${at1[0]-at0[0]},${at1[1]-at0[1]}`);
+    await click(950, 560);                              // back on the editor, clear of the panel
+    await key('s', 'KeyS', 2);
+    await sleep(300);
+    ok(said.includes('save: only Save as'), 'a click on the editor, then Ctrl-S: the editor has the keys again');
+    const x = await js(`(()=>{const r=document.querySelector('.bar b').getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2];})()`);
+    await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: x[0], y: x[1], button: 'left', buttons: 1, clickCount: 1 });
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x[0], y: x[1], button: 'left', buttons: 0, clickCount: 1 });
+    await sleep(500);
+    const left = await js('whisker.panels()');
+    ok(said.includes('scratch closed') && !left.includes(1) && !said.includes('editor closed'),
+       'its close button: the program closes the pad -- and the editor goes on');
     void shows;
   }
 } finally {

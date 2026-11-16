@@ -45,7 +45,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-static struct {
+/*
+ * Windows (§5af): each its own SDL window, its own pixels and its own /w0 --
+ * RV-9's driver, a device each. The driver draws through the panel
+ * functions below, which know no window, so they draw into the CURRENT one:
+ * wh_on sets it, and S is it -- which keeps every line written for one
+ * window, and the self test's S.fb, as they were.
+ */
+#define WH_WINDOWS 8
+static struct swin {
 	int         w, h, scale;
 	uint16_t   *fb;          /* device pixels, native order */
 	SDL_Window *win;
@@ -54,7 +62,10 @@ static struct {
 	rv9_dev_t   dev;
 	int         dirty;
 	int         open;
-} S;
+	Uint32      id;          /* SDL's number for it, to tell events apart */
+} SW[WH_WINDOWS];
+static int S_cur, S_ev, S_many;  /* drawn to; an event's; windows asked for */
+#define S (SW[S_cur])
 
 /* ---- the panel RV-9's driver expects to be talking to ---- */
 
@@ -85,6 +96,7 @@ void rv9_panel_blit(int x0, int y0, int x1, int y1, const uint16_t *px)
 {
 	for (int y = y0; y < y1; y++) {
 		const uint16_t *src = &px[(size_t)(y - y0) * (size_t)(x1 - x0)];
+		if (S.fb == NULL) return;
 		uint16_t *dst = &S.fb[(size_t)y * (size_t)S.w + (size_t)x0];
 		for (int x = 0; x < x1 - x0; x++) {
 			uint16_t v = src[x];           /* the panel's byte order */
@@ -96,26 +108,22 @@ void rv9_panel_blit(int x0, int y0, int x1, int y1, const uint16_t *px)
 
 /* ---- the contract ---- */
 
-int wh_open(int w, int h, int scale, const char *title)
+/* Window i, made: its SDL window, renderer, texture, pixels and device.
+   The current window is i while the driver opens, so its panel is i's. */
+static int mkwin(int i, int w, int h, int scale, const char *title)
 {
-	if (scale < 1) scale = 1;
-	memset(&S, 0, sizeof S);
+	int was = S_cur;
+	memset(&SW[i], 0, sizeof SW[i]);
+	S_cur = i;
 	S.w = w; S.h = h; S.scale = scale;
 
 	S.fb = (uint16_t *)calloc((size_t)w * (size_t)h, sizeof(uint16_t));
-	if (S.fb == NULL) { fprintf(stderr, "whisker-host: no memory\n"); return -1; }
-
-	if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-		fprintf(stderr, "whisker-host: SDL: %s\n", SDL_GetError());
-		return -1;
-	}
+	if (S.fb == NULL) { fprintf(stderr, "whisker-host: no memory\n"); S_cur = was; return -1; }
 	S.win = SDL_CreateWindow(title ? title : "whisker",
 	                         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
 	                         w * scale, h * scale, 0);
-	if (S.win == NULL) { fprintf(stderr, "whisker-host: %s\n", SDL_GetError()); return -1; }
-	/* Typed characters arrive as text, already through the keyboard's
-	   layout, which is the host's business (§5j) -- not as keys to map. */
-	SDL_StartTextInput();
+	if (S.win == NULL) { fprintf(stderr, "whisker-host: %s\n", SDL_GetError()); S_cur = was; return -1; }
+	S.id = SDL_GetWindowID(S.win);
 
 	S.ren = SDL_CreateRenderer(S.win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if (S.ren == NULL) S.ren = SDL_CreateRenderer(S.win, -1, 0);
@@ -136,30 +144,94 @@ int wh_open(int w, int h, int scale, const char *title)
 	S.dev.opt[OPT_BG] = 0x0000;
 	if (svgwin_init(&S.dev) != RV9_IO_OK || svgwin_open(&S.dev, 3) != RV9_IO_OK) {
 		fprintf(stderr, "whisker-host: the window device would not open\n");
+		S_cur = was;
 		return -1;
 	}
 	S.open = 1;
+	S_cur = was;
 	return 0;
+}
+
+int wh_open(int w, int h, int scale, const char *title)
+{
+	if (scale < 1) scale = 1;
+	memset(SW, 0, sizeof SW);
+	S_cur = S_ev = S_many = 0;
+	if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+		fprintf(stderr, "whisker-host: SDL: %s\n", SDL_GetError());
+		return -1;
+	}
+	if (mkwin(0, w, h, scale, title) != 0) return -1;
+	/* Typed characters arrive as text, already through the keyboard's
+	   layout, which is the host's business (§5j) -- not as keys to map. */
+	SDL_StartTextInput();
+	return 0;
+}
+
+/* Another window (§5af): its number, or -1. A program that asks for one
+   hears every window's close button as WH_CLOSE, which it may obey or not. */
+int wh_window(int w, int h, const char *title)
+{
+	int i;
+	for (i = 1; i < WH_WINDOWS && SW[i].open; i++) ;
+	if (i == WH_WINDOWS || !SW[0].open) return -1;
+	S_many = 1;
+	SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");
+	if (mkwin(i, w, h, SW[0].scale, title) != 0) return -1;
+	return i;
+}
+
+static void unwin(int i)
+{
+	struct swin *v = &SW[i];
+	int was = S_cur;
+	if (!v->open) return;
+	S_cur = i;
+	svgwin_close(&v->dev);
+	S_cur = was;
+	if (v->tex) SDL_DestroyTexture(v->tex);
+	if (v->ren) SDL_DestroyRenderer(v->ren);
+	if (v->win) SDL_DestroyWindow(v->win);
+	free(v->fb);
+	memset(v, 0, sizeof *v);
+}
+
+void wh_window_close(int win)
+{
+	if (win < 0 || win >= WH_WINDOWS) return;
+	unwin(win);
+	if (S_cur == win) S_cur = 0;
+}
+
+/* The documents after this go to window `win` (§5af), if it is open. */
+void wh_on(int win)
+{
+	if (win >= 0 && win < WH_WINDOWS && SW[win].open) S_cur = win;
 }
 
 void wh_clip(int y0, int y1)
 {
 	uint32_t v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+	if (!S.open) return;
 	svgwin_setstat(&S.dev, RV9_SVG_SS_ROWS, &v);
 }
 
-static void present(void)
+static void present_win(struct swin *v)
 {
-	SDL_UpdateTexture(S.tex, NULL, S.fb, S.w * (int)sizeof(uint16_t));
-	SDL_RenderClear(S.ren);
-	SDL_RenderCopy(S.ren, S.tex, NULL, NULL);
-	SDL_RenderPresent(S.ren);
-	S.dirty = 0;
+	if (!v->open) return;
+	SDL_UpdateTexture(v->tex, NULL, v->fb, v->w * (int)sizeof(uint16_t));
+	SDL_RenderClear(v->ren);
+	SDL_RenderCopy(v->ren, v->tex, NULL, NULL);
+	SDL_RenderPresent(v->ren);
+	v->dirty = 0;
 }
+
+static void present(void) { present_win(&S); }
 
 void wh_write(const void *bytes, int n)
 {
 	size_t done;
+	if (!S.open) return;
 	svgwin_write(&S.dev, bytes, (size_t)n, &done);
 	if (S.dirty) present();
 }
@@ -169,11 +241,32 @@ static int seat_join;
 void wh_seats(int on) { if (on) seat_join = 1; }
 void wh_to(int seat) { (void)seat; }
 
+/* A point in the window the event came from, in its device pixels. */
 static int point_of(int wx, int wy, wh_event_t *out)
 {
-	out->x = wx / S.scale;
-	out->y = wy / S.scale;
-	return (out->x >= 0 && out->x < S.w && out->y >= 0 && out->y < S.h);
+	struct swin *v = &SW[S_ev];
+	if (!v->open || v->scale < 1) return 0;
+	out->x = wx / v->scale;
+	out->y = wy / v->scale;
+	return (out->x >= 0 && out->x < v->w && out->y >= 0 && out->y < v->h);
+}
+
+/* Which of our windows an SDL event names, by SDL's id: 0 if none does. */
+static int win_of(const SDL_Event *e)
+{
+	Uint32 id = 0;
+	switch (e->type) {
+	case SDL_KEYDOWN: case SDL_KEYUP: id = e->key.windowID; break;
+	case SDL_TEXTINPUT: id = e->text.windowID; break;
+	case SDL_MOUSEMOTION: id = e->motion.windowID; break;
+	case SDL_MOUSEBUTTONDOWN: case SDL_MOUSEBUTTONUP: id = e->button.windowID; break;
+	case SDL_MOUSEWHEEL: id = e->wheel.windowID; break;
+	case SDL_WINDOWEVENT: id = e->window.windowID; break;
+	case SDL_FINGERDOWN: case SDL_FINGERUP: case SDL_FINGERMOTION: id = e->tfinger.windowID; break;
+	default: return 0;
+	}
+	for (int i = 0; i < WH_WINDOWS; i++) if (SW[i].open && SW[i].id == id) return i;
+	return 0;
 }
 
 int wh_poll(wh_event_t *out)
@@ -183,12 +276,14 @@ int wh_poll(wh_event_t *out)
 	out->kind = WH_NOTHING;
 	out->seat = 0;
 	out->finger = 0;
+	out->win = 0;
 	if (seat_join) {
 		seat_join = 0;
 		out->kind = WH_JOIN;
 		return WH_JOIN;
 	}
 	while (SDL_PollEvent(&e)) {
+		S_ev = out->win = win_of(&e);
 		switch (e.type) {
 		case SDL_QUIT:
 			out->kind = WH_QUIT;
@@ -270,7 +365,13 @@ int wh_poll(wh_event_t *out)
 			break;
 		}
 		case SDL_WINDOWEVENT:
-			if (e.window.event == SDL_WINDOWEVENT_EXPOSED) present();
+			if (e.window.event == SDL_WINDOWEVENT_EXPOSED) present_win(&SW[S_ev]);
+			/* a window's close button: the program's to obey, once it
+			   asked for more than one window (§5af); else SDL's QUIT */
+			if (e.window.event == SDL_WINDOWEVENT_CLOSE && S_many) {
+				out->kind = WH_CLOSE;
+				return WH_CLOSE;
+			}
 			if (e.window.event == SDL_WINDOWEVENT_LEAVE) {   /* rests on nothing */
 				out->x = out->y = -1;
 				out->kind = WH_HOVER;
@@ -310,8 +411,8 @@ int wh_poll(wh_event_t *out)
 		case SDL_FINGERUP:
 		case SDL_FINGERMOTION:
 			if (SDL_GetTouchDeviceType(e.tfinger.touchId) != SDL_TOUCH_DEVICE_DIRECT) break;
-			if (!point_of((int)(e.tfinger.x * S.w * S.scale),
-			              (int)(e.tfinger.y * S.h * S.scale), out)) break;
+			if (!point_of((int)(e.tfinger.x * SW[S_ev].w * SW[S_ev].scale),
+			              (int)(e.tfinger.y * SW[S_ev].h * SW[S_ev].scale), out)) break;
 			out->finger = 1 + (int)(e.tfinger.fingerId & 0x7f);   /* never the mouse's 0 */
 			if (e.type == SDL_FINGERDOWN)
 				{ out->kind = WH_PRESS; out->key = WH_MOD_TOUCH; out->d = 1; return WH_PRESS; }
@@ -363,12 +464,8 @@ int wh_caps(void) { return WH_CAP_ENTITY; }
 
 void wh_close(void)
 {
-	if (!S.open) return;
-	svgwin_close(&S.dev);
-	if (S.tex) SDL_DestroyTexture(S.tex);
-	if (S.ren) SDL_DestroyRenderer(S.ren);
-	if (S.win) SDL_DestroyWindow(S.win);
-	SDL_Quit();
-	free(S.fb);
-	S.open = 0;
+	int any = 0;
+	for (int i = 0; i < WH_WINDOWS; i++) if (SW[i].open) { any = 1; unwin(i); }
+	S_cur = 0;
+	if (any) SDL_Quit();
 }
