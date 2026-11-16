@@ -70,3 +70,51 @@ whisker output (42 files compared), and every `module_*.c` in whisker's
 `src/` links under the module rules. A module staged from an older whisker
 needs nothing changed; its stack figure may have grown in the same way, so
 the same tool's line for it is worth a look.
+
+## RV-9's answer, and the profiles (later the same day)
+
+RV-9 staged it (stack 12,288, revision 3) and found every whisker module
+grown by about 7 KB — +52 KB in the store, the C5's slot at 94 %. Measured
+here, compiling RV-9's own module sources against RV-9's previous header
+(whisker `503bb1b`, its `HEAD:modules/whisker.h`) and today's, with the
+module flags and link script: **the growth is the default profile — the
+desktop's** — worlds, posters, words, dividers, hover, tooltips, UTF-8, all
+in every module that does not choose. None of these modules uses any of
+it. Built **`-DWSK_PANEL`** (a `cflags=` line in each `build.conf`; `wstat`
+already chooses `WSK_MINIMAL` in its source, which is why it barely moved):
+
+| module | code before (default, 503bb1b) | today default | **today PANEL** | whisker chain before | **today PANEL** |
+|---|---|---|---|---|---|
+| wflick   | 11,792 | 18,908 | **10,984** | 1,552 | **1,440** |
+| wtap     | 12,752 | 20,052 | **11,808** | 1,648 | **1,536** |
+| wcompose | 11,636 | 18,628 | **10,720** | 2,096 | **2,032** |
+| wscroll  | 13,136 | 20,024 | **12,144** | 2,896 | **2,720** |
+| wpiano   | 14,788 | 22,572 | **13,940** | 7,136 | **7,088** |
+| wkeys    | 23,128 (PANEL already) | 25,900 | 25,900 | 2,608 | 2,960 |
+| wnest    | (new: tips)            | 30,996 | **17,676** | — | **2,912** (+1,184 for three levels) |
+
+(Code is the linked module's text before RV-9's header and signature, so
+RV-9's figures run ~200 bytes higher. The chain is whisker's own frames,
+`tools/evidence/stack`'s method, before the rasteriser beneath.)
+
+So, as PANEL builds:
+
+- **wflick, wtap, wcompose, wscroll, wpiano**: smaller than before the
+  refresh, and their chains shorter — **no stack change**; each keeps the
+  figure it was bisected at.
+- **wkeys** (PANEL already): +2,772 bytes and **+352 of chain** — tips and
+  hover's absence aside, what grew is the toolkit it uses. Raise
+  `stack_size` 8,192 → **8,704** (or 9,216, a round number).
+- **wnest** as PANEL: 17,676 bytes, chain about 4,100 with its three
+  levels; the 12,288 already staged is ample — bisect when convenient.
+
+What PANEL drops (wrap, text items, selection, undo, source, words,
+dividers, menu keys, worlds, list keys, hover, UTF-8, images, entities) a
+module would be refused for by name at start (`WSK_E_KIND`), never drawn
+differently; whisker checks that PANEL draws a shared panel byte for byte.
+Tooltips stay in PANEL — a finger holds on a panel as a mouse rests on a
+desk.
+
+whisker's own `src/module_*.c` stay at the default profile on purpose: the
+suite measures what each switch costs against them. **The staged copies
+should choose their tier**, as `wstat` and `wkeys` already do.
