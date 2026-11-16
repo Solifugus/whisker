@@ -3336,6 +3336,100 @@ wanting flush would search between the two.
 lowers by raising everything else, as the floor does); a move is not
 undone by Escape.
 
+## An independent read, 2026-11-16 — posters to tooltips
+
+Matthew asked for it before pinch. Two agents read the code from `092f5b2`
+to `cae252f` cold, with the design but not my conclusions: one
+`whisker.h`, one the hosts and the floor. Each finding below has a check
+that fails before its fix; **1,003 checks** (995), the web **116** (106,
+with a new `seathost.py` over raw sockets). Every earlier output — 43 files
+— byte-identical.
+
+**whisker.h**:
+
+- **The walkers that choose and scroll went through a world in array
+  order**, ignoring `order` and the topmost-first rule hit follows: a tap
+  on a poster on top chose a row in the list beneath it; a drag on a
+  movable poster scrolled a pane beneath it instead of moving it. Both now
+  ask `wsk__wtop` — the item on top, on whichever copy — as hit does.
+- **A poster was laid out from its clamped rectangle**: an item's box is
+  cut to ±16,000 so a short can hold it, but a poster places its children
+  from its corner, so a 1,600-wide poster at zoom 16 seen near its end had
+  every child moved. Laid out from its true corner while a short holds it
+  (to -32,000); past that, named.
+- **A scrolling stack inside a poster** kept its offset in the caller's
+  pixels, which do not scale: other rows at every zoom. Refused by name,
+  as a field is.
+- **A faded poster took the world's background as its own**; fading now
+  goes toward a field of its own (`wbg`).
+- And, from the reviewer's suspicions: a poster's factor is capped at 64
+  times (a short length overflowed past it); a long press lets go of an
+  item a drag held; opening a menu closes a tip.
+
+**The hosts and the floor**:
+
+- **One POST crashed the server**: a negative or huge `Content-Length`
+  passed the "body all here" test and wrote outside the buffer. (Older
+  than this work; seats made it reachable from every phone.) Bounded now.
+- **Sixteen seats left no room for their own events**: event streams and
+  POSTs shared sixteen slots, so with sixteen pages every POST — the
+  heartbeat included — was refused and every seat timed out. Streams now
+  live in the sixteen seat slots and requests above them; a seventeenth
+  page is told 503.
+- **A seat's number was reused, so a page that lost its seat spoke for the
+  next owner** — its late "going" beacon dropped them. Seats carry a
+  generation (`S n g`, `?s=n&g=g`); a post must match it.
+- **The floor stepped and redrew on every wake**: a mouse moving made
+  everyone walk faster, and a flood of hover posts made 10,092 documents a
+  second. Frames are by the clock now: 25 a second, flooded or not.
+- And: two people stepping toward each other in one frame could overlap
+  and then pass through (each now sees the other's new place); a seat
+  rejoining without its leaving heard gives back its person first; a
+  seat's coming and going is never dropped from a full queue; a hidden tab
+  stays away rather than rejoining every nine seconds; a seatless program's
+  seat is always 0.
+
+## 5ad. Pinch — two fingers zoom a world (2026-11-16), written before its code
+
+Matthew chose it after the review. A phone now gets a floor its own size
+(§5ab step 2) and the P4 is a five-point panel, but a finger can only pan
+a world: zoom is the wheel's and the keyboard's. Pinching is what every
+touch screen teaches.
+
+1. **Which finger**: `wsk_event_t` gains **`finger`**, the platform's number
+   for it — RV-9's `/touch` `id`, a browser's `pointerId`, SDL's `fingerId`
+   — on DOWN, MOVE and UP. A mouse, and every program that never sets it,
+   is finger 0, which is today exactly. whisker tracks which finger went
+   down first; that one presses, clicks and drags as always.
+2. **A second finger** going down while the first is still down, both on
+   the same world, starts a **pinch**: the first finger's press is let go
+   — no click on lifting, a held button released, a hold for a tip ended,
+   a drag that had begun stopped — and whisker keeps the fingers' distance,
+   the zoom, and the world point under their midpoint.
+3. **Either finger moving**: the zoom is the starting zoom times the
+   distance now over the distance then, clamped as the wheel's is, and the
+   view is placed so **the world point that was under the midpoint is under
+   the midpoint now** — so a pinch also pans, as on a phone. `WSK_NOTE_VIEW`
+   with the world's rows. Integer arithmetic: a square root of a 32-bit sum
+   of squares by bits, no `sqrt`, no 64-bit division.
+4. **Either finger lifting** ends the pinch; the other is inert until it
+   lifts too — no click, no drag, no pan.
+5. A second finger anywhere but on that world — and any third finger — is
+   ignored, as today. A pinch on a scrolling list is not this step.
+6. A **trackpad pinch** reaches a browser as a wheel event with Ctrl held,
+   and a world already zooms on the wheel: nothing to add.
+7. The hosts: the browser sends each pointer's id on `D`, `M` and `U`; SDL
+   each finger's; wnest (and any module) RV-9's `id`.
+8. Under `WSK_NO_WORLD` there is nothing to pinch, and the code is compiled
+   out with it.
+
+Done when: two fingers apart double the zoom about their midpoint, by the
+numbers; together, half; moving together they pan; clamped at the world's
+limits; the first finger's press neither clicks nor drags after the second
+lands; lifting one leaves the other inert; a second finger off the world,
+or a third, changes nothing (the controls); one finger alone is exactly as
+before; and in Chrome, two touch points spread apart zoom the floor.
+
 ## 5ac. Tooltips — on a mouse, a finger and a key (2026-11-15), written before its code
 
 Matthew: *"With a mouse hover, this is obvious but what about for touch

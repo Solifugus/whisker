@@ -295,6 +295,13 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   each had grown ~7 KB of features it never reached.
   **Browser tests kill their Chrome however they end** — one left running
   rejoined the next run as extra seats.
+- **A second independent read, 2026-11-16** (design, before §5ad): eleven
+  defects, each with a check that fails before its fix — the world walkers
+  that choose and scroll ignored the z-order; a poster laid out from its
+  clamped box; scroll in a poster (refused now); a POST crashing the web
+  host; sixteen seats starving their own events; a reused seat number
+  obeying a stale page; the floor walking at the mouse's speed. Seats now
+  carry a generation; `host/web/seathost.py` drives the host over sockets.
 - **§5ab — seats: several people at one program** (2026-11-15): the host
   contract gains `seat` on each event, `wh_seats(1)`, `WH_JOIN`/`WH_GONE`
   and `wh_to(seat)`; the browser host makes each page's event stream a
@@ -329,7 +336,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **995 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,003 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 51 — every demo program started — including the

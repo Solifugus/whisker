@@ -680,6 +680,7 @@ typedef struct wsk_tree {
 	unsigned char wspace;
 	unsigned char wone;
 	unsigned char wfade;         /* whisker's, in those copies: the item's fade */
+	unsigned int  wbg;           /* ... and the world's background it fades toward */
 	int           wdx, wdy;      /* and which copy of a torus's item: 0 or -ww, -wh */
 	/* whisker's, in the copies a poster is laid out in (step 2b): the
 	   factor, 256 = 1:1, its lengths were scaled by -- 0 outside a world */
@@ -1451,6 +1452,16 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 	   of the list, and the caller -- who holds the list (D5) -- hands
 	   whisker the slice in view. `which` names the widget that would
 	   wrap. */
+#ifndef WSK_NO_WORLD
+	/* A stack that scrolls, inside a poster (§5q step 2b): its offset is the
+	   caller's pixels, which do not scale with the poster, so it would show
+	   other rows at every zoom -- refused by name, as a field is (found by
+	   review, 2026-11-16). */
+	if (t->overflow == WSK_SCROLL && t->wz != 0) {
+		if (which != 0) *which = -1;
+		return WSK_E_KIND;
+	}
+#endif
 	if (t->overflow == WSK_SCROLL) {
 		int end = ((t->axis == WSK_COL) ? t->ay : t->ax) + 2 * t->pad;
 		for (int i = 0; i < t->n; i++) {
@@ -1624,6 +1635,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->wspace = WSK_OPEN;
 	t->wone = 0;
 	t->wfade = 0;
+	t->wbg = 0;
 	t->wdx = t->wdy = 0;
 	t->wz = 0;
 #endif
@@ -2099,7 +2111,22 @@ static inline int wsk__wi(const wsk_tree_t *t, int j)
 	return (t->order != 0) ? t->order[j] : j;
 }
 
+static inline wsk_rect_t wsk__wrect_lim(const wsk_tree_t *t, int i, int ox, int oy, int poster);
+
 static inline wsk_rect_t wsk__wrect_at(const wsk_tree_t *t, int i, int ox, int oy)
+{
+	return wsk__wrect_lim(t, i, ox, oy, 0);
+}
+
+/*
+ * The same; with `poster`, for laying out what is inside: the true corner
+ * kept as far as a short holds it (-32,000) and the far edge cut 32,000 on
+ * -- a poster's children are placed from its corner, so cutting that to
+ * the -16,000 an item's box is cut to moved them all (found by review,
+ * 2026-11-16). Past -32,000 the corner is cut there, and what is inside
+ * shifts: a poster that far off a screen at that zoom is named, not met.
+ */
+static inline wsk_rect_t wsk__wrect_lim(const wsk_tree_t *t, int i, int ox, int oy, int poster)
 {
 	const wsk_place_t *p = &t->place[i];
 	long long z = t->zoom, zs = (long long)t->zoom * p->scale;
@@ -2122,11 +2149,13 @@ static inline wsk_rect_t wsk__wrect_at(const wsk_tree_t *t, int i, int ox, int o
 	/* cut to what a short can say, in 64 bits first: a floor bigger than
 	   the screen zoomed in still covers it; one wholly beyond is nowhere */
 	{
-		long long x1 = x + w, y1 = y + h;
-		if (x < -16000) x = -16000;
-		if (y < -16000) y = -16000;
-		if (x1 > 16000) x1 = 16000;
-		if (y1 > 16000) y1 = 16000;
+		long long x1 = x + w, y1 = y + h, lo = poster ? -32000 : -16000;
+		if (x < lo) x = lo;
+		if (y < lo) y = lo;
+		if (x1 > (poster ? x + 32000 : 16000)) x1 = poster ? x + 32000 : 16000;
+		if (y1 > (poster ? y + 32000 : 16000)) y1 = poster ? y + 32000 : 16000;
+		if (x1 > 32000) x1 = 32000;         /* and every edge a short */
+		if (y1 > 32000) y1 = 32000;
 		if (x1 <= x || y1 <= y) { r.x = -16000; r.y = -16000; r.w = 0; r.h = 0; return r; }
 		w = x1 - x; h = y1 - y;
 	}
@@ -2168,7 +2197,7 @@ static inline unsigned int wsk__fade(const wsk_tree_t *t, unsigned int c)
 	int a = t->wfade + (t->wfade >> 7);
 	if (t->wfade == 0 || c == WSK_INHERIT) return c;
 	for (int sh = 0; sh < 24; sh += 8) {
-		int x = (int)((c >> sh) & 0xFF), b = (int)((t->bg >> sh) & 0xFF);
+		int x = (int)((c >> sh) & 0xFF), b = (int)((t->wbg >> sh) & 0xFF);
 		out |= (unsigned int)(((x * (256 - a) + b * a) >> 8) & 0xFF) << sh;
 	}
 	return out;
@@ -2333,6 +2362,9 @@ static inline int wsk__child(const wsk_tree_t *t, int i, wsk_tree_t *c)
 	c->rindent = t->indent;
 	c->caps = t->caps;
 	r = wsk_rect(t, i);
+#ifndef WSK_NO_WORLD
+	if (t->overflow == WSK_WORLD) r = wsk__wrect_lim(t, i, t->wdx, t->wdy, 1);
+#endif
 	c->ax = r.x; c->ay = r.y; c->aw = r.w; c->ah = r.h;
 
 	c->clipped = t->clipped;
@@ -2347,7 +2379,8 @@ static inline int wsk__child(const wsk_tree_t *t, int i, wsk_tree_t *c)
 		long long f = ((long long)t->zoom * t->place[i].scale) >> 8;
 		wsk_rect_t k = r;
 		if (t->wz != 0) f = (f * t->wz) >> 8;
-		c->wz = (f < 1) ? 1 : (int)f;
+		/* at most 64 times: further, a short length overflows */
+		c->wz = (f < 1) ? 1 : (f > 16384) ? 16384 : (int)f;
 		if (!wsk__cut(t, &k)) k.w = k.h = 0;
 		c->cx0 = k.x; c->cy0 = k.y;
 		c->cx1 = (short)(k.x + k.w); c->cy1 = (short)(k.y + k.h);
@@ -2355,8 +2388,8 @@ static inline int wsk__child(const wsk_tree_t *t, int i, wsk_tree_t *c)
 	}
 	if (c->wz != 0) wsk__zscale(c, c->wz);
 	c->wfade = t->wfade;
+	c->wbg = t->wbg;                    /* toward the world's, not the poster's own */
 	if (c->wfade != 0) {                /* faded with the poster (step 2) */
-		c->bg = t->bg;
 		c->ink = wsk__fade(c, c->ink);
 		c->accent = wsk__fade(c, c->accent);
 		c->trough = wsk__fade(c, c->trough);
@@ -4264,6 +4297,7 @@ static void wsk__world(const wsk_doc_t *d, const wsk_tree_t *t, wsk_sink_t *s)
 		/* faded toward the background: the copy's own colours here, a
 		   widget's own where they are drawn (step 2) */
 		c.wfade = t->place[i].fade;
+		c.wbg = t->bg;
 		c.ink = wsk__fade(&c, t->ink);
 		c.accent = wsk__fade(&c, t->accent);
 		c.trough = wsk__fade(&c, t->trough);
@@ -4913,6 +4947,37 @@ static inline int wsk__ui_hit(wsk_tree_t *r, int x, int y, const wsk_tree_t **in
  * own tree, to write `scroll` into, and the copy it was laid out as, for its
  * area and range. 0 when the point is in none.
  */
+#ifndef WSK_NO_WORLD
+/*
+ * The item of a world a point is on -- the topmost, by the world's order,
+ * on whichever copy of a torus's -- and, when it is a stack, the tree inside
+ * it laid out as that copy (*got 1). -1 if none. What hit decides for a
+ * world, for every walker that must agree with hit: a press scrolls or
+ * chooses in the poster on top, never one beneath it. Out of line, so the
+ * two copies cost only a world.
+ */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static int wsk__wtop(const wsk_tree_t *t, int x, int y, wsk_tree_t *c, int *got)
+{
+	*got = 0;
+	for (int j = 0; j < t->n; j++) {
+		int i = wsk__wi(t, t->n - 1 - j), k = wsk__whit(t, i, x, y);
+		if (k == 0) continue;
+		if (t->item[i].kind == WSK_STACK) {
+			wsk_tree_t h;
+			wsk__tcopy(&h, t);
+			h.wdx = ((k - 1) & 1) ? -t->ww : 0;
+			h.wdy = ((k - 1) & 2) ? -t->wh : 0;
+			*got = wsk__child(&h, i, c);
+		}
+		return i;
+	}
+	return -1;
+}
+#endif
+
 static inline wsk_tree_t *wsk__scroller(const wsk_tree_t *t, wsk_tree_t *orig,
                                         int x, int y, wsk_tree_t *at, int depth)
 {
@@ -4922,6 +4987,18 @@ static inline wsk_tree_t *wsk__scroller(const wsk_tree_t *t, wsk_tree_t *orig,
 		if (!wsk__over_tree(t, &c)) return 0;
 		return wsk__scroller(&c, (wsk_tree_t *)&t->nest[t->over], x, y, at, 1);
 	}
+#endif
+#ifndef WSK_NO_WORLD
+	if (t->overflow == WSK_WORLD) {
+		/* the poster on top, as hit has it -- not the first in the array */
+		wsk_tree_t c;
+		int got, i = wsk__wtop(t, x, y, &c, &got);
+		if (i >= 0 && got && depth + 1 < WSK_DEPTH_MAX) {
+			wsk_tree_t *f = wsk__scroller(&c, (wsk_tree_t *)&t->nest[t->item[i].sub],
+			                              x, y, at, depth + 1);
+			if (f != 0) return f;
+		}
+	} else
 #endif
 #ifndef WSK_NO_NEST
 	for (int i = 0; i < t->n && depth + 1 < WSK_DEPTH_MAX; i++) {
@@ -4991,6 +5068,24 @@ static inline wsk_tree_t *wsk__selector(const wsk_tree_t *t, wsk_tree_t *orig,
 		wsk_tree_t c;
 		if (!wsk__over_tree(t, &c)) return 0;
 		return wsk__selector(&c, (wsk_tree_t *)&t->nest[t->over], x, y, at, lay, item, 1);
+	}
+#endif
+#ifndef WSK_NO_WORLD
+	if (t->overflow == WSK_WORLD) {
+		/* the item on top only, as hit has it (§5q step 6) */
+		wsk_tree_t c;
+		int got, i = wsk__wtop(t, x, y, &c, &got);
+		if (i < 0) return 0;
+		if (got && depth + 1 < WSK_DEPTH_MAX) {
+			wsk_tree_t *f = wsk__selector(&c, (wsk_tree_t *)&t->nest[t->item[i].sub],
+			                              x, y, at, lay, item, depth + 1);
+			if (f != 0) return f;
+		}
+		if (!t->select) return 0;
+		wsk__tcopy(at, t);
+		*lay = at;
+		*item = i;
+		return orig;
 	}
 #endif
 	for (int i = 0; i < t->n; i++) {
@@ -5509,6 +5604,9 @@ static inline int wsk_ui_open(wsk_ui_t *ui, int sub, const char *anchor,
 	int lo = 32767, hi = -1, a0, a1, e, i;
 	wsk_rect_t ar;
 
+#ifndef WSK_NO_TIP
+	wsk__tip_close(ui, &lo, &hi);        /* whisker's overlay covers a tip (§5ac) */
+#endif
 	if (r->over != WSK_NONE && wsk_over_rows(r, &a0, &a1) == WSK_OK) {
 		wsk__span(&lo, &hi, a0, a1);
 		wsk_over_close(r);
@@ -5533,6 +5631,9 @@ static inline int wsk_ui_open_at(wsk_ui_t *ui, int sub, int x, int y, int *y0, i
 	int lo = 32767, hi = -1, a0, a1, e;
 	wsk_rect_t ar;
 
+#ifndef WSK_NO_TIP
+	wsk__tip_close(ui, &lo, &hi);        /* whisker's overlay covers a tip (§5ac) */
+#endif
 	if (r->over != WSK_NONE && wsk_over_rows(r, &a0, &a1) == WSK_OK) {
 		wsk__span(&lo, &hi, a0, a1);
 		wsk_over_close(r);
@@ -5958,6 +6059,9 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		   was for the menu, and its lifting is not also a click (§5ac) */
 		if (ui->down) {
 			ui->hit = -1;
+#ifndef WSK_NO_WORLD
+			ui->witem = -1;
+#endif
 			if (r->held != 0) {
 				r->held = 0;
 				wsk__span(&lo, &hi, ui->held.y, ui->held.y + ui->held.h);

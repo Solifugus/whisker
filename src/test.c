@@ -5265,6 +5265,154 @@ int main(void)
 		}
 	}
 
+	/* ---- what an independent read of 2026-11-15/16's code found ---- */
+	printf("\n-- review fixes, 2026-11-16\n");
+	{
+		/* a poster far wider than the screen, zoomed in near its far end */
+		static const wsk_widget_t WP[] = { { .kind = WSK_STACK, .id = "poster", .sub = 0 } };
+		static const wsk_widget_t PI[] = {
+			{ .kind = WSK_LABEL,  .id = "spacer", .text = "", .size = 1500 },
+			{ .kind = WSK_BUTTON, .id = "go", .text = "Go", .size = 10 },
+		};
+		wsk_place_t pl[1] = { { .x = 0, .y = 0, .w = 1600, .h = 10, .scale = 256 } };
+		wsk_tree_t w, k[1];
+		const wsk_tree_t *in = 0;
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.ids = 1; w.item = WP; w.n = 1; w.overflow = WSK_WORLD; w.place = pl; w.nest = k; w.nests = 1;
+		wsk_nest_init(&k[0], &w, WSK_ROW);
+		k[0].item = PI; k[0].n = 2; k[0].pad = 0; k[0].gap = 0;
+		w.zoom = 4096; w.vx = 1494;
+		ok(wsk_hit_in(&w, 150, 50, &in) == 1 && in == &k[0],
+		   "a 1600-wide poster at zoom 16, seen near its end: Go, at (1500 - 1494) x 16, is hit where it is -- "
+		   "its corner, -23,904, was cut to -16,000 and everything in it moved");
+	}
+	{
+		/* two posters in one place: the one on top answers, not the one beneath */
+		static const wsk_widget_t WP[] = {
+			{ .kind = WSK_STACK, .id = "under", .sub = 0 },
+			{ .kind = WSK_STACK, .id = "over",  .sub = 1 },
+		};
+		static const wsk_widget_t LA[] = {
+			{ .kind = WSK_LABEL, .id = "r0", .text = "row0", .size = 30 },
+			{ .kind = WSK_LABEL, .id = "r1", .text = "row1", .size = 30 },
+		};
+		static const wsk_widget_t BT[] = { { .kind = WSK_BUTTON, .id = "b", .text = "B", .size = 60 } };
+		wsk_place_t pl[2] = {
+			{ .x = 0, .y = 0, .w = 100, .h = 60, .scale = 256 },
+			{ .x = 0, .y = 0, .w = 100, .h = 60, .scale = 256 },
+		};
+		wsk_tree_t w, k[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0, y1, n;
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.item = WP; w.n = 2; w.overflow = WSK_WORLD; w.place = pl; w.nest = k; w.nests = 2;
+		wsk_nest_init(&k[0], &w, WSK_COL);
+		k[0].item = LA; k[0].n = 2; k[0].select = 1; k[0].sel = WSK_NONE; k[0].pad = 0; k[0].gap = 0;
+		wsk_nest_init(&k[1], &w, WSK_COL);
+		k[1].item = BT; k[1].n = 1; k[1].pad = 0; k[1].gap = 0;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 10; ev.y = 40;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[1] && k[0].sel == WSK_NONE,
+		   "a tap on the poster on top: its button's CLICK only -- the list beneath it is not chosen from");
+	}
+	{
+		/* a movable poster on top of one holding a scrolling pane */
+		static const wsk_widget_t WP[] = {
+			{ .kind = WSK_STACK, .id = "under", .sub = 0 },
+			{ .kind = WSK_STACK, .id = "over",  .sub = 1 },
+		};
+		static const wsk_widget_t PU[] = { { .kind = WSK_STACK, .id = "pane", .sub = 2, .weight = 1 } };
+		static const wsk_widget_t LA[] = {
+			{ .kind = WSK_LABEL, .id = "r0", .text = "row0", .size = 40 },
+			{ .kind = WSK_LABEL, .id = "r1", .text = "row1", .size = 40 },
+			{ .kind = WSK_LABEL, .id = "r2", .text = "row2", .size = 40 },
+			{ .kind = WSK_LABEL, .id = "r3", .text = "row3", .size = 40 },
+		};
+		static const wsk_widget_t BT[] = { { .kind = WSK_LABEL, .id = "t", .text = "T", .size = 20 } };
+		wsk_place_t pl[2] = {
+			{ .x = 0, .y = 0, .w = 100, .h = 80, .scale = 256 },
+			{ .x = 0, .y = 0, .w = 100, .h = 80, .scale = 256, .move = 1 },
+		};
+		wsk_tree_t w, k[3];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0, y1, n;
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.item = WP; w.n = 2; w.overflow = WSK_WORLD; w.place = pl; w.nest = k; w.nests = 3;
+		wsk_nest_init(&k[0], &w, WSK_COL); k[0].item = PU; k[0].n = 1;
+		wsk_nest_init(&k[1], &w, WSK_COL); k[1].item = BT; k[1].n = 1;
+		wsk_nest_init(&k[2], &w, WSK_COL); k[2].item = LA; k[2].n = 4; k[2].overflow = WSK_SCROLL;
+		ok(wsk_check(&w, 0) == WSK_E_KIND, "a scrolling pane inside a poster is refused: its offset would not scale");
+		k[2].overflow = WSK_REFUSE; k[2].n = 2;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 50; ev.y = 50;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.y = 20;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_MOVE && nt[0].item == 1 && pl[1].y == -30 && w.vy == 0,
+		   "a drag on the movable poster on top moves it -- not the world, not what lies beneath");
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+
+		/* a long press ends an item's drag, not only a press */
+		pl[1].y = 0;
+		ev.kind = WSK_EV_DOWN; ev.y = 50; ev.key = WSK_MOD_TOUCH;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MENU; ev.key = 0;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(ui.witem == -1, "a long press that asked for a menu: the item it held is let go");
+	}
+	{
+		/* a faded poster keeps its own background; its colours fade toward the world's */
+		static const wsk_widget_t WP[] = { { .kind = WSK_STACK, .id = "poster", .sub = 0 } };
+		static const wsk_widget_t PB[] = { { .kind = WSK_BUTTON, .id = "go", .text = "Go", .size = 30 } };
+		wsk_place_t pl[1] = { { .x = 0, .y = 0, .w = 100, .h = 40, .scale = 256, .fade = 128 } };
+		wsk_tree_t w, k[1], one, c;
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.bg = 0x102030u; w.item = WP; w.n = 1; w.overflow = WSK_WORLD; w.place = pl; w.nest = k; w.nests = 1;
+		wsk_nest_init(&k[0], &w, WSK_COL);
+		k[0].bg = 0x445566u; k[0].item = PB; k[0].n = 1;
+		/* the poster laid out as drawing lays it out: from the world's
+		   one-item copy, which carries the item's fade */
+		wsk__tcopy(&one, &w);
+		one.wone = 1; one.wfade = pl[0].fade; one.wbg = w.bg;
+		ok(wsk__child(&one, 0, &c) && c.bg == 0x445566u && c.wbg == 0x102030u && c.wfade == 128,
+		   "a faded poster: its own background kept, its colours fading toward the world's");
+	}
+	{
+		/* opening a menu closes a tip */
+		static const wsk_widget_t TB[] = {
+			{ .kind = WSK_BUTTON, .id = "a", .text = "A", .size = 40 },
+			{ .kind = WSK_STACK, .id = "menu", .sub = 0, .size = 0 },
+		};
+		static const wsk_widget_t MB[] = { { .kind = WSK_BUTTON, .id = "m", .text = "M", .size = 30 } };
+		wsk_tree_t t4, k[1];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0, y1;
+		wsk_init(&t4, WSK_COL, 320, 200);
+		t4.pad = 0; t4.gap = 0; t4.item = TB; t4.n = 1; t4.nest = k; t4.nests = 1;
+		wsk_nest_init(&k[0], &t4, WSK_COL);
+		k[0].item = MB; k[0].n = 1;
+		wsk_ui_init(&ui, &t4);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_HOVER; ev.x = 10; ev.y = 10;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_TICK; ev.d = 500;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		wsk_ui_tip(&ui, "tip", &y0, &y1);
+		ok(t4.tip != 0 && wsk_ui_open(&ui, 0, "a", &y0, &y1) == WSK_OK && t4.tip == 0 && y0 <= t4.ty,
+		   "a menu opened over a tip closes the tip, and repaints where it was");
+	}
+
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
 	{
 		wsk_tree_t g = t;

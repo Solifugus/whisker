@@ -32,6 +32,9 @@ if [[ "${1:-}" == "--floor" ]]; then
 fi
 if [[ "${1:-}" == "--test" ]]; then
 	python3 "$HERE/test.py" "$OUT/whisker-edit-web"
+	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-floor-web" \
+		"$HERE/../linux/floor.c" "$HERE/host_web.c" -I"$HERE/../linux" -I"$HERE/../../src"
+	python3 "$HERE/seathost.py" "$OUT/whisker-floor-web"
 	if command -v google-chrome >/dev/null && command -v node >/dev/null; then
 		node "$HERE/chrome.mjs" "$OUT/whisker-edit-web" "$OUT"
 		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-code-web" \

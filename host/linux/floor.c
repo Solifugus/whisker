@@ -202,6 +202,9 @@ static int step(void)
 			continue;
 		}
 		px[i] = nx; py[i] = ny;
+		/* where they are now, before the next person looks: two walking
+		   toward each other must not both step into the same frame's gap */
+		model[POSTERS + i].x = nx; model[POSTERS + i].y = ny;
 		moved = 1;
 		if (o >= 0 && px[i] == tx[i] && py[i] == ty[i]) say(o, "You arrive.");
 	}
@@ -238,6 +241,9 @@ static void join(int s, int caps)
 	seat_t *S = &seat[s];
 	int y0, y1;
 
+	/* a seat joining again whose leaving was never heard gives its person
+	   back first, or they would be owned by nobody for ever */
+	if (S->on && S->me >= 0 && owner[S->me] == s) owner[S->me] = -1;
 	memset(S, 0, sizeof *S);
 	S->on = 1;
 	S->me = -1;
@@ -429,10 +435,11 @@ int main(void)
 
 		if (k == WH_QUIT) break;
 		if (k == WH_NOTHING) {
-			/* a frame: everyone takes a step, and each floor is drawn again */
-			int moved, ms;
-			wh_wait(40);
-			ms = (int)(wh_ms() - last);
+			/* a frame -- every 40 ms by the clock, not every time the host
+			   wakes: a mouse moving wakes it a hundred times a second, and
+			   people would walk that much faster */
+			int moved, ms = (int)(wh_ms() - last);
+			if (ms < 40) { wh_wait(40 - ms); continue; }
 			last += ms;
 			moved = step();
 			for (int q = 0; q < WH_SEATS; q++) {

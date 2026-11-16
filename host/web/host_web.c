@@ -56,7 +56,10 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#define MAXC WH_SEATS                    /* a slot is a seat (§5ab) */
+/* Slots below WH_SEATS hold event streams, and a stream's slot is its seat
+   (§5ab); the rest are for the short requests -- a POST, the page -- so
+   that sixteen seats still leave room for their own events. */
+#define MAXC (WH_SEATS + 16)
 
 static const char PAGE[] =
 "<!doctype html><html><head><meta charset=utf-8>"
@@ -66,7 +69,10 @@ static const char PAGE[] =
 "canvas{display:block;margin:auto;max-width:100vw;max-height:100vh;touch-action:none;outline:none}"
 "</style></head><body><canvas id=c tabindex=0></canvas><script>\n"
 "const c=document.getElementById('c'),g=c.getContext('2d');\n"
-"let W=0,H=0,chain=Promise.resolve(),sent=Promise.resolve(),drawn=0,seat=-1;\n"
+"let W=0,H=0,chain=Promise.resolve(),sent=Promise.resolve(),drawn=0,seat=-1,gen=0,es=null;\n"
+/* a seat's posts name it and its generation, so a page that lost its seat
+   cannot speak for whoever has the number now */
+"const url=()=>seat<0?'/ev':'/ev?s='+seat+'&g='+gen;\n"
 /* whisker's advance is half the font size; make the browser's monospace
    agree -- and keep runs of spaces, which an SVG collapses and /w0 does not
    (§5v: measured, xml:space on the root did nothing in Chrome; this does) */
@@ -114,15 +120,21 @@ static const char PAGE[] =
 "const size=()=>{if(seat>=0)send('Z '+innerWidth+' '+innerHeight);};\n"
 "let rz=0;addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(size,200);});\n"
 "setInterval(()=>{if(seat>=0)send('Y');},2000);\n"
-"addEventListener('pagehide',()=>{if(seat>=0)navigator.sendBeacon('/ev?s='+seat,'G');});\n"
-"new EventSource('/events').onmessage=e=>{\n"
-"  if(e.data.startsWith('S ')){seat=+e.data.slice(2);size();return;}\n"
+"addEventListener('pagehide',()=>{if(seat>=0)navigator.sendBeacon(url(),'G');});\n"
+/* a hidden tab's timers are throttled, so its seat goes quiet and is
+   dropped; seated again while hidden it would only be dropped again --
+   so it stays away until it is looked at */
+"function connect(){es=new EventSource('/events');es.onmessage=e=>{\n"
+"  if(e.data.startsWith('S ')){const v=e.data.split(' ');seat=+v[1];gen=+v[2];\n"
+"    if(document.hidden){es.close();es=null;seat=-1;return;}size();return;}\n"
 "  if(e.data.startsWith('C ')){copy(unesc(e.data.slice(2)));return;}\n"
 "  const m=/^(\\d+) (\\d+) (\\d+) (\\d+) /.exec(e.data);\n"
 "  if(m) draw(+m[1],+m[2],+m[3],+m[4],e.data.slice(m[0].length));\n"
-"};\n"
+"};}\n"
+"document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!es)connect();});\n"
+"connect();\n"
 /* events, in order: each POST waits for the one before */
-"function send(line){sent=sent.then(()=>fetch(seat<0?'/ev':'/ev?s='+seat,{method:'POST',body:line}).catch(()=>{}));}\n"
+"function send(line){sent=sent.then(()=>fetch(url(),{method:'POST',body:line}).catch(()=>{}));}\n"
 "function pt(e){const r=c.getBoundingClientRect();\n"
 "  return Math.floor((e.clientX-r.left)*W/r.width)+' '+Math.floor((e.clientY-r.top)*H/r.height);}\n"
 /* the primary button presses; the secondary asks for a context menu, which
@@ -174,6 +186,7 @@ typedef struct {
 	int  fd;
 	int  sub;                /* subscribed to /events */
 	int  w, h;               /* a seat's screen, once it says (§5ab step 2), or 0 */
+	unsigned gen;            /* which joining of this seat: its posts must say it */
 	long last;               /* when it was last heard from, in ms */
 	char req[8192];          /* a paste comes in one: room for a few KB */
 	int  got;
@@ -189,6 +202,7 @@ static struct {
 	wh_event_t q[64];
 	int       qh, qt;
 	int       seats, to;     /* serving seats (§5ab); the seat wh_to named, or -1 */
+	unsigned  gen;           /* joinings so far, to number the next */
 	char     *clip;          /* the clipboard: the last copied or pasted */
 	int       clen;
 } S;
@@ -209,8 +223,12 @@ static long now_ms(void)
 
 static void push(const wh_event_t *e)
 {
-	int nt = (S.qt + 1) % 64;
-	if (nt == S.qh) return;                 /* full: drop, as a busy panel would */
+	int nt = (S.qt + 1) % 64, held = (S.qt - S.qh + 64) % 64;
+	/* full: drop, as a busy panel would -- but a seat's coming and going
+	   has eight places kept for it, since a lost GONE is a person owned for
+	   ever, and a lost JOIN a screen nobody draws */
+	if (nt == S.qh) return;
+	if (held >= 56 && e->kind != WH_JOIN && e->kind != WH_GONE) return;
 	S.q[S.qt] = *e;
 	S.qt = nt;
 }
@@ -289,10 +307,10 @@ static void event_line(const char *l, int seat)
 	case 'X': e.kind = WH_EXPOSE;  break;
 	case 'Y': return;                       /* still here: heard, in respond */
 	case 'G':                               /* hidden for good (§5ab step 2) */
-		if (S.seats && seat >= 0 && seat < MAXC && S.c[seat].fd >= 0) drop(seat);
+		if (S.seats && seat >= 0 && seat < WH_SEATS && S.c[seat].fd >= 0) drop(seat);
 		return;
 	case 'Z':                               /* the seat's size */
-		if (!S.seats || seat < 0 || seat >= MAXC) return;
+		if (!S.seats || seat < 0 || seat >= WH_SEATS) return;
 		sscanf(l + 1, "%d %d", &e.x, &e.y);
 		if (e.x < 160 || e.y < 120 || e.x > 4096 || e.y > 4096) return;
 		S.c[seat].w = e.x; S.c[seat].h = e.y;
@@ -316,7 +334,7 @@ static void event_line(const char *l, int seat)
 		/* a point on the seat's own screen, when it has said its size;
 		   and a hover at -1,-1 is the pointer leaving, not a point */
 		int bw = S.w, bh = S.h;
-		if (S.seats && seat >= 0 && seat < MAXC && S.c[seat].w > 0) { bw = S.c[seat].w; bh = S.c[seat].h; }
+		if (S.seats && seat >= 0 && seat < WH_SEATS && S.c[seat].w > 0) { bw = S.c[seat].w; bh = S.c[seat].h; }
 		if (e.kind != WH_EXPOSE && e.kind != WH_KEY && e.kind != WH_TEXT &&
 		    !(e.kind == WH_HOVER && e.x == -1 && e.y == -1) &&
 		    (e.x < 0 || e.y < 0 || e.x >= bw || e.y >= bh)) return;
@@ -329,21 +347,33 @@ static void respond(int i)
 	client_t *c = &S.c[i];
 	char *end = strstr(c->req, "\r\n\r\n");
 	char method[8], path[64];
-	int len = 0;
+	int len = 0, head;
 	const char *cl;
 
 	if (end == 0) return;                   /* headers not all here yet */
 	if (sscanf(c->req, "%7s %63s", method, path) != 2) { drop(i); return; }
-	if ((cl = strstr(c->req, "Content-Length:")) != 0 || (cl = strstr(c->req, "content-length:")) != 0)
-		len = atoi(cl + 15);
-	if (c->got < (int)(end + 4 - c->req) + len) return;   /* body not all here */
+	head = (int)(end + 4 - c->req);
+	if ((cl = strstr(c->req, "Content-Length:")) != 0 || (cl = strstr(c->req, "content-length:")) != 0) {
+		/* a length that does not fit what is left of the buffer is a lie,
+		   or more than any event needs: either way, no answer */
+		long l = strtol(cl + 15, 0, 10);
+		if (l < 0 || l > (long)sizeof c->req - 1 - head) { drop(i); return; }
+		len = (int)l;
+	}
+	if (c->got < head + len) return;        /* body not all here */
 
 	if (strcmp(method, "POST") == 0 && (strcmp(path, "/ev") == 0 || strncmp(path, "/ev?s=", 6) == 0)) {
 		char *p = end + 4, *stop = p + len;
 		int seat = (path[3] == '?') ? atoi(path + 6) : -1;
+		const char *g = strstr(path, "&g=");
+		unsigned gen = g ? (unsigned)strtoul(g + 3, 0, 10) : 0;
 		*stop = '\0';
-		/* serving seats, an event is from a screen that is here, or nothing */
-		if (S.seats && (seat < 0 || seat >= MAXC || S.c[seat].fd < 0 || !S.c[seat].sub)) p = stop;
+		/* serving seats, an event is from a screen that is here -- the same
+		   joining of it, not a page that once had its number -- or nothing;
+		   not serving them, every page is the one screen, 0 */
+		if (!S.seats) seat = 0;
+		else if (seat < 0 || seat >= WH_SEATS || S.c[seat].fd < 0 || !S.c[seat].sub ||
+		         S.c[seat].gen != gen) p = stop;
 		else if (S.seats) S.c[seat].last = now_ms();     /* heard from */
 		while (p < stop) {
 			char *nl = strchr(p, '\n');
@@ -358,9 +388,25 @@ static void respond(int i)
 		static const char H[] = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
 		                        "Cache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n";
 		wh_event_t e;
-		char sn[32];
+		char sn[48];
+		int j;
+		/* a stream moves to a seat's slot, below WH_SEATS; none free, no room */
+		for (j = 0; j < WH_SEATS && S.c[j].fd >= 0; j++) ;
+		if (j == WH_SEATS) {
+			send_str(c->fd, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+			drop(i);
+			return;
+		}
+		if (j != i) {
+			S.c[j] = *c;
+			S.c[i].fd = -1; S.c[i].sub = 0; S.c[i].got = 0; S.c[i].w = S.c[i].h = 0;
+			i = j;
+			c = &S.c[j];
+		}
+		c->gen = ++S.gen;
 		send_all(c->fd, H, (int)sizeof H - 1);
-		if (S.seats) send_all(c->fd, sn, snprintf(sn, sizeof sn, "data: S %d\n\n", i));   /* its seat */
+		if (S.seats)                            /* its seat, and which joining of it */
+			send_all(c->fd, sn, snprintf(sn, sizeof sn, "data: S %d %u\n\n", i, c->gen));
 		if (!S.seats && S.llen > 0) send_all(c->fd, S.log, S.llen);
 		c->sub = 1;
 		c->got = 0;
@@ -435,7 +481,8 @@ static void service(int ms)
 			struct timeval tv = { 1, 0 };
 			int i;
 			setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
-			for (i = 0; i < MAXC && S.c[i].fd >= 0; i++) ;
+			/* a new request starts above the seats; a stream moves down */
+			for (i = WH_SEATS; i < MAXC && S.c[i].fd >= 0; i++) ;
 			if (i == MAXC) close(fd);
 			else { S.c[i].fd = fd; S.c[i].sub = 0; S.c[i].got = 0; }
 		}
@@ -492,9 +539,9 @@ void wh_seats(int on)
 	for (int i = 0; on && i < MAXC; i++)
 		if (S.c[i].fd >= 0 && S.c[i].sub) {
 			wh_event_t e;
-			char sn[32];
+			char sn[48];
 			S.c[i].last = now_ms();
-			send_all(S.c[i].fd, sn, snprintf(sn, sizeof sn, "data: S %d\n\n", i));   /* its seat */
+			send_all(S.c[i].fd, sn, snprintf(sn, sizeof sn, "data: S %d %u\n\n", i, S.c[i].gen));
 			memset(&e, 0, sizeof e);
 			e.kind = WH_JOIN;
 			e.seat = i;
