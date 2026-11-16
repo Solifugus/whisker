@@ -3648,6 +3648,9 @@ hosts; `tabs.mjs` (13) and `code.mjs` use the Alt ones. The rule is the
 program's, as every shortcut is (§5s) — whisker never sees a chord the
 host was not given.
 
+**Used by Matthew again, 2026-11-16, after the Alt chords**: works well
+in both hosts.
+
 ## 5ag. Docking (2026-11-16), written before its code
 
 Matthew chose it: the last of Studio's 25 `window` words whisker answered

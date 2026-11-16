@@ -354,6 +354,7 @@ directly**.
   RISC-V with the module flags and `nm -u` it. **A browser keeps Ctrl-T,
   Ctrl-W, Ctrl-N** (Matthew's Ctrl-W closed the browser tab): a program
   binding one gives an Alt chord too; Chrome checks cannot see this.
+  **Matthew, after: works well in both hosts.**
 - **A third independent read, 2026-11-16** (design, after §5ag): a grab
   ended by a menu, a dialog or a lost lifting left the dock mid-drag —
   and the program's own grab tree moved a pane; a triple-click floated
