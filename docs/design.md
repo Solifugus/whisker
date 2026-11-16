@@ -3451,6 +3451,95 @@ with a new `seathost.py` over raw sockets). Every earlier output — 43 files
   stays away rather than rejoining every nine seconds; a seatless program's
   seat is always 0.
 
+## 5ae. Choosing a file (2026-11-16), written before its code
+
+Matthew chose it as the next desktop gap. gBASIC asks it three ways —
+`choose_file` (which existing file), `choose_save` (what shall I call it),
+`choose_folder` (which folder) — with a title, a starting folder, a name
+and a filter, and a cancel that answers *nothing*, never `""` (gBASIC
+`docs/qt_gui_design.md` §0.16). Qt's chooser is a widget the desktop
+draws; whisker has none, and **cannot read a folder** — no libc, by rule.
+So the work splits three ways, and only the first is the toolkit's:
+
+1. **A modal dialog** — `wsk_ui_dialog(ui, sub, w, h, &y0, &y1)`: tree `sub`
+   opened over the window as §5l's overlay is, but **w x h, centred**, and
+   **modal**: a press, a right-click, the wheel off it do nothing at all
+   (a menu's press off it closes it; a dialog's must not, or a stray tap
+   loses what was typed); hovering off it rests on nothing; the arrows are
+   its fields' and lists', not a menu's. **The keys are the dialog's**:
+   Tab walks its fields, buttons and lists, typing reaches its fields, as
+   they do the window's. It closes by Escape (CLOSE, as a menu's) or by
+   **`wsk_ui_dialog_close`**, and either way **focus goes back** to what had
+   it before the dialog opened. `WSK_NO_OVER` has none of it.
+2. **The chooser — `src/whisker_chooser.h`**, a second header, under the
+   same rules (no libc, no `.bss`, no pointer tables): it builds a chooser
+   in the **caller's memory** — a title, the folder, Up, a list of the
+   folder's entries (folders first, each sorted, those the filter does not
+   admit left out), a name field (not for a folder), Cancel and Open/Save/
+   Choose — into tree slots and string slots of the root the program sets
+   aside for it, and **reads folders through a function the program
+   gives** (`wsk_lister_t`): whisker never touches a filesystem, so a
+   desktop's is POSIX, a browser host's is the server's, and an RV-9
+   module's would be RV-9's. A click on a file puts its name in the field;
+   a click on the chosen folder, or Open with a folder chosen, goes into
+   it; Up goes out; Open/Save/Choose answers the path; Cancel or Escape
+   answers **cancelled**, never an empty path. `wsk_chooser_answer` drives
+   it as gBASIC's `qt.answer` does — a path, or a cancel — for tests.
+3. **The hosts**: a POSIX lister (`host/linux/lister.c`), and the code
+   editor (`code.c`) opens a file by Ctrl-O and saves one by Ctrl-Shift-S,
+   in the SDL window and the browser alike.
+
+Done when: (1) modal by the numbers — a press off it nothing, Escape
+CLOSE, Tab within it and round, typing into its field, focus restored on
+closing, the control that a menu still closes on a press off it; (2) the
+chooser over a lister that is not a filesystem — sorted, filtered,
+folders first, into a folder and out, a file chosen, a name typed and
+saved, a folder chosen, a cancel answered as cancelled; a picture; (3) in
+Chrome, Ctrl-O in the code editor, a file chosen, and its text in the
+editor.
+
+**What it came to**: as written, in three parts. **1,053 checks** (1,018);
+every earlier output — 43 files — byte-identical; web 126 (122).
+
+1. **The dialog** (11 checks): opened 200 x 120, centred, modal, the
+   window's field giving up focus; a press and release off it nothing; a
+   right-click and the pointer resting off it, nothing; Tab to its field,
+   and round its three stops, never out; typing reaches its field and not
+   the window's; a press on its OK clicks **and does not close it**; Escape
+   CLOSE with focus back on the window's field; closed by the program,
+   the same; and the control, a menu, still closed by a press off it.
+   *Found in the building*: an overlay's button clicks and then closes it —
+   right for a menu, wrong for a dialog, where OK may refuse what was typed
+   and Up must stay. A dialog's buttons only click now.
+2. **The chooser** (21 checks, over a folder tree that is no filesystem):
+   too few slots refused; an unreadable folder refused with no dialog;
+   Open in /home/me with `*.bas` — folders first, then files, each sorted
+   without case, `notes.txt` filtered, `.profile` hidden, a name the
+   window cannot draw left out; drawn; a click on a file names it, again
+   chooses it, and the dialog closes; a folder clicked twice is entered;
+   Up, Up at the top; Cancel and Escape cancelled, never an empty path;
+   Save as with a name offered and typed onto, Enter; a folder chosen,
+   with none chosen and with one; `wsk_chooser_answer` with a path and
+   with none. Compiled under RV-9's module flags it needs nothing but the
+   program's lister — no libc, no `.data`, no `.bss` — though its own
+   size (~30 KB at 256 entries) is a desktop's, not a module's stack's.
+   A picture through `raster.c` (`chooser.ppm`, looked at).
+3. **The code editor**: Ctrl-O and Ctrl-Shift-S, through a POSIX lister
+   (`host/linux/lister.h`). In Chrome: Save as, a path typed over the name
+   offered, Enter — the file written with what had been typed; Ctrl-O, a
+   path typed, Enter — that file in the editor; Ctrl-O then Escape, nothing
+   opened (the control). A file the window cannot draw is refused and the
+   open one kept.
+
+**§7's question**: overlays cost a toolkit program 264 bytes more (the
+dialog); `WSK_PANEL` 4. The chooser is a second header, paid only by a
+program that includes it.
+
+**Named, not done**: no keyboard path into a row from the name field but
+Tab; the list has no type-to-find; a chooser's strings are one-line
+(a long path is cut at the window's edge); gBASIC's `qt.dialog()` oracle
+has no whisker twin yet — the chooser's own fields are the oracle.
+
 ## 5ad. Pinch — two fingers zoom a world (2026-11-16), written before its code
 
 Matthew chose it after the review. A phone now gets a floor its own size

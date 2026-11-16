@@ -304,6 +304,15 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   each had grown ~7 KB of features it never reached.
   **Browser tests kill their Chrome however they end** — one left running
   rejoined the next run as extra seats.
+- **§5ae — choosing a file** (2026-11-16): a **modal dialog**
+  (`wsk_ui_dialog`: centred, nothing off it answers, the keys are its own,
+  focus given back on closing; its buttons click without closing it) and
+  **`src/whisker_chooser.h`**, a second header under the same rules, which
+  builds gBASIC's three questions — choose a file, save as, choose a
+  folder — in slots of the root the program sets aside, and reads folders
+  only through a lister the program gives (POSIX: `host/linux/lister.h`).
+  Cancel answers *cancelled*, never an empty path. The code editor opens by
+  Ctrl-O and saves as by Ctrl-Shift-S, in both hosts.
 - **§5ad — pinch** (2026-11-16): events carry `finger` (the platform's
   number; a mouse 0); a second finger down on the world the first pressed
   starts a pinch — the first's press let go, the zoom the distance's ratio,
@@ -354,7 +363,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,018 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,053 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 51 — every demo program started — including the

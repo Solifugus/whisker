@@ -19,13 +19,18 @@
  * A click in the gutter sets or clears a breakpoint on that line: a red mark
  * in the gutter (§5v step 4), and printed. Breakpoints stay on their line
  * numbers as the text changes -- moving them with it is a program's job, and
- * this one does not. The file is never written: Ctrl-S says so. Close the
- * window to quit.
+ * this one does not. Ctrl-O opens another file and Ctrl-Shift-S saves this
+ * one as a name of your choosing -- the chooser (§5ae), which reads folders
+ * through POSIX here (lister.h) because whisker reads none. Ctrl-S says
+ * that only Save as writes. Close the window to quit.
  */
 #include "host.h"
 #include "whisker.h"
+#include "whisker_chooser.h"
+#include "lister.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,7 +50,12 @@ static wsk_ink_t inks[INKS];
 static unsigned char brk[65536];        /* breakpoints, by line */
 static wsk_gmark_t marks[4096];         /* ...as whisker draws them, in order */
 static wsk_widget_t win_items[4];
-static wsk_buf_t buf[2];
+static wsk_buf_t buf[3];                /* the code, the output, the chooser's name */
+static wsk_tree_t chtrees[4];           /* the chooser's slots (§5ae) */
+static const char *chstrs[2 + WSK_CH_MAX];
+static wsk_chooser_t chooser;
+static int choosing;                    /* 0, or what the chooser was opened for: 'o' or 's' */
+static char pathbuf[PATH_MAX];
 static short sizes[4];                  /* the panes, as the divider leaves them */
 static wsk_undo_t undo;
 static wsk_tree_t win;
@@ -149,6 +159,56 @@ static void status(void)
 
 static void to_window(wsk_sink_t *s, const char *b, int n) { (void)s; wh_write(b, n); }
 
+/* Read a file into the editor: 0, or -1 with the reason said -- and a file
+   this window cannot draw refused, the one open kept. */
+static int load(const char *p)
+{
+	static char keep[CAP];
+	FILE *f = fopen(p, "rb");
+	int len, was = buf[0].len;
+	char m[PATH_MAX + 64];
+	if (f == NULL) { snprintf(m, sizeof m, "cannot open %s", p); say(m); return -1; }
+	memcpy(keep, text, (size_t)was + 1);
+	len = (int)fread(text, 1, CAP - 1, f);
+	fclose(f);
+	text[len] = '\0';
+	buf[0].len = len;
+	buf[0].caret = 0; buf[0].span = 0;
+	buf[0].ninks = 0;
+	if (wsk_check(&win, 0) != WSK_OK) {
+		memcpy(text, keep, (size_t)was + 1);
+		buf[0].len = was;
+		buf[0].caret = 0;
+		colour();
+		snprintf(m, sizeof m, "%s holds what this window cannot draw: not opened", p);
+		say(m);
+		return -1;
+	}
+	buf[0].len = len;
+	buf[0].caret = 0; buf[0].span = 0; buf[0].top = 0;
+	undo.used = 0; undo.end = 0;
+	memset(brk, 0, sizeof brk);
+	snprintf(pathbuf, sizeof pathbuf, "%s", p);
+	path = pathbuf;
+	colour();
+	remark();
+	snprintf(m, sizeof m, "opened %s", p);
+	say(m);
+	return 0;
+}
+
+/* The folder a path is in, made absolute: where the chooser starts. */
+static void folder_of(const char *p, char *out, int cap)
+{
+	char full[PATH_MAX];
+	const char *slash;
+	if (realpath(p, full) == NULL) snprintf(full, sizeof full, "%s", p);
+	slash = strrchr(full, '/');
+	if (slash == NULL) { snprintf(out, (size_t)cap, "."); return; }
+	if (slash == full) { snprintf(out, (size_t)cap, "/"); return; }
+	snprintf(out, (size_t)cap, "%.*s", (int)(slash - full), full);
+}
+
 int main(int argc, char **argv)
 {
 	int w = 1024, h = 600, y0, y1, which = -1, e;
@@ -175,7 +235,10 @@ int main(int argc, char **argv)
 	wsk_init(&win, WSK_COL, w, h);
 	win.pad = 4; win.gap = 0; win.font = 18; win.ids = 1;
 	win.item = win_items; win.n = 4;
-	win.buf = buf; win.bufs = 2;
+	win.buf = buf; win.bufs = 3;
+	win.nest = chtrees; win.nests = 4;
+	win.str = chstrs; win.strs = 2 + WSK_CH_MAX;
+	for (int i = 0; i < 4; i++) wsk_nest_init(&chtrees[i], &win, WSK_COL);
 	win.sizes = sizes;
 	win.caps = (unsigned char)wh_caps();
 	win.talign = WSK_ALIGN_START;
@@ -201,6 +264,7 @@ int main(int argc, char **argv)
 	s.put = to_window; s.ctx = 0; s.len = 0;
 	wsk_ui_init(&ui, &win);
 	ui.clip = clip; ui.clipcap = sizeof clip;
+	if (wsk_chooser_init(&chooser, &win, chstrs, 0, 0, 2, posix_lister, 0) != WSK_OK) return 1;
 	buf[0].caret = 0;
 	wsk_ui_focus(&ui, "code", &y0, &y1);
 	wh_clip(0, 0);
@@ -227,6 +291,25 @@ int main(int argc, char **argv)
 		else continue;
 
 		n = wsk_feed(&ui, &ev, note, 4, &y0, &y1);
+		/* the chooser's, while it is open (§5ae) */
+		if (choosing) {
+			int r = wsk_chooser_feed(&chooser, &ui, note, n, &y0, &y1);
+			if (r == WSK_CHOSEN && choosing == 'o') {
+				(void)load(chooser.path);
+			} else if (r == WSK_CHOSEN && choosing == 's') {
+				FILE *f = fopen(chooser.path, "wb");
+				char m[PATH_MAX + 32];
+				if (f != NULL && (int)fwrite(text, 1, (size_t)buf[0].len, f) == buf[0].len) {
+					snprintf(pathbuf, sizeof pathbuf, "%s", chooser.path);
+					path = pathbuf;
+					snprintf(m, sizeof m, "saved %s", chooser.path);
+				} else snprintf(m, sizeof m, "could not write %s", chooser.path);
+				if (f != NULL) fclose(f);
+				say(m);
+			} else if (r == WSK_CANCELLED) say("nothing chosen");
+			if (r != 0) choosing = 0;
+			y0 = 0; y1 = h;
+		}
 		for (int i = 0; i < n && i < 4; i++) {
 			const wsk_note_t *t = &note[i];
 			if (t->kind == WSK_NOTE_TEXT) text_changed = 1;
@@ -245,13 +328,27 @@ int main(int argc, char **argv)
 				int m0, m1, pl = wh_paste(pb, sizeof pb);
 				if (pl > 0 && wsk_ui_paste(&ui, pb, pl, pn, 2, &m0, &m1) > 0) text_changed = 1;
 			} else if (t->kind == WSK_NOTE_KEY && t->value == ('s' | WSK_MOD_CTRL)) {
-				say("save: this demo never writes the file");
+				say("save: only Save as (Ctrl-Shift-S) writes, to a name you choose");
+				y0 = 0; y1 = h;
+			} else if (t->kind == WSK_NOTE_KEY && !choosing &&
+			           (t->value == ('o' | WSK_MOD_CTRL) || t->value == ('s' | WSK_MOD_CTRL | WSK_MOD_SHIFT))) {
+				/* the chooser (§5ae): open a file, or save as */
+				char at[PATH_MAX];
+				const char *base = strrchr(path, '/');
+				int open = (t->value == ('o' | WSK_MOD_CTRL)), cy0, cy1;
+				folder_of(path, at, sizeof at);
+				if (wsk_chooser_open(&chooser, &ui, open ? WSK_CHOOSE_FILE : WSK_CHOOSE_SAVE,
+				                     open ? "Open a file" : "Save as", at,
+				                     open ? 0 : (base ? base + 1 : path), 0, 640, 440, &cy0, &cy1) == WSK_OK) {
+					choosing = open ? 'o' : 's';
+					say(open ? "choose a file to open" : "choose a name to save as");
+				} else say("that folder cannot be read");
 				y0 = 0; y1 = h;
 			} else if (t->kind == WSK_NOTE_SPLIT)
 				printf("output pane %d high\n", t->value);   /* each step of a drag: not the pane's */
 		}
 		/* the text changed: colour it again, BEFORE drawing (§5v rule 4) */
-		if (text_changed) {
+		if (text_changed && !choosing) {
 			colour();
 			y0 = 0; y1 = h;                 /* a line's colours can change the lines after */
 		}

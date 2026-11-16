@@ -246,6 +246,46 @@ try {
   const diff = await js(`(()=>{const b=whisker.canvas.getContext("2d").getImageData(0,0,1024,600).data;
     let n=0; for(let i=0;i<b.length;i+=4) if(b[i]!==__a[i]||b[i+1]!==__a[i+1]||b[i+2]!==__a[i+2]) n++; return n;})()`);
   ok(diff === 0, `after typing, the canvas from clipped repaints equals a full redraw (${diff} differ)`);
+
+  // §5ae: the chooser. The dialog is 640 x 440, centred at 192,80; its name
+  // field the 30 rows above its buttons, 438..468
+  {
+    const saved = join(outDir, 'saved.bas'), other = join(outDir, 'other.bas');
+    rmSync(saved, { force: true });
+    writeFileSync(other, 'print 42\n');
+    await key('S', 'KeyS', 2 | 8);                      // Ctrl-Shift-S: Save as
+    await sleep(400);
+    ok(said.includes('choose a name to save as'), 'Ctrl-Shift-S opens the chooser to save as');
+    await snap('code_chooser.png');
+    await click(500, 453);
+    await key('a', 'KeyA', 2);                          // the name offered, all of it
+    await type(saved);
+    await key('Enter', 'Enter');
+    await sleep(500);
+    let written = '';
+    try { written = readFileSync(saved, 'utf8'); } catch {}
+    ok(said.includes('saved ' + saved) && written.includes('-- typed'),
+       'a path typed over the name offered, Enter: the file written, with what was typed in it');
+    await key('o', 'KeyO', 2);                          // Ctrl-O: open
+    await sleep(400);
+    await click(500, 453);
+    await type(other);
+    await key('Enter', 'Enter');
+    await sleep(500);
+    await settle();
+    const shows = await js(`(()=>{const d=whisker.canvas.getContext("2d").getImageData(60,40,300,30).data;
+      let n=0;for(let i=0;i<d.length;i+=4)if(d[i]>200&&d[i+1]>200&&d[i+2]>200)n++;return n;})()`);
+    ok(said.includes('opened ' + other), 'Ctrl-O, a path typed, Enter: that file opened');
+    await snap('code_opened.png');
+    const before = (said.match(/opened /g) || []).length;
+    await key('o', 'KeyO', 2);
+    await sleep(300);
+    await key('Escape', 'Escape');
+    await sleep(400);
+    ok(said.includes('nothing chosen') && (said.match(/opened /g) || []).length === before,
+       'CONTROL: Ctrl-O then Escape: nothing chosen, nothing opened');
+    void shows;
+  }
 } finally {
   try { ws?.close(); } catch {}
   chrome.kill();

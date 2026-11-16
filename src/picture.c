@@ -13,6 +13,7 @@
  */
 #include "drv_svgwin.c"
 #include "whisker.h"
+#include "whisker_chooser.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -151,6 +152,23 @@ static const wsk_widget_t PANEL[] = {
 	{ .kind = WSK_BUTTON, .id = "confirm", .text = "CONFIRM" },
 	{ .kind = WSK_BUTTON, .id = "cancel", .text = "Cancel" },
 };
+
+/* A folder for the chooser's picture (§5ae): not a filesystem. */
+static int pic_lister(void *ctx, const char *folder, wsk_entry_t *e, int max, char *names, int cap)
+{
+	static const char *const LS[] = { "docs", "src", "notes.bas", "readme.bas", "zeta.bas" };
+	int at = 0, n = 0;
+	(void)ctx; (void)folder;
+	for (int i = 0; i < 5 && n < max; i++) {
+		int len = (int)strlen(LS[i]);
+		if (at + len + 1 > cap) break;
+		e[n].name = at; e[n].dir = (unsigned char)(i < 2);
+		memcpy(names + at, LS[i], (size_t)len + 1);
+		at += len + 1;
+		n++;
+	}
+	return n;
+}
 
 int main(void)
 {
@@ -1960,6 +1978,45 @@ int main(void)
 		ok(box > 120 * 24 / 2 && 120 * 24 - box > 300 && dark > 0,
 		   "drawn in the ink, with letters on it -- anti-aliased, a few of them the background itself");
 		shot("tooltip.ppm");
+	}
+
+	/*
+	 * The chooser (§5ae) at the pixels: Save as, over a window, at the
+	 * board's font -- the list in its trough, the buttons in the accent.
+	 */
+	{
+		static const wsk_widget_t MAINW[] = { { .kind = WSK_LABEL, .id = "main", .text = "the program", .weight = 1 } };
+		static wsk_chooser_t ch;
+		static const char *strs[2 + WSK_CH_MAX];
+		wsk_buf_t cb[1];
+		wsk_tree_t root, k[4];
+		wsk_ui_t ui;
+		wsk_sink_t s;
+		uint32_t v;
+		int y0, y1, lo, hi, trough, accent;
+		wsk_rect_t whole = { 0, 0, PW, PH };
+
+		memset(cb, 0, sizeof cb);
+		wsk_init(&root, WSK_COL, PW, PH);
+		root.bg = 0x10203au; root.font = 12; root.item = MAINW; root.n = 1;
+		root.nest = k; root.nests = 4; root.str = strs; root.strs = 2 + WSK_CH_MAX; root.buf = cb; root.bufs = 1;
+		for (int i = 0; i < 4; i++) wsk_nest_init(&k[i], &root, WSK_COL);
+		k[0].bg = 0x24344cu;
+		wsk_ui_init(&ui, &root);
+		wsk_chooser_init(&ch, &root, strs, 0, 0, 0, pic_lister, 0);
+		printf("\n  a chooser (§5ae)\n");
+		ok(wsk_chooser_open(&ch, &ui, WSK_CHOOSE_SAVE, "Save as", "/home/me", "new.bas", "*.bas", 300, 168, &y0, &y1) == WSK_OK &&
+		   ch.n == 5, "Save as, five entries -- two folders first");
+		k[0].bg = 0x24344cu;                    /* the dialog's own backing */
+		s.put = to_window; s.ctx = &dev;
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		ok(wsk_render(&root, &s, 4096) > 0, "drawn, in one document under 4 KB");
+		trough = span(whole, pix565(root.trough), &lo, &hi);
+		accent = span(whole, pix565(root.accent), &lo, &hi);
+		printf("    the list's trough: %d pixels; the buttons' accent: %d\n", trough, accent);
+		ok(trough > 2000 && accent > 1000, "the list in its trough, the buttons in the accent");
+		shot("chooser.ppm");
 	}
 
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);

@@ -615,6 +615,7 @@ typedef struct wsk_tree {
 	 */
 	short         over;
 	short         ox, oy, ow, oh;
+	unsigned char omodal;        /* a dialog, not a menu: nothing off it answers (§5ae) */
 #ifndef WSK_NO_MENUKEYS
 	short         ohi;           /* the overlay's button the keys have reached,
 	                                or WSK_NONE (§5y) */
@@ -1608,6 +1609,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->ohi = WSK_NONE;
 #endif
 	t->ox = t->oy = t->ow = t->oh = 0;
+	t->omodal = 0;
 	t->state = 0;
 	t->states = 0;
 	t->select = 0;
@@ -2630,6 +2632,7 @@ static inline int wsk_over_open(wsk_tree_t *t, int sub, wsk_rect_t anchor)
 static inline void wsk_over_close(wsk_tree_t *t)
 {
 	t->over = WSK_NONE;
+	t->omodal = 0;
 #ifndef WSK_NO_MENUKEYS
 	t->ohi = WSK_NONE;
 #endif
@@ -4744,6 +4747,9 @@ typedef struct {
 	int               wp0x, wp0y; /* ... its place at the down */
 #endif
 
+#ifndef WSK_NO_OVER
+	const void       *dfocus;    /* what had focus before a dialog opened (§5ae) */
+#endif
 	const wsk_tree_t *focus_in;  /* the focused field: its tree and index, */
 	short             focus_item;
 	wsk_rect_t        focus_r;   /* its rows to repaint, */
@@ -4802,6 +4808,9 @@ static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
 	ui->focus_in = 0;
 	ui->focus_item = -1;
 	ui->focus_b = 0;
+#ifndef WSK_NO_OVER
+	ui->dfocus = 0;
+#endif
 	root->held = 0;
 	root->focus = 0;
 #ifndef WSK_NO_SOURCE
@@ -5213,6 +5222,26 @@ static inline int wsk__fields(const wsk_tree_t *t, const wsk_tree_t *orig,
 	return count;
 }
 
+/*
+ * Where the keys work (§5ae): an open dialog -- laid out in c, *orig its
+ * caller's tree -- or else the window itself. Tab, focus and a list's keys
+ * all walk this, so a dialog's fields are the keyboard's while it is open.
+ */
+static inline const wsk_tree_t *wsk__keys_in(const wsk_tree_t *r, wsk_tree_t *c,
+                                             const wsk_tree_t **orig)
+{
+#ifndef WSK_NO_OVER
+	if (r->over != WSK_NONE && r->omodal && wsk__over_tree(r, c)) {
+		*orig = &r->nest[r->over];
+		return c;
+	}
+#else
+	(void)c;
+#endif
+	*orig = r;
+	return r;
+}
+
 #if !defined(WSK_NO_LISTKEYS) && !defined(WSK_NO_NEST)
 /* The laid-out tree that holds widget `w`, and its index there, or -1: how
    the keys reach the tree inside a focused list or world (§5z). */
@@ -5244,11 +5273,38 @@ static inline void wsk__refocus(wsk_ui_t *ui, const wsk_tree_t *in, int item,
 }
 
 /* Where the focused field is NOW -- a drag may have moved it since. */
-static inline void wsk__focus_now(wsk_ui_t *ui)
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static void wsk__focus_now(wsk_ui_t *ui)
 {
+	wsk_tree_t c;
+	const wsk_tree_t *orig, *k;
 	if (ui->root->focus == 0) return;
-	(void)wsk__fields(ui->root, ui->root, 0, ui->root->focus, -1, 0, &ui->focus_in,
+	k = wsk__keys_in(ui->root, &c, &orig);
+	(void)wsk__fields(k, orig, 0, ui->root->focus, -1, 0, &ui->focus_in,
 	                  &ui->focus_item, &ui->focus_r, &ui->focus_b, 0);
+}
+
+/*
+ * Tab or Shift-Tab (§5m rule 4): the next or previous focusable widget in
+ * declaration order, depth first -- in the open dialog, if there is one
+ * (§5ae). Out of line, so the dialog's copy costs only a Tab.
+ */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static int wsk__tab(wsk_ui_t *ui, int back, const wsk_tree_t **in, short *item,
+                    wsk_rect_t *fr, wsk_buf_t **nb)
+{
+	wsk_tree_t c;
+	const wsk_tree_t *orig, *k = wsk__keys_in(ui->root, &c, &orig);
+	int pos = -1, all = wsk__fields(k, orig, 0, ui->root->focus, -1, &pos, in, item, fr, nb, 0);
+	if (all <= 0 || (all == 1 && pos == 0)) return 0;
+	*nb = 0;
+	(void)wsk__fields(k, orig, 0, 0, back ? ((pos < 0) ? all - 1 : (pos + all - 1) % all)
+	                                      : (pos + 1) % all, 0, in, item, fr, nb, 0);
+	return 1;
 }
 
 /* Characters moved within a buffer. A loop the compiler is told to keep:
@@ -5655,6 +5711,68 @@ static inline int wsk_ui_open_at(wsk_ui_t *ui, int sub, int x, int y, int *y0, i
 	*y0 = lo; *y1 = hi;
 	return WSK_OK;
 }
+
+/* Close the open dialog, and give focus back to what had it (§5ae): the
+   rows to repaint. 0 rows if no dialog is open. */
+static inline int wsk_ui_dialog_close(wsk_ui_t *ui, int *y0, int *y1)
+{
+	wsk_tree_t *r = ui->root;
+	int lo = 32767, hi = -1, a0, a1;
+	*y0 = *y1 = 0;
+	if (r->over == WSK_NONE || !r->omodal) return WSK_OK;
+	if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
+	wsk_over_close(r);
+	r->focus = ui->dfocus;
+	ui->dfocus = 0;
+	ui->focus_in = 0; ui->focus_item = -1; ui->focus_b = 0;
+#ifndef WSK_NO_FIELD
+	wsk__focus_now(ui);
+#endif
+	if (r->focus != 0) wsk__span(&lo, &hi, ui->focus_r.y, ui->focus_r.y + ui->focus_r.h);
+	*y0 = lo; *y1 = hi;
+	return WSK_OK;
+}
+
+/*
+ * Open tree `sub` as a dialog (§5ae): w x h, centred, cut to the screen, and
+ * modal -- nothing off it answers, and the keys are its own. Focus is kept
+ * to give back when it closes, by Escape or wsk_ui_dialog_close. The rows to
+ * repaint; WSK_E_KIND for no such tree; the tree refused as any would be.
+ */
+static inline int wsk_ui_dialog(wsk_ui_t *ui, int sub, int w, int h, int *y0, int *y1)
+{
+	wsk_tree_t *r = ui->root;
+	int lo = 32767, hi = -1, a0, a1, e;
+
+	*y0 = *y1 = 0;
+	if (r->nest == 0 || sub < 0 || sub >= r->nests) return WSK_E_KIND;
+#ifndef WSK_NO_TIP
+	wsk__tip_close(ui, &lo, &hi);
+#endif
+	if (r->over != WSK_NONE) {
+		if (r->omodal) (void)wsk_ui_dialog_close(ui, &a0, &a1);
+		if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
+		wsk_over_close(r);
+	}
+	if (w > r->w) w = r->w;
+	if (h > r->h) h = r->h;
+	r->over = (short)sub;
+	r->ox = (short)((r->w - w) / 2); r->oy = (short)((r->h - h) / 2);
+	r->ow = (short)w; r->oh = (short)h;
+	r->omodal = 1;
+#ifndef WSK_NO_MENUKEYS
+	r->ohi = WSK_NONE;
+#endif
+	if ((e = wsk_check(r, 0)) != WSK_OK) { wsk_over_close(r); return e; }
+	/* focus is the dialog's now; what had it is kept */
+	ui->dfocus = r->focus;
+	if (r->focus != 0) wsk__span(&lo, &hi, ui->focus_r.y, ui->focus_r.y + ui->focus_r.h);
+	r->focus = 0;
+	ui->focus_in = 0; ui->focus_item = -1; ui->focus_b = 0;
+	if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
+	*y0 = lo; *y1 = hi;
+	return WSK_OK;
+}
 #endif
 
 #ifndef WSK_NO_WORLD
@@ -5925,7 +6043,8 @@ static inline int wsk__stackkeys(wsk_ui_t *ui, const wsk_event_t *ev, wsk_note_t
 {
 	wsk_tree_t par, c, *o;
 	const wsk_widget_t *w = (const wsk_widget_t *)ui->root->focus;
-	int k = wsk__lay_of(ui->root, w, &par, 0), key = (ev->kind == WSK_EV_KEY) ? ev->key : 0;
+	const wsk_tree_t *orig, *scope = wsk__keys_in(ui->root, &c, &orig);
+	int k = wsk__lay_of(scope, w, &par, 0), key = (ev->kind == WSK_EV_KEY) ? ev->key : 0;
 	int a0, a1;
 
 	if (k < 0 || w->kind != WSK_STACK || !wsk__child(&par, k, &c)) return 0;
@@ -6144,6 +6263,18 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		wsk__tip_rest(ui, 0, -1, z, 0, &lo, &hi);
 	}
 #endif
+#ifndef WSK_NO_OVER
+	/* A dialog is modal (§5ae): a press, a right-click or the wheel off it
+	   does nothing at all -- a stray tap must not lose what was typed in it
+	   -- and the pointer resting off it rests on nothing. */
+	if (r->over != WSK_NONE && r->omodal && !wsk__on_over(r, x, y)) {
+		if (ev->kind == WSK_EV_HOVER) x = y = -1;
+		else if (ev->kind == WSK_EV_DOWN || ev->kind == WSK_EV_MENU || ev->kind == WSK_EV_WHEEL) {
+			ui->down = 0;
+			goto rows;
+		}
+	}
+#endif
 #ifndef WSK_NO_WORLD
 	/* a second finger is a pinch's, and goes no further (§5ad) */
 	if (wsk__pinch(ui, ev, note, max, &n, &lo, &hi)) goto rows;
@@ -6163,13 +6294,16 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		const wsk_tree_t *was = &r->nest[r->over];
 		int a0, a1;
 		if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
-		wsk_over_close(r);
+		if (r->omodal) {                             /* focus back (§5ae) */
+			(void)wsk_ui_dialog_close(ui, &a0, &a1);
+			if (a1 > a0) wsk__span(&lo, &hi, a0, a1);
+		} else wsk_over_close(r);
 		n = wsk__note(note, max, n, WSK_NOTE_CLOSE, was, -1, 0);
 	}
 #ifndef WSK_NO_MENUKEYS
 	/* An open menu's keys are its own (§5y): a highlight walks its
 	   buttons, and Enter chooses as a click would. */
-	else if (ev->kind == WSK_EV_KEY && r->over != WSK_NONE &&
+	else if (ev->kind == WSK_EV_KEY && r->over != WSK_NONE && !r->omodal &&
 	         (ev->key == WSK_KEY_UP || ev->key == WSK_KEY_DOWN || ev->key == WSK_KEY_HOME ||
 	          ev->key == WSK_KEY_END || ev->key == WSK_KEY_ENTER)) {
 		/* the menu's own tree, which scrolls: writable, as every tree the
@@ -6588,8 +6722,10 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 					}
 				}
 #ifndef WSK_NO_OVER
-				/* a menu's choice is made once: a button in it closes it */
-				if (r->over != WSK_NONE && in == &r->nest[r->over] &&
+				/* a menu's choice is made once: a button in it closes it --
+				   a dialog's does not: OK may refuse what was typed, Up
+				   stays, so closing is the program's (§5ae) */
+				if (r->over != WSK_NONE && !r->omodal && in == &r->nest[r->over] &&
 				    in->item[k].kind == WSK_BUTTON) {
 					int a0, a1;
 					if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
@@ -6620,14 +6756,8 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		short item = -1;
 		wsk_rect_t fr = { 0, 0, 0, 0 };
 		wsk_buf_t *nb = 0;
-		int pos = -1, all;
 		wsk__focus_now(ui);
-		all = wsk__fields(r, r, 0, r->focus, -1, &pos, &in, &item, &fr, &nb, 0);
-		if (all > 0 && !(all == 1 && pos == 0)) {
-			int to = (ev->key == WSK_KEY_TAB) ? (pos + 1) % all
-			       : (pos < 0) ? all - 1 : (pos + all - 1) % all;
-			nb = 0;
-			(void)wsk__fields(r, r, 0, 0, to, 0, &in, &item, &fr, &nb, 0);
+		if (wsk__tab(ui, ev->key == WSK_KEY_BACKTAB, &in, &item, &fr, &nb)) {
 			wsk__refocus(ui, in, item, fr, nb, &lo, &hi);
 			n = wsk__note(note, max, n, WSK_NOTE_FOCUS, in, item, 0);
 #ifndef WSK_NO_TIP
@@ -6858,7 +6988,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	if (ev->kind == WSK_EV_KEY && (ev->key & (WSK_MOD_CTRL | WSK_MOD_ALT)) && !used)
 		n = wsk__note(note, max, n, WSK_NOTE_KEY, r, -1, ev->key);
 	(void)ate;
-#ifndef WSK_NO_WORLD
+#if !defined(WSK_NO_WORLD) || !defined(WSK_NO_OVER)
 rows:
 #endif
 	if (hi > lo) {

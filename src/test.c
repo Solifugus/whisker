@@ -6,6 +6,7 @@
  * and still be wrong in a way only an eye catches.
  */
 #include "whisker.h"
+#include "whisker_chooser.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -295,6 +296,38 @@ static int trows(wsk_widget_t *row, int *node)
 		if (t->kids && !t->open) hide_below = t->depth;
 	}
 	return n;
+}
+
+/* A folder tree that is not a filesystem, for the chooser (§5ae). */
+static int fake_lister(void *ctx, const char *folder, wsk_entry_t *e, int max, char *names, int cap)
+{
+	static const char *const LS[] = {
+		"/", "home/", "etc/", ".hidden", "readme.txt", 0,
+		"/home", "me/", 0,
+		"/home/me", "a.bas", "B.bas", "notes.txt", ".profile", "src/", "Zeta/", "caf\xc3\xa9.bas", 0,
+		"/home/me/src", "main.bas", 0,
+		"/home/me/Zeta", 0,
+		"/etc", 0,
+		0,
+	};
+	int i = 0, n = 0, at = 0;
+	(void)ctx;
+	while (LS[i] != 0) {
+		int here = (strcmp(LS[i], folder) == 0);
+		i++;
+		for (; LS[i] != 0; i++) {
+			int len = (int)strlen(LS[i]), dir = (LS[i][len - 1] == '/');
+			if (!here || n >= max || at + len + 1 > cap) continue;
+			e[n].name = at; e[n].dir = (unsigned char)dir;
+			memcpy(names + at, LS[i], (size_t)(len - dir));
+			names[at + len - dir] = '\0';
+			at += len - dir + 1;
+			n++;
+		}
+		i++;
+		if (here) return n;
+	}
+	return -1;
 }
 
 int main(void)
@@ -5300,6 +5333,186 @@ int main(void)
 		ok(wsk_world_rows(&root, "bar", 0, &y0, &y1) == WSK_E_NOTFOUND &&
 		   wsk_world_rows(&root, "floor", 2, &y0, &y1) == WSK_E_NOTFOUND,
 		   "CONTROL: not a world, or not an item of it: WSK_E_NOTFOUND");
+	}
+
+	printf("\n-- §5ae  a modal dialog\n");
+	{
+		static const wsk_widget_t RW[] = {
+			{ .kind = WSK_FIELD,  .id = "f0", .sub = 0, .size = 40 },
+			{ .kind = WSK_BUTTON, .id = "b",  .text = "B", .size = 40 },
+		};
+		static const wsk_widget_t DW[] = {
+			{ .kind = WSK_FIELD,  .id = "d0", .sub = 1, .size = 32 },
+			{ .kind = WSK_BUTTON, .id = "ok", .text = "OK", .size = 32 },
+			{ .kind = WSK_BUTTON, .id = "no", .text = "Cancel", .size = 32 },
+		};
+		static const wsk_widget_t MW[] = { { .kind = WSK_BUTTON, .id = "m", .text = "M", .size = 30 } };
+		char b0[16] = "", b1[16] = "";
+		wsk_buf_t bufs[2];
+		wsk_tree_t t5, k[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0, y1, n;
+
+		memset(bufs, 0, sizeof bufs);
+		bufs[0].b = b0; bufs[0].cap = 16; bufs[1].b = b1; bufs[1].cap = 16;
+		wsk_init(&t5, WSK_COL, 320, 200);
+		t5.pad = 0; t5.gap = 0; t5.item = RW; t5.n = 2; t5.nest = k; t5.nests = 2;
+		t5.buf = bufs; t5.bufs = 2;
+		wsk_nest_init(&k[0], &t5, WSK_COL);
+		k[0].item = DW; k[0].n = 3; k[0].pad = 4; k[0].gap = 4;
+		wsk_nest_init(&k[1], &t5, WSK_COL);
+		k[1].item = MW; k[1].n = 1;
+		wsk_ui_init(&ui, &t5);
+		wsk_ui_focus(&ui, "f0", &y0, &y1);
+		ok(wsk_ui_dialog(&ui, 0, 200, 120, &y0, &y1) == WSK_OK && t5.over == 0 && t5.omodal &&
+		   t5.ox == 60 && t5.oy == 40 && t5.ow == 200 && t5.oh == 120 && t5.focus == 0 && y0 == 0 && y1 >= 160,
+		   "a dialog 200 x 120: centred at 60,40, modal; the window's field gives up focus, and both repaint");
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 10; ev.y = 10;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n += wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0 && t5.over == 0 && t5.focus == 0, "a press and release off it: nothing -- no close, no click, no focus beneath");
+		ev.kind = WSK_EV_MENU; ev.y = 180;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_HOVER;
+		n += wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0 && t5.over == 0, "a right-click off it, the pointer resting off it on B: nothing");
+		ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_TAB;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_FOCUS && nt[0].in == &k[0] && nt[0].item == 0,
+		   "Tab: the dialog's field, not the window's");
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].in == &k[0] && nt[0].item == 0, "Tab, Tab, Tab: OK, Cancel, and round to its field again -- never out");
+		ev.kind = WSK_EV_TEXT; ev.text[0] = 'h'; ev.text[1] = 'i'; ev.text[2] = 0;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(strcmp(b1, "hi") == 0 && b0[0] == 0, "typing reaches the dialog's field, and not the window's");
+		ev.kind = WSK_EV_DOWN; ev.x = 160; ev.y = 40 + 4 + 32 + 4 + 10; ev.text[0] = 0;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[0] && nt[0].item == 1, "a press on OK: its click");
+		ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_ESCAPE;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLOSE && nt[0].in == &k[0] && t5.over == WSK_NONE &&
+		   t5.focus == &RW[0] && y0 == 0 && y1 >= 160,
+		   "Escape: CLOSE, and focus back on the window's field -- its rows and the dialog's repaint");
+		wsk_ui_dialog(&ui, 0, 200, 120, &y0, &y1);
+		ok(wsk_ui_dialog_close(&ui, &y0, &y1) == WSK_OK && t5.over == WSK_NONE && t5.focus == &RW[0],
+		   "opened again and closed by the program: focus back the same way");
+		/* the control: a menu still closes on a press off it */
+		ok(wsk_ui_open(&ui, 1, "b", &y0, &y1) == WSK_OK && !t5.omodal, "CONTROL: a menu, hung from B, is not modal");
+		ev.kind = WSK_EV_DOWN; ev.x = 10; ev.y = 10; ev.key = 0;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLOSE && t5.over == WSK_NONE, "and a press off it closes it, as always");
+		ev.kind = WSK_EV_UP;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+	}
+
+	printf("\n-- §5ae  choosing a file\n");
+	{
+		static const wsk_widget_t MAINW[] = { { .kind = WSK_LABEL, .id = "main", .text = "the program", .weight = 1 } };
+		static wsk_chooser_t ch;
+		static const char *strs[2 + WSK_CH_MAX];
+		wsk_buf_t cb[1];
+		wsk_tree_t root, k[4];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0, y1, r;
+		char cd[8192];
+
+		memset(cb, 0, sizeof cb);
+		wsk_init(&root, WSK_COL, 640, 400);
+		root.item = MAINW; root.n = 1; root.nest = k; root.nests = 4;
+		root.str = strs; root.strs = 2 + WSK_CH_MAX; root.buf = cb; root.bufs = 1;
+		for (int i = 0; i < 4; i++) wsk_nest_init(&k[i], &root, WSK_COL);
+		wsk_ui_init(&ui, &root);
+		root.nests = 3;
+		ok(wsk_chooser_init(&ch, &root, strs, 0, 0, 0, fake_lister, 0) == WSK_E_KIND,
+		   "a root with too few tree slots for it: refused, WSK_E_KIND");
+		root.nests = 4;
+		ok(wsk_chooser_init(&ch, &root, strs, 0, 0, 0, fake_lister, 0) == WSK_OK, "CONTROL: with four, set aside");
+		ok(wsk_chooser_open(&ch, &ui, WSK_CHOOSE_FILE, "Open", "/nope", 0, 0, 400, 300, &y0, &y1) == WSK_E_NOTFOUND &&
+		   root.over == WSK_NONE, "a folder that cannot be read: WSK_E_NOTFOUND, and no dialog");
+		ok(wsk_chooser_open(&ch, &ui, WSK_CHOOSE_FILE, "Open", "/home/me", 0, "*.bas", 400, 300, &y0, &y1) == WSK_OK &&
+		   root.over == 0 && root.omodal && root.ox == 120 && root.oy == 50,
+		   "Open, in /home/me, *.bas: a dialog 400 x 300, centred, modal");
+		ok(ch.n == 4 && strcmp(strs[2], "src/") == 0 && strcmp(strs[3], "Zeta/") == 0 &&
+		   strcmp(strs[4], "a.bas") == 0 && strcmp(strs[5], "B.bas") == 0,
+		   "its rows: folders first, then files, each sorted without case -- notes.txt filtered, "
+		   ".profile hidden, a name the window cannot draw left out");
+		render_into(&root, cd, sizeof cd, 8192);
+		ok(has(cd, ">Open</text>") && has(cd, ">/home/me</text>") && has(cd, ">src/</text>") && has(cd, ">a.bas</text>") &&
+		   has(cd, ">Cancel</text>"), "drawn: its title, the folder, the rows, the buttons");
+
+#define CH_CLICK(X, Y) (memset(&ev, 0, sizeof ev), ev.kind = WSK_EV_DOWN, ev.x = (X), ev.y = (Y), \
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1), ev.kind = WSK_EV_UP, \
+		wsk_chooser_feed(&ch, &ui, nt, wsk_feed(&ui, &ev, nt, 4, &y0, &y1), &y0, &y1))
+		r = CH_CLICK(200, 190);
+		ok(r == 0 && strcmp(ch.name, "a.bas") == 0 && root.over == 0, "a click on a.bas: its name in the field, still open");
+		r = CH_CLICK(200, 190);
+		ok(r == WSK_CHOSEN && strcmp(ch.path, "/home/me/a.bas") == 0 && root.over == WSK_NONE,
+		   "a.bas clicked again: chosen -- /home/me/a.bas -- and the dialog closed");
+
+		wsk_chooser_open(&ch, &ui, WSK_CHOOSE_FILE, "Open", "/home/me", 0, "*.bas", 400, 300, &y0, &y1);
+		CH_CLICK(200, 142);
+		r = CH_CLICK(200, 142);
+		ok(r == 0 && strcmp(ch.folder, "/home/me/src") == 0 && ch.n == 1 && strcmp(strs[2], "main.bas") == 0,
+		   "src/ clicked twice: into it -- /home/me/src, main.bas");
+		CH_CLICK(160, 108);
+		ok(strcmp(ch.folder, "/home/me") == 0 && ch.n == 4, "Up: back to /home/me");
+		CH_CLICK(160, 108); CH_CLICK(160, 108);
+		ok(strcmp(ch.folder, "/") == 0 && ch.n == 2 && strcmp(strs[2], "etc/") == 0 && strcmp(strs[3], "home/") == 0,
+		   "Up twice more: the top, /, its folders -- readme.txt is not *.bas");
+		CH_CLICK(160, 108);
+		ok(strcmp(ch.folder, "/") == 0, "and Up at the top stays at the top");
+		r = CH_CLICK(336, 324);
+		ok(r == WSK_CANCELLED && ch.path[0] == '\0' && root.over == WSK_NONE, "Cancel: cancelled -- no path, never an empty one");
+
+		wsk_chooser_open(&ch, &ui, WSK_CHOOSE_FILE, 0, "/home/me", 0, "*.bas", 400, 300, &y0, &y1);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_ESCAPE;
+		r = wsk_chooser_feed(&ch, &ui, nt, wsk_feed(&ui, &ev, nt, 4, &y0, &y1), &y0, &y1);
+		ok(r == WSK_CANCELLED && root.over == WSK_NONE, "Escape: cancelled");
+
+		/* Save: a name offered, typed onto, Enter */
+		wsk_chooser_open(&ch, &ui, WSK_CHOOSE_SAVE, 0, "/home/me", "new.bas", 0, 400, 300, &y0, &y1);
+		render_into(&root, cd, sizeof cd, 8192);
+		ok(strcmp(ch.name, "new.bas") == 0 && has(cd, ">Save as</text>") && has(cd, ">Save</text>") &&
+		   has(cd, ">notes.txt</text>"), "Save as: the name offered, Save its button, and with no filter every file");
+		CH_CLICK(200, 286);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_TEXT; ev.text[0] = '2';
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_ENTER; ev.text[0] = 0;
+		r = wsk_chooser_feed(&ch, &ui, nt, wsk_feed(&ui, &ev, nt, 4, &y0, &y1), &y0, &y1);
+		ok(r == WSK_CHOSEN && strcmp(ch.path, "/home/me/new.bas2") == 0,
+		   "a tap in the name, a 2 typed, Enter: /home/me/new.bas2 -- a name that need not exist");
+
+		/* a folder */
+		wsk_chooser_open(&ch, &ui, WSK_CHOOSE_FOLDER, 0, "/home/me", 0, "*.bas", 400, 300, &y0, &y1);
+		render_into(&root, cd, sizeof cd, 8192);
+		ok(ch.n == 2 && !has(cd, ">a.bas</text>") && has(cd, ">Choose</text>"),
+		   "Choose a folder: only folders, no name field, Choose its button");
+		r = CH_CLICK(400 + 56, 324);
+		ok(r == WSK_CHOSEN && strcmp(ch.path, "/home/me") == 0, "Choose with none chosen: the folder it is in");
+		wsk_chooser_open(&ch, &ui, WSK_CHOOSE_FOLDER, 0, "/home/me", 0, 0, 400, 300, &y0, &y1);
+		CH_CLICK(200, 166);
+		r = CH_CLICK(400 + 56, 324);
+		ok(r == WSK_CHOSEN && strcmp(ch.path, "/home/me/Zeta") == 0, "Zeta/ chosen, then Choose: /home/me/Zeta");
+
+		/* answered as a test would */
+		wsk_chooser_open(&ch, &ui, WSK_CHOOSE_FILE, 0, "/home/me", 0, 0, 400, 300, &y0, &y1);
+		ok(wsk_chooser_answer(&ch, &ui, "x.bas", &y0, &y1) == WSK_CHOSEN && strcmp(ch.path, "/home/me/x.bas") == 0 &&
+		   root.over == WSK_NONE, "answered x.bas, as gBASIC's qt.answer would: chosen, /home/me/x.bas");
+		wsk_chooser_open(&ch, &ui, WSK_CHOOSE_FILE, 0, "/home/me", 0, 0, 400, 300, &y0, &y1);
+		ok(wsk_chooser_answer(&ch, &ui, 0, &y0, &y1) == WSK_CANCELLED, "and answered 0: cancelled");
+#undef CH_CLICK
 	}
 
 	printf("\n-- §5ad  pinch\n");
