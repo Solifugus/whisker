@@ -5265,6 +5265,101 @@ int main(void)
 		}
 	}
 
+	printf("\n-- §5ad  pinch\n");
+	{
+		static const wsk_widget_t PB[] = { { .kind = WSK_BUTTON, .id = "b", .text = "B" } };
+		wsk_place_t pl[1] = { { .x = 100, .y = 80, .w = 40, .h = 20, .scale = 256 } };
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0, y1, n;
+
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.item = PB; w.n = 1; w.overflow = WSK_WORLD; w.place = pl;
+		w.wspace = WSK_BOUNDED; w.ww = 1000; w.wh = 800;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 110; ev.y = 85; ev.finger = 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(w.held == &PB[0], "a first finger on B: held, as always");
+		ev.kind = WSK_EV_DOWN; ev.x = 210; ev.y = 85; ev.finger = 2;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0 && w.held == 0 && y0 <= 80 && y1 >= 100, "a second, 100 px away on the same world: B let go, its rows repainted");
+		ev.kind = WSK_EV_MOVE; ev.x = 310; ev.finger = 2;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_VIEW && w.zoom == 512 && w.vx == 55 && w.vy == 43 && y0 == 0 && y1 == 200,
+		   "the second moves out to 200 px apart: zoom 2 -- and the world point that was under the midpoint, 160,85, "
+		   "is under it now, at 210: the view 160 - 105 = 55, 85 - 42 = 43");
+		ev.kind = WSK_EV_MOVE; ev.x = 160; ev.finger = 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(w.zoom == 384 && w.vx == 160 - 235 * 256 / 384 && w.vy == 85 - 85 * 256 / 384,
+		   "the first moves in, 150 apart: zoom 1.5, the same world point under the new midpoint, 235");
+		ev.kind = WSK_EV_DOWN; ev.x = 20; ev.y = 20; ev.finger = 3;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = 300;
+		n += wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0 && w.zoom == 384, "CONTROL: a third finger, down and moving: nothing");
+		ev.kind = WSK_EV_MOVE; ev.x = 305; ev.y = 85; ev.finger = 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(w.zoom == 82, "pinched almost shut, 5 px apart: no further out than the whole 1000-wide world, 82");
+		ev.kind = WSK_EV_UP; ev.finger = 2;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = 300; ev.y = 150; ev.finger = 1;
+		n += wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n += wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0 && ui.down == 0 && w.zoom == 82, "one lifted: the other is inert -- it neither pans nor, lifted, clicks");
+		w.zoom = 256; w.vx = w.vy = 0;
+		ev.kind = WSK_EV_DOWN; ev.x = 110; ev.y = 85; ev.finger = 4;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK, "CONTROL: then one finger alone, any number: a click, as always");
+		/* a pinch whose last lifting is lost does not hold the window for ever */
+		ev.kind = WSK_EV_DOWN; ev.x = 110; ev.y = 85; ev.finger = 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.x = 210; ev.finger = 2;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP; ev.finger = 2;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);       /* finger 1's lifting never comes */
+		ev.kind = WSK_EV_DOWN; ev.x = 110; ev.finger = 5;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK, "a pinch whose last lifting was lost: the next press starts afresh, and clicks");
+	}
+	{
+		/* a second finger off the world changes nothing */
+		static const wsk_widget_t TOPP[] = {
+			{ .kind = WSK_LABEL, .id = "bar", .text = "bar", .size = 40 },
+			{ .kind = WSK_STACK, .id = "floor", .sub = 0, .weight = 1 },
+		};
+		static const wsk_widget_t PB[] = { { .kind = WSK_BUTTON, .id = "b", .text = "B" } };
+		wsk_place_t pl[1] = { { .x = 100, .y = 80, .w = 40, .h = 20, .scale = 256 } };
+		wsk_tree_t root, k[1];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0, y1, n;
+		wsk_init(&root, WSK_COL, 320, 200);
+		root.pad = 0; root.gap = 0; root.item = TOPP; root.n = 2; root.nest = k; root.nests = 1;
+		wsk_nest_init(&k[0], &root, WSK_COL);
+		k[0].pad = 0; k[0].item = PB; k[0].n = 1; k[0].overflow = WSK_WORLD; k[0].place = pl;
+		wsk_ui_init(&ui, &root);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 110; ev.y = 125; ev.finger = 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.x = 100; ev.y = 20; ev.finger = 2;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = 300; ev.finger = 2;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP; ev.x = 110; ev.y = 125; ev.finger = 1;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(k[0].zoom == 256 && n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[0],
+		   "a second finger on the bar, off the world: no pinch -- the first's tap on B still clicks");
+	}
+
 	/* ---- what an independent read of 2026-11-15/16's code found ---- */
 	printf("\n-- review fixes, 2026-11-16\n");
 	{

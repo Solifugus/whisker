@@ -295,6 +295,15 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   each had grown ~7 KB of features it never reached.
   **Browser tests kill their Chrome however they end** — one left running
   rejoined the next run as extra seats.
+- **§5ad — pinch** (2026-11-16): events carry `finger` (the platform's
+  number; a mouse 0); a second finger down on the world the first pressed
+  starts a pinch — the first's press let go, the zoom the distance's ratio,
+  the world point under the midpoint kept under it, so it pans too; one
+  lifted leaves the other inert. Hosts pass pointer ids (browser), finger
+  ids (SDL, numbered from 1), RV-9's `id` (wnest). **A browser's tap is
+  followed by mouse events of its own** — with fingers told apart they were
+  a second finger, so the page drops mouse events within 800 ms of a touch.
+  704 bytes; none in `WSK_PANEL`.
 - **A second independent read, 2026-11-16** (design, before §5ad): eleven
   defects, each with a check that fails before its fix — the world walkers
   that choose and scroll ignored the z-order; a poster laid out from its
@@ -336,7 +345,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,003 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,013 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 51 — every demo program started — including the

@@ -3430,6 +3430,35 @@ lands; lifting one leaves the other inert; a second finger off the world,
 or a third, changes nothing (the controls); one finger alone is exactly as
 before; and in Chrome, two touch points spread apart zoom the floor.
 
+**What it came to**: as written. **1,013 checks** (1,003): 10 in the
+suite; every single-finger check before it unchanged, which is the control
+that one finger is what it was. Every earlier output — 43 files — byte-
+identical. Web 117 (116).
+
+- In the suite: a first finger on B holds it; a second 100 px away lets B
+  go, its rows repainted; spread to 200 apart, zoom 2 with the world point
+  that was under the midpoint (160,85) under the new one — the view at
+  55,43 — and in to 150 apart, 1.5 likewise; a third finger, down and
+  moving, nothing (the control); pinched to 5 px, the bounded world's
+  floor of 82; one lifted, the other neither pans nor clicks; then one
+  finger alone clicks (the control); a second finger on a bar above the
+  world, no pinch, and the first's tap still clicks; and a pinch whose last
+  lifting was lost is ended by the next press, which clicks.
+- In Chrome, two touch points 100 px apart spread to 200: the floor's zoom
+  284 → 568, exactly twice.
+
+**Found on the way**: a browser follows a tap with a mouse press and
+release of its own, for pages that know only the mouse. Harmless while
+every pointer was one — a press twice is a press — but with fingers told
+apart that mouse press was a second finger: a pinch whose last lifting
+never came, after which nothing on the floor answered. The page now drops
+mouse events within 800 ms of a touch's last; and whisker ends a pinch
+still waiting for a lifting when a new press comes, so a lost one cannot
+hold a window for ever.
+
+**§7's question**: 704 bytes to a toolkit program (wnest 31,764 → 32,468
+at the default); nothing to `WSK_PANEL`, which has no worlds.
+
 ## 5ac. Tooltips — on a mouse, a finger and a key (2026-11-15), written before its code
 
 Matthew: *"With a mouse hover, this is obvious but what about for touch

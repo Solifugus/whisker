@@ -235,6 +235,7 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 			ev.y = (short)te[i].y;
 			ev.d = 0; ev.text[0] = '\0'; ev.ms = te[i].at_ms;
 			ev.key = (ev.kind == WSK_EV_DOWN) ? WSK_MOD_TOUCH : 0;   /* a finger (§5ac) */
+			ev.finger = te[i].id;                                     /* which (§5ad) */
 			got = wsk_feed(&ui, &ev, note, 2, &y0, &y1);
 			for (int j = 0; j < got && j < 2; j++) {
 				if (note[j].kind == WSK_NOTE_CLICK) {

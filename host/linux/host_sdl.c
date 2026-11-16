@@ -182,6 +182,7 @@ int wh_poll(wh_event_t *out)
 
 	out->kind = WH_NOTHING;
 	out->seat = 0;
+	out->finger = 0;
 	if (seat_join) {
 		seat_join = 0;
 		out->kind = WH_JOIN;
@@ -311,6 +312,7 @@ int wh_poll(wh_event_t *out)
 			if (SDL_GetTouchDeviceType(e.tfinger.touchId) != SDL_TOUCH_DEVICE_DIRECT) break;
 			if (!point_of((int)(e.tfinger.x * S.w * S.scale),
 			              (int)(e.tfinger.y * S.h * S.scale), out)) break;
+			out->finger = 1 + (int)(e.tfinger.fingerId & 0x7f);   /* never the mouse's 0 */
 			if (e.type == SDL_FINGERDOWN)
 				{ out->kind = WH_PRESS; out->key = WH_MOD_TOUCH; out->d = 1; return WH_PRESS; }
 			out->kind = (e.type == SDL_FINGERUP) ? WH_RELEASE : WH_MOVE;

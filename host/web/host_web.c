@@ -135,6 +135,8 @@ static const char PAGE[] =
 "connect();\n"
 /* events, in order: each POST waits for the one before */
 "function send(line){sent=sent.then(()=>fetch(url(),{method:'POST',body:line}).catch(()=>{}));}\n"
+"/* which finger (§5ad): a mouse is 0, any other pointer its id */\n"
+"const fid=e=>e.pointerType==='mouse'?0:(e.pointerId&255||1);\n"
 "function pt(e){const r=c.getBoundingClientRect();\n"
 "  return Math.floor((e.clientX-r.left)*W/r.width)+' '+Math.floor((e.clientY-r.top)*H/r.height);}\n"
 /* the primary button presses; the secondary asks for a context menu, which
@@ -144,13 +146,21 @@ static const char PAGE[] =
    clicks -- a pointerdown's is 0, measured in Chrome 156 -- so a double-
    click is the platform's, timing and all (§5w); a finger's, from
    pointerdown, as a single. */
+"let touched=0;\n"
 "c.addEventListener('pointerdown',e=>{if(e.button!==0)return;c.focus();c.setPointerCapture(e.pointerId);\n"
-"  if(e.pointerType!=='mouse')send('D '+pt(e)+' '+((e.shiftKey?256:0)|(e.pointerType==='touch'?2048:0))+' 1');});\n"
-"c.addEventListener('mousedown',e=>{if(e.button===0)send('D '+pt(e)+' '+(e.shiftKey?256:0)+' '+e.detail);});\n"
-"c.addEventListener('pointermove',e=>{if(e.buttons&1)send('M '+pt(e));\n"
+"  if(e.pointerType!=='mouse'){touched=Date.now();send('D '+pt(e)+' '+((e.shiftKey?256:0)|(e.pointerType==='touch'?2048:0))+' 1 '+fid(e));}});\n"
+/* a browser follows a tap with a mouse press and release of its own, for
+   pages that know only the mouse; the finger's were already sent, and these
+   would be a second finger -- a pinch -- so any within 800 ms of a touch's
+   last event are not sent (§5ad) */
+"c.addEventListener('mousedown',e=>{if(e.button===0&&Date.now()-touched>800)send('D '+pt(e)+' '+(e.shiftKey?256:0)+' '+e.detail);});\n"
+"c.addEventListener('pointermove',e=>{if(e.pointerType==='touch')touched=Date.now();\n"
+"  if(e.buttons&1)send('M '+pt(e)+' '+fid(e));\n"
 "  else if(e.buttons===0&&e.pointerType!=='touch')send('H '+pt(e));});\n"
 "c.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')send('H -1 -1');});\n"
-"c.addEventListener('pointerup',e=>{if(e.button===0)send('U '+pt(e));});\n"
+"c.addEventListener('pointerup',e=>{if(e.pointerType==='touch')touched=Date.now();\n"
+"  else if(e.pointerType==='mouse'&&Date.now()-touched<800)return;\n"
+"  if(e.button===0)send('U '+pt(e)+' '+fid(e));});\n"
 "c.addEventListener('contextmenu',e=>{e.preventDefault();send('R '+pt(e));});\n"
 "document.addEventListener('paste',e=>{const t=e.clipboardData&&e.clipboardData.getData('text');\n"
 "  e.preventDefault();if(t)send('P '+esc(t));});\n"
@@ -281,7 +291,7 @@ static void event_line(const char *l, int seat)
 	memset(&e, 0, sizeof e);
 	e.seat = (seat < 0) ? 0 : seat;      /* a seatless page is the one screen */
 	switch (l[0]) {
-	case 'D': e.kind = WH_PRESS;   sscanf(l + 1, "%d %d %d %d", &e.x, &e.y, &e.key, &e.d); break;
+	case 'D': e.kind = WH_PRESS;   sscanf(l + 1, "%d %d %d %d %d", &e.x, &e.y, &e.key, &e.d, &e.finger); break;
 	case 'R': e.kind = WH_MENU;    sscanf(l + 1, "%d %d", &e.x, &e.y); break;
 	case 'P': {
 		/* pasted: unescaped into the host's clipboard, then Ctrl-V */
@@ -299,9 +309,9 @@ static void event_line(const char *l, int seat)
 		e.key = 'v' | WH_MOD_CTRL;
 		break;
 	}
-	case 'M': e.kind = WH_MOVE;    sscanf(l + 1, "%d %d", &e.x, &e.y); break;
+	case 'M': e.kind = WH_MOVE;    sscanf(l + 1, "%d %d %d", &e.x, &e.y, &e.finger); break;
 	case 'H': e.kind = WH_HOVER;   sscanf(l + 1, "%d %d", &e.x, &e.y); break;   /* §5aa */
-	case 'U': e.kind = WH_RELEASE; sscanf(l + 1, "%d %d", &e.x, &e.y); break;
+	case 'U': e.kind = WH_RELEASE; sscanf(l + 1, "%d %d %d", &e.x, &e.y, &e.finger); break;
 	case 'W': e.kind = WH_WHEEL;   sscanf(l + 1, "%d %d %d", &e.x, &e.y, &e.d); break;
 	case 'K': e.kind = WH_KEY;     sscanf(l + 1, "%d", &e.key); break;
 	case 'X': e.kind = WH_EXPOSE;  break;

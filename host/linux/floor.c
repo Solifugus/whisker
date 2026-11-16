@@ -481,6 +481,7 @@ int main(void)
 		if (k == WH_SIZE) { resize(st, he.x, he.y); draw(st, &s, 0, seat[st].win.h); continue; }
 		memset(&ev, 0, sizeof ev);
 		ev.x = (short)he.x; ev.y = (short)he.y;
+		ev.finger = (unsigned char)he.finger;           /* two on the floor pinch it (§5ad) */
 		if (k == WH_PRESS) { ev.kind = WSK_EV_DOWN; ev.key = (unsigned short)he.key; ev.d = (short)he.d; }
 		else if (k == WH_RELEASE) ev.kind = WSK_EV_UP;
 		else if (k == WH_MOVE) ev.kind = WSK_EV_MOVE;

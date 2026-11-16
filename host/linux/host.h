@@ -74,6 +74,8 @@ typedef struct {
 	int  key;                /* WH_KEY; on WH_PRESS, WH_MOD_SHIFT or 0 */
 	char text[8];            /* WH_TEXT */
 	int  seat;               /* the screen it came from: 0 .. WH_SEATS-1 (§5ab) */
+	int  finger;             /* PRESS, MOVE, RELEASE: which finger, 0..255; a
+	                            mouse is 0 (§5ad) */
 } wh_event_t;
 
 /*

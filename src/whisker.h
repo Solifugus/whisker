@@ -4668,6 +4668,9 @@ typedef struct {
 	unsigned short key;
 	char           text[8];
 	unsigned int   ms;
+	unsigned char  finger;       /* DOWN, MOVE, UP: which finger, the platform's
+	                                number for it; a mouse, and every program
+	                                that never says, is 0 (§5ad) */
 } wsk_event_t;
 
 /* What changed. A notice names its widget as wsk_hit_in does -- the
@@ -4731,6 +4734,12 @@ typedef struct {
 	short             scroll0;
 #ifndef WSK_NO_WORLD
 	int               wv0x, wv0y; /* or the world: its view at the down */
+	/* Two fingers on a world (§5ad): the first's number and where it is;
+	   the second's; 0 no pinch, 1 pinching, 2 one lifted, the other inert
+	   until it lifts too; the distance, zoom and world point at the start */
+	unsigned char     f0, f1, pinch, fleft;
+	short             fx, fy, gx, gy;
+	int               pd0, pz0, pwx, pwy;
 	short             witem;     /* the item a drag moves, or -1 (step 6) */
 	int               wp0x, wp0y; /* ... its place at the down */
 #endif
@@ -4785,6 +4794,8 @@ static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
 	ui->drag = 0;
 #ifndef WSK_NO_WORLD
 	ui->witem = -1;
+	ui->pinch = 0;
+	ui->f0 = ui->f1 = ui->fleft = 0;
 #endif
 	ui->hit = -1;
 	ui->word = -1;
@@ -5965,6 +5976,129 @@ static inline int wsk__stackkeys(wsk_ui_t *ui, const wsk_event_t *ev, wsk_note_t
  *           after a drag is not a click.
  *   wheel   scrolls the deepest scrolling stack under the point by d.
  */
+#ifndef WSK_NO_WORLD
+/* The square root of v, by bits: no sqrt, no division (§5ad). */
+static inline int wsk__isqrt(unsigned int v)
+{
+	unsigned int r = 0, b = 1u << 30;
+	while (b > v) b >>= 2;
+	while (b != 0) {
+		if (v >= r + b) { v -= r + b; r = (r >> 1) + b; }
+		else r >>= 1;
+		b >>= 2;
+	}
+	return (int)r;
+}
+
+/* The two fingers' distance, and the world point under their midpoint at
+   zoom z, from the world as the first finger's press laid it out. */
+static inline int wsk__pdist(const wsk_ui_t *ui)
+{
+	int dx = ui->gx - ui->fx, dy = ui->gy - ui->fy, d;
+	d = wsk__isqrt((unsigned int)(dx * dx + dy * dy));
+	return (d < 1) ? 1 : d;
+}
+
+/*
+ * A pinch (§5ad): a finger's event, if it is a pinch's to take -- 1, and
+ * wsk_feed goes no further -- or 0, for the first finger alone, which
+ * presses and drags as it always has. A second finger down on the world the
+ * first one's press found starts it: the first's press let go, and the
+ * distance, zoom and world point under the midpoint kept. Either moving
+ * zooms by the distance and keeps that world point under the midpoint, so a
+ * pinch pans too; either lifting ends it, the other inert till it lifts.
+ */
+static inline int wsk__pinch(wsk_ui_t *ui, const wsk_event_t *ev, wsk_note_t *note,
+                             int max, int *n, int *lo, int *hi)
+{
+	wsk_tree_t *r = ui->root;
+	int x = ev->x, y = ev->y;
+	if (ev->kind != WSK_EV_DOWN && ev->kind != WSK_EV_MOVE && ev->kind != WSK_EV_UP) return 0;
+	if (!ui->down) {
+		ui->pinch = 0;
+		if (ev->kind == WSK_EV_DOWN) { ui->f0 = ev->finger; ui->fx = (short)x; ui->fy = (short)y; }
+		return 0;
+	}
+	if (ui->pinch == 0) {
+		wsk_rect_t z = { 0, 0, 0, 0 };
+		const wsk_tree_t *at = &ui->drag_at;
+		if (ev->finger == ui->f0) {
+			if (ev->kind == WSK_EV_MOVE) { ui->fx = (short)x; ui->fy = (short)y; }
+			return 0;
+		}
+		/* another finger: a second on the first one's world, or nothing */
+		if (ev->kind != WSK_EV_DOWN || ui->drag == 0 || at->overflow != WSK_WORLD || at->zoom <= 0 ||
+		    x < at->ax || x >= at->ax + at->aw || y < at->ay || y >= at->ay + at->ah)
+			return 1;
+		ui->f1 = ev->finger;
+		ui->gx = (short)x; ui->gy = (short)y;
+		/* the first finger's press is let go: no click, no drag, no hold */
+		ui->hit = -1;
+		ui->dragging = 1;
+		ui->witem = -1;
+		if (r->held != 0) {
+			r->held = 0;
+			wsk__span(lo, hi, ui->held.y, ui->held.y + ui->held.h);
+		}
+#ifndef WSK_NO_TIP
+		wsk__tip_rest(ui, 0, -1, z, 0, lo, hi);
+#endif
+#ifndef WSK_NO_TEXTSEL
+		ui->selecting = 0;
+#endif
+#ifndef WSK_NO_SPLIT
+		ui->split = 0;
+#endif
+		(void)z;
+		ui->pd0 = wsk__pdist(ui);
+		ui->pz0 = at->zoom;
+		ui->pwx = at->vx + ((ui->fx + ui->gx) / 2 - at->ax) * 256 / at->zoom;
+		ui->pwy = at->vy + ((ui->fy + ui->gy) / 2 - at->ay) * 256 / at->zoom;
+		ui->pinch = 1;
+		return 1;
+	}
+	if (ui->pinch == 1) {
+		int z, mx, my;
+		if (ev->finger != ui->f0 && ev->finger != ui->f1) return 1;      /* a third */
+		if (ev->kind == WSK_EV_DOWN) return 1;
+		if (ev->kind == WSK_EV_UP) {
+			ui->fleft = (ev->finger == ui->f0) ? ui->f1 : ui->f0;
+			ui->pinch = 2;
+			return 1;
+		}
+		if (ev->finger == ui->f0) { ui->fx = (short)x; ui->fy = (short)y; }
+		else { ui->gx = (short)x; ui->gy = (short)y; }
+		z = ui->pz0 * wsk__pdist(ui) / ui->pd0;
+		z = wsk__zclamp(&ui->drag_at, z);
+		mx = (ui->fx + ui->gx) / 2;
+		my = (ui->fy + ui->gy) / 2;
+		if (wsk__view_to(ui->drag, &ui->drag_at, ui->pwx - (mx - ui->drag_at.ax) * 256 / z,
+		                 ui->pwy - (my - ui->drag_at.ay) * 256 / z, z)) {
+			int a0, a1;
+			if (wsk_area_rows(&ui->drag_at, &a0, &a1) == WSK_OK) wsk__span(lo, hi, a0, a1);
+			*n = wsk__note(note, max, *n, WSK_NOTE_VIEW, ui->drag, -1, ui->drag->zoom);
+		}
+		return 1;
+	}
+	/* one lifted: the other is inert until it lifts too -- and a press, if
+	   its lifting was lost, starts afresh rather than waiting for ever */
+	if (ev->kind == WSK_EV_DOWN) {
+		ui->down = 0;
+		ui->dragging = 0;
+		ui->pinch = 0;
+		ui->f0 = ev->finger; ui->fx = (short)x; ui->fy = (short)y;
+		return 0;
+	}
+	if (ev->kind == WSK_EV_UP && ev->finger == ui->fleft) {
+		ui->down = 0;
+		ui->dragging = 0;
+		ui->pinch = 0;
+		ui->hit = -1;
+	}
+	return 1;
+}
+#endif
+
 static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
                            wsk_note_t *note, int max, int *y0, int *y1)
 {
@@ -5979,6 +6113,10 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		wsk_rect_t z = { 0, 0, 0, 0 };
 		wsk__tip_rest(ui, 0, -1, z, 0, &lo, &hi);
 	}
+#endif
+#ifndef WSK_NO_WORLD
+	/* a second finger is a pinch's, and goes no further (§5ad) */
+	if (wsk__pinch(ui, ev, note, max, &n, &lo, &hi)) goto rows;
 #endif
 
 #ifndef WSK_NO_OVER
@@ -6690,7 +6828,9 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	if (ev->kind == WSK_EV_KEY && (ev->key & (WSK_MOD_CTRL | WSK_MOD_ALT)) && !used)
 		n = wsk__note(note, max, n, WSK_NOTE_KEY, r, -1, ev->key);
 	(void)ate;
-
+#ifndef WSK_NO_WORLD
+rows:
+#endif
 	if (hi > lo) {
 		lo = (lo / WSK_BAND) * WSK_BAND;
 		hi = wsk__round_band(hi);

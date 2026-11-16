@@ -292,6 +292,25 @@ try {
   }
   await snap('floor_zoomed.png');
 
+  // §5ad: two fingers on the floor, 100 px apart, spread to 200: the zoom
+  // doubles, about their midpoint
+  {
+    const zoomNow = () => { const m = said.match(/at (\d+)\/256\n/g) || []; return m.length ? +m[m.length - 1].match(/\d+/)[0] : 0; };
+    const z0 = zoomNow();
+    const [ax, ay] = await at(400, 300), [bx] = await at(500, 300), [cx] = await at(350, 300), [dx] = await at(550, 300);
+    await cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: ax, y: ay, id: 1 }] });
+    await cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: ax, y: ay, id: 1 }, { x: bx, y: ay, id: 2 }] });
+    for (let k = 1; k <= 5; k++)
+      await cdp('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [
+        { x: ax + (cx - ax) * k / 5, y: ay, id: 1 }, { x: bx + (dx - bx) * k / 5, y: ay, id: 2 }] });
+    await cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await sleep(600);
+    const z1 = zoomNow();
+    console.log(`      the zoom before the pinch ${z0}/256, after ${z1}/256`);
+    ok(z0 > 0 && Math.abs(z1 - 2 * z0) <= 2, 'two fingers spread from 100 px to 200 apart: the floor zooms twice as close');
+    await snap('floor_pinched.png');
+  }
+
   // zoomed right out the whole floor is in view, and the document is over
   // the 4 KB a window on /w0 takes: the program draws it in parts. Every
   // person's colour on the canvas says both parts arrived.
