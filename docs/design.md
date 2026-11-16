@@ -3425,7 +3425,9 @@ switch built. Every earlier output — 42 files — byte-identical. Web 106
 **§7's question**: 912 bytes to a toolkit program; kept by `WSK_PANEL` —
 168 bytes on a small panel, 808 on the keyboard module, which uses the
 toolkit. **Not checked by hand**: SDL's `WH_MOD_TOUCH` on a real
-touchscreen (the test harness cannot fake one), and the P4.
+touchscreen (the test harness cannot fake one). **On the P4, 2026-11-16**
+(wnest, RV-9 `c068b04`, ticks through `wsk_ui_tick` from `env->time_ms`):
+Matthew held a finger and the tip showed; a quick tap still clicked.
 
 ## 5ab. Seats — several people at one program (2026-11-15), written before its code
 

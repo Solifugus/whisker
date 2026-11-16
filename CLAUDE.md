@@ -289,6 +289,10 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   or none; whisker places and draws it, inverted, over everything, never
   hit. A finger lifted after its tip showed does not click. A context
   menu during a press now ends its click. 912 bytes; kept by `WSK_PANEL`.
+  **On the P4, 2026-11-16** (wnest, RV-9 `c068b04`): Matthew held a finger
+  and the tip showed; a quick tap still clicked. **Board modules build
+  `-DWSK_PANEL`** (their `build.conf`): at the default — the desktop's —
+  each had grown ~7 KB of features it never reached.
   **Browser tests kill their Chrome however they end** — one left running
   rejoined the next run as extra seats.
 - **§5ab — seats: several people at one program** (2026-11-15): the host

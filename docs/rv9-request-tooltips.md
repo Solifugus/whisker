@@ -126,3 +126,7 @@ wnest; wkeys' stack 9,216; wnest's 12,288 kept. RV-9's P4 sizes: wflick
 17,888, wkeys 26,112 — within ~200 bytes of the figures above. The P4 store
 is 319 KB, a little smaller than before the refresh; the C5's slot 91 %.
 The P4 image waits for Matthew's word to restart the board.
+
+**On the board, 2026-11-16**: committed as RV-9 `c068b04`. On the P4,
+Matthew held a finger on wnest and the tip showed; a quick tap still
+clicked. wnest's 12,288 is not bisected yet.
