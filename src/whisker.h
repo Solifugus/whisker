@@ -4825,6 +4825,26 @@ static inline void wsk__tip_rest(wsk_ui_t *ui, const wsk_tree_t *in, int item,
 }
 
 /*
+ * Time passing (§5ac rule 2): ms milliseconds since the last tick. A rest
+ * long enough asks for its tip, once -- WSK_NOTE_TIP in note[0], and 1;
+ * else 0. The same as a WSK_EV_TICK through wsk_feed, and for a program
+ * that would rather not route time through it: on a module, wsk_feed
+ * inlined where only presses reach it compiles to a fraction of the
+ * toolkit, and a tick through it would bring the rest back in.
+ */
+static inline int wsk__note(wsk_note_t *note, int max, int n, int kind,
+                            const wsk_tree_t *in, int item, int value);
+
+static inline int wsk_ui_tick(wsk_ui_t *ui, int ms, wsk_note_t *note, int max)
+{
+	if (ui->tip_state != 1 || ms <= 0) return 0;
+	ui->tip_ms += ms;
+	if (ui->tip_ms < ui->tip_wait) return 0;
+	ui->tip_state = 2;
+	return wsk__note(note, max, 0, WSK_NOTE_TIP, ui->tip_in, ui->tip_item, 0);
+}
+
+/*
  * Show a tip (§5ac rule 3): the program's answer to WSK_NOTE_TIP, its text
  * in its own memory, which must outlive the tip. One line, placed below the
  * widget that rested -- else above -- and kept on the screen; the rows to
@@ -5996,14 +6016,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 #endif
 #ifndef WSK_NO_TIP
 	} else if (ev->kind == WSK_EV_TICK) {
-		/* time passing (§5ac rule 2): a rest long enough asks, once */
-		if (ui->tip_state == 1 && ev->d > 0) {
-			ui->tip_ms += ev->d;
-			if (ui->tip_ms >= ui->tip_wait) {
-				ui->tip_state = 2;
-				n = wsk__note(note, max, n, WSK_NOTE_TIP, ui->tip_in, ui->tip_item, 0);
-			}
-		}
+		n = wsk_ui_tick(ui, ev->d, note, max);
 #endif
 	} else if (ev->kind == WSK_EV_DOWN) {
 		const wsk_tree_t *in = 0, *lay = r;

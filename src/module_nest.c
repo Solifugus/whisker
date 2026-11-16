@@ -15,6 +15,12 @@
  * any one frame. Built for the P4's 1024x600; on a screen too short for it
  * the tree is refused, by name, which is D10 doing its job.
  *
+ * Hold a finger on a button half a second and its tip shows (§5ac): every
+ * press is marked a finger's (WSK_MOD_TOUCH), time reaches the toolkit as
+ * ticks from env->time_ms -- whisker has no clock -- and this program words
+ * each tip when asked, into a buffer on its own stack (a module has no
+ * .bss). Lifted after the tip showed, the button does not click.
+ *
  * The panels are static and nest by INDEX (`.sub`), never by pointer -- a
  * pointer in rodata is what a module cannot link -- and the one pointer,
  * `nest`, is set at runtime, as `item` always was.
@@ -66,6 +72,78 @@ static void to_path(wsk_sink_t *s, const char *b, int n)
 	o->env->write(o->path, b, (unsigned int)n);
 }
 
+/* Rows y0..y1 of the window, again. */
+static void repaint(const rv9_mod_env_t *env, const wsk_tree_t *w, wsk_sink_t *s, int y0, int y1)
+{
+	uint32_t v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+	if (y1 <= y0) return;
+	env->setstat(RV9_STDOUT, RV9_SVG_SS_ROWS, &v);
+	wsk_render_rows(w, y0, y1, s, 4096);
+}
+
+#ifndef WSK_NO_TIP
+/* A tip's words for a widget (§5ac), into t: what a person holding a
+   finger on it would want to know. Literals compared one by one -- a table
+   of them would be pointers in rodata, which a module cannot link. */
+static void tip_for(const wsk_widget_t *w, char *t, int cap)
+{
+	const char *say = 0;
+	int k = 0;
+	if (wsk__same(w->id, "back")) say = "Back to the last screen";
+	else if (wsk__same(w->id, "stop")) say = "Stop everything at once";
+	else if (wsk__same(w->id, "go")) say = "Go on to the next step";
+	else if (wsk__same(w->id, "yes")) say = "Yes: agree, and carry on";
+	else if (wsk__same(w->id, "no")) say = "No: decline, and go back";
+	if (say != 0) {
+		while (say[k] != '\0' && k < cap - 1) { t[k] = say[k]; k++; }
+	} else {
+		/* a list item: its label, and that it is one of twelve */
+		const char *a = w->text, *b = ", one of twelve";
+		while (*a != '\0' && k < cap - 1) t[k++] = *a++;
+		while (*b != '\0' && k < cap - 1) t[k++] = *b++;
+	}
+	t[k] = '\0';
+}
+#endif
+
+#ifndef WSK_NO_TIP
+/* A tip asked for: worded, shown, and its rows drawn. */
+static void show_tip(const rv9_mod_env_t *env, wsk_ui_t *ui, wsk_sink_t *s,
+                     const wsk_note_t *nt, char *tip, int cap)
+{
+	const wsk_widget_t *w = &nt->in->item[nt->item];
+	int t0 = 0, t1 = 0;
+	tip_for(w, tip, cap);
+	if (wsk_ui_tip(ui, tip, &t0, &t1) != WSK_OK) return;
+	m_say(env, RV9_STDERR, "  tip ");
+	m_say(env, RV9_STDERR, w->id);
+	m_say(env, RV9_STDERR, ": ");
+	m_say(env, RV9_STDERR, tip);
+	m_say(env, RV9_STDERR, "\n");
+	repaint(env, ui->root, s, t0, t1);
+}
+
+/*
+ * Time passing (§5ac): what has passed since `*last`, told to the toolkit
+ * by wsk_ui_tick rather than as an event through wsk_feed -- inlined where
+ * only a finger's events reach it, wsk_feed compiles to the part of the
+ * toolkit a finger can use, and a tick through it would bring back the
+ * keyboard's part too (6 KB, measured).
+ */
+static void tick(const rv9_mod_env_t *env, wsk_ui_t *ui, wsk_sink_t *s,
+                 uint64_t *last, char *tip, int cap)
+{
+	uint64_t now = env->time_ms();
+	wsk_note_t nt[1];
+	int d = (int)(now - *last);              /* a difference: no 64-bit division */
+
+	if (d <= 0) return;
+	*last = now;
+	if (wsk_ui_tick(ui, (d > 30000) ? 30000 : d, nt, 1) == 1 && nt[0].kind == WSK_NOTE_TIP)
+		show_tip(env, ui, s, &nt[0], tip, cap);
+}
+#endif
+
 __attribute__((section(".text.entry")))
 int rv9_module_entry(const rv9_mod_env_t *env)
 {
@@ -75,6 +153,10 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 	out_t out;
 	const wsk_tree_t *in = 0;
 	uint32_t size = 0;
+#ifndef WSK_NO_TIP
+	uint64_t last;
+	char tip[48];                          /* the tip shown: lives as the loop does */
+#endif
 	int tp, which = -1, e;
 
 	if (env == NULL || env->abi_version < 13) return 1;
@@ -122,6 +204,9 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 	tp = env->open("/touch", RV9_MODE_READ);
 	if (tp < 0) return 0;                  /* drawn; nothing to tap with */
 	wsk_ui_init(&ui, &w);
+#ifndef WSK_NO_TIP
+	last = env->time_ms();
+#endif
 
 	for (;;) {
 		rv9_touch_event_t te[4];
@@ -129,6 +214,9 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 		uint32_t waiting = 0;
 
 		if (env->signals_take() & RV9_SIG_STOP) break;
+#ifndef WSK_NO_TIP
+		tick(env, &ui, &s, &last, tip, (int)sizeof tip);
+#endif
 		if (env->getstat(tp, RV9_GS_READY, &waiting) == 0 && waiting == 0) {
 			env->sleep_ms(8);
 			continue;
@@ -145,7 +233,8 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 			        : (te[i].kind == RV9_TOUCH_UP)   ? WSK_EV_UP : WSK_EV_MOVE;
 			ev.x = (short)te[i].x;
 			ev.y = (short)te[i].y;
-			ev.d = 0; ev.key = 0; ev.text[0] = '\0'; ev.ms = te[i].at_ms;
+			ev.d = 0; ev.text[0] = '\0'; ev.ms = te[i].at_ms;
+			ev.key = (ev.kind == WSK_EV_DOWN) ? WSK_MOD_TOUCH : 0;   /* a finger (§5ac) */
 			got = wsk_feed(&ui, &ev, note, 2, &y0, &y1);
 			for (int j = 0; j < got && j < 2; j++) {
 				if (note[j].kind == WSK_NOTE_CLICK) {
@@ -154,11 +243,7 @@ int rv9_module_entry(const rv9_mod_env_t *env)
 					m_say(env, RV9_STDERR, "\n");
 				}
 			}
-			if (y1 > y0) {
-				uint32_t v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
-				env->setstat(RV9_STDOUT, RV9_SVG_SS_ROWS, &v);
-				wsk_render_rows(&w, y0, y1, &s, 4096);
-			}
+			repaint(env, &w, &s, y0, y1);
 		}
 	}
 	env->close(tp);

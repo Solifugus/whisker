@@ -5163,6 +5163,13 @@ int main(void)
 		ev.kind = WSK_EV_TEXT; ev.text[0] = 'x'; ev.text[1] = 0;
 		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
 		ok(t3.tip == 0, "and typing closes it");
+
+		/* the same, without wsk_feed: wsk_ui_tick */
+		ev.kind = WSK_EV_HOVER; ev.x = 100; ev.y = 160; ev.key = 0;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(wsk_ui_tick(&ui, 499, nt, 4) == 0 && wsk_ui_tick(&ui, 1, nt, 4) == 1 &&
+		   nt[0].kind == WSK_NOTE_TIP && nt[0].item == 2 && wsk_ui_tick(&ui, 900, nt, 4) == 0,
+		   "wsk_ui_tick, called directly: 499 nothing, 500 TIP for Low, then nothing more");
 	}
 
 	/* ---- what an independent read of the night's code found ---- */
