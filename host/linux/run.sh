@@ -9,6 +9,7 @@
 #   ./run.sh --code [file]   a code editor: whisker's source widget (§5v)
 #   ./run.sh --floor         a conference floor: whisker's world (§5q)
 #   ./run.sh --dock          docked panes: drag one by its caption (§5ag)
+#   ./run.sh --tabs          notes in tabs (§5ah)
 #   ./run.sh --test          the contract, headless, with no person
 #
 # The pixels come from RV-9's own rasteriser, built from its tree through the
@@ -36,7 +37,7 @@ INC=(-I"$OUT/stub" -I"$OUT" -I"$HERE" -I"$HERE/../../src")
 if [[ "${1:-}" == "--test" ]]; then
 	# every demo program opens and keeps running: one that refuses its own
 	# panel exits at once -- demo.c did, unnoticed, from 2026-10-24 to 11-15
-	for P in demo input edit code floor dock; do
+	for P in demo input edit code floor dock tabs; do
 		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-$P" \
 			"$HERE/$P.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
 			"${INC[@]}" $(pkg-config --cflags --libs sdl2)
@@ -76,6 +77,13 @@ if [[ "${1:-}" == "--dock" ]]; then
 		"$HERE/dock.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec "$OUT/whisker-dock"
+fi
+
+if [[ "${1:-}" == "--tabs" ]]; then
+	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-tabs" \
+		"$HERE/tabs.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
+	exec "$OUT/whisker-tabs"
 fi
 
 if [[ "${1:-}" == "--code" ]]; then

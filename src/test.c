@@ -8,6 +8,7 @@
 #include "whisker.h"
 #include "whisker_chooser.h"
 #include "whisker_dock.h"
+#include "whisker_tabs.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -6274,6 +6275,153 @@ int main(void)
 #undef DK_EVD
 		}
 #undef DK_EV
+	}
+
+	printf("\n-- §5ah  tabs\n");
+	{
+		static const wsk_widget_t C0[] = { { .kind = WSK_LABEL, .id = "c0", .text = "the first note", .weight = 1 } };
+		static const wsk_widget_t C1[] = { { .kind = WSK_LABEL, .id = "c1", .text = "the second", .weight = 1 } };
+		static const wsk_widget_t C2[] = { { .kind = WSK_LABEL, .id = "c2", .text = "the third", .weight = 1 } };
+		static const wsk_widget_t TOP[] = { { .kind = WSK_STACK, .id = "set", .sub = 3, .weight = 1 } };
+		static wsk_tabs_t tb;
+		static const char *strs[WSK_TABS_MAX];
+		static wsk_tree_t k[3 + WSK_TABS_TREES];
+		wsk_tree_t root;
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		int y0, y1, n, which, f;
+		char doc[16384];
+		wsk_rect_t a, b, c;
+
+		wsk_init(&root, WSK_COL, 400, 200);
+		root.pad = 0; root.gap = 0; root.item = TOP; root.n = 1;
+		root.nest = k; root.nests = 3 + WSK_TABS_TREES; root.str = strs; root.strs = WSK_TABS_MAX;
+		for (int i = 0; i < 3; i++) wsk_nest_init(&k[i], &root, WSK_COL);
+		k[0].item = C0; k[0].n = 1; k[1].item = C1; k[1].n = 1; k[2].item = C2; k[2].n = 1;
+		root.nests = 2 + WSK_TABS_TREES;
+		ok(wsk_tabs_init(&tb, &root, strs, 3, 0, WSK_TABS_TOP) == WSK_E_KIND, "a root a slot short of a tab set: refused");
+		root.nests = 3 + WSK_TABS_TREES;
+		ok(wsk_tabs_init(&tb, &root, strs, 3, 0, WSK_TABS_TOP) == WSK_OK, "CONTROL: with enough");
+		ok(wsk_tabs_add(&tb, "a", "main.bas", 0, 1, 0) == 0 && wsk_tabs_add(&tb, "b", "draw.bas", 1, 1, 0) == 1 &&
+		   wsk_tabs_add(&tb, "c", "notes", 2, 0, 0) == 2 && tb.cur == 0, "three tabs, the last not closable: the first chosen");
+		ok(wsk_tabs_add(&tb, "a", "again", 0, 1, 0) == -1 && wsk_tabs_add(&tb, "", "x", 0, 1, 0) == -1 &&
+		   wsk_tabs_add(&tb, "a_name_of_twenty_four_ch", "x", 0, 1, 0) == -1 && wsk_tabs_add(&tb, "z", "x", 99, 1, 0) == -1,
+		   "a name used, empty or too long, or no such tree: no tab");
+		wsk_tabs_build(&tb);
+		which = 0;
+		ok(wsk_check(&root, &which) == WSK_OK, "the set checks");
+		a = rect_of(&root, "a"); b = rect_of(&root, "b"); c = rect_of(&root, "c");
+		printf("   tabs: a %d,%d %dx%d  b %d,%d %dx%d  c %d,%d %dx%d; body c0 at %d,%d\n", a.x, a.y, a.w, a.h, b.x, b.y, b.w, b.h,
+		       c.x, c.y, c.w, c.h, rect_of(&root, "c0").x, rect_of(&root, "c0").y);
+		ok(a.x == 0 && a.y == 0 && a.h == root.font + 10 && b.x == a.x + a.w + 2 && c.x == b.x + b.w + 2 && c.w < b.w,
+		   "the bar across the top: each tab its caption's width, two apart; the last, with no close button, narrower");
+		ok(rect_of(&root, "c0").y >= a.h && rect_of(&root, "c1").x == -1, "the body under it: the first tab's content, and not the second's");
+		render_into(&root, doc, sizeof doc, 16384);
+		ok(has(doc, ">main.bas</text>") && has(doc, ">draw.bas</text>") && has(doc, ">notes</text>") && count(doc, ">x</text>") == 2,
+		   "drawn: three captions, two close buttons");
+		{
+			char on[96], off[96];
+			snprintf(on, sizeof on, "width=\"%d\" height=\"%d\" fill=\"#%06x\"", a.w, a.h, root.selfill);
+			snprintf(off, sizeof off, "width=\"%d\" height=\"%d\" fill=\"#%06x\"", b.w, b.h, root.bg);
+			ok(has(doc, on) && has(doc, off), "the chosen tab drawn as a chosen row is; another in the window's background");
+		}
+
+		wsk_ui_init(&ui, &root);
+#define TB_EV(K, X, Y) (memset(&ev, 0, sizeof ev), ev.kind = (K), ev.x = (X), ev.y = (Y), ev.d = 1, \
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1), (n > 8 ? (n = 8) : 0), f = wsk_tabs_feed(&tb, &ui, nt, n))
+		TB_EV(WSK_EV_DOWN, b.x + 10, 10);
+		TB_EV(WSK_EV_UP, b.x + 10, 10);
+		ok(f == WSK_TABS_CHOSEN && tb.cur == 1 && strcmp(wsk_tabs_current(&tb), "b") == 0, "draw.bas tapped: CHOSEN, the current tab b");
+		ok(rect_of(&root, "c1").x >= 0 && rect_of(&root, "c0").x == -1 && (which = 0, wsk_check(&root, &which) == WSK_OK),
+		   "the body its content now, the first's gone");
+
+		/* STU-21: a background tab's close button asks, and does not switch */
+		TB_EV(WSK_EV_DOWN, a.x + a.w - 10, 10);
+		TB_EV(WSK_EV_UP, a.x + a.w - 10, 10);
+		ok(f == WSK_TABS_ASKED && tb.asked == 0 && tb.cur == 1 && k[4].sel == 1,
+		   "main.bas's close button tapped in the background: ASKED for it -- and draw.bas still chosen, the toolkit's switch undone");
+		ok(rect_of(&root, "c1").x >= 0, "the body draw.bas's still");
+		TB_EV(WSK_EV_MENU, c.x + 10, 10);
+		ok(f == 0 && n >= 1 && nt[0].kind == WSK_NOTE_MENU && wsk_tabs_at(&tb, &nt[0]) == 2 && tb.cur == 1,
+		   "a right-click on notes: MENU, wsk_tabs_at names it, nothing switched");
+		TB_EV(WSK_EV_DOWN, 200, 100);
+		TB_EV(WSK_EV_UP, 200, 100);
+		ok(f == 0 && tb.cur == 1, "CONTROL: a tap in the body: nothing of the set's");
+
+		/* the caption changes, the name does not */
+		ok(wsk_tabs_caption(&tb, "b", "* draw.bas") == WSK_OK && (wsk_tabs_build(&tb), 1) &&
+		   rect_of(&root, "b").w > b.w && wsk_tabs_find(&tb, "b") == 1 && wsk_tabs_caption(&tb, "q", "x") == WSK_E_NOTFOUND,
+		   "a caption marked unsaved: the tab wider, its name the same; no tab of that name: WSK_E_NOTFOUND");
+
+		/* removing: the chosen goes to its right neighbour, at the end to its left */
+		ok(wsk_tabs_remove(&tb, "b") == WSK_OK && tb.cur == 1 && strcmp(wsk_tabs_current(&tb), "c") == 0,
+		   "the chosen tab removed: the one to its right chosen");
+		ok(wsk_tabs_remove(&tb, "c") == WSK_OK && tb.cur == 0 && strcmp(wsk_tabs_current(&tb), "a") == 0,
+		   "the chosen, last tab removed: the one to its left");
+		ok(wsk_tabs_remove(&tb, "a") == WSK_OK && tb.cur == -1 && wsk_tabs_current(&tb) == 0 &&
+		   (wsk_tabs_build(&tb), which = 0, wsk_check(&root, &which) == WSK_OK) && wsk_tabs_remove(&tb, "a") == WSK_E_NOTFOUND,
+		   "the last removed: none chosen, an empty body, the set still checks");
+		ok(wsk_tabs_add(&tb, "a", "main.bas", 0, 1, 0) == 0 && wsk_tabs_add(&tb, "c", "notes", 2, 1, 0) == 1 &&
+		   wsk_tabs_add(&tb, "b", "draw.bas", 1, 1, 1) == 1 && strcmp(tb.tab[2].name, "c") == 0 && tb.cur == 0,
+		   "added after the current: between, the current kept");
+
+		/* twenty tabs: the bar scrolls, the chosen kept in view */
+		{
+			static const char NM[][4] = { "t03", "t04", "t05", "t06", "t07", "t08", "t09", "t10", "t11", "t12",
+			                              "t13", "t14", "t15", "t16", "t17", "t18", "t19", "t20" };
+			wsk_rect_t l;
+			for (int i = 0; i < 17; i++) wsk_tabs_add(&tb, NM[i], NM[i], 0, 1, 0);
+			wsk_tabs_build(&tb);
+			ok(tb.n == 20 && (which = 0, wsk_check(&root, &which) == WSK_OK) && k[4].scroll == 0, "twenty tabs: the set checks, the bar at its start");
+			wsk_tabs_choose(&tb, "t19");
+			wsk_tabs_build(&tb);
+			l = rect_of(&root, "t19");
+			printf("   t19 chosen: the bar scrolled %d, the tab at %d..%d\n", k[4].scroll, l.x, l.x + l.w);
+			ok(k[4].scroll > 0 && l.x >= 0 && l.x + l.w <= 400 && (which = 0, wsk_check(&root, &which) == WSK_OK),
+			   "the nineteenth chosen: the bar scrolled to show it, whole");
+			wsk_tabs_choose(&tb, "a");
+			wsk_tabs_build(&tb);
+			ok(k[4].scroll == 0 && rect_of(&root, "a").x == 0, "the first chosen again: back to the start");
+			for (int i = 0; i < 17; i++) wsk_tabs_remove(&tb, NM[i]);
+			wsk_tabs_build(&tb);
+		}
+
+		/* focus in a body that goes is dropped */
+		{
+			static const wsk_widget_t F[] = { { .kind = WSK_FIELD, .id = "f", .sub = 0, .weight = 1 } };
+			char fb[32] = "";
+			wsk_buf_t bufs[1];
+			memset(bufs, 0, sizeof bufs); bufs[0].b = fb; bufs[0].cap = sizeof fb;
+			root.buf = bufs; root.bufs = 1;
+			k[0].item = F; k[0].n = 1;
+			wsk_tabs_build(&tb);
+			ok(wsk_ui_focus(&ui, "f", &y0, &y1) == WSK_OK && root.focus != 0, "(a field in main.bas's body, focused)");
+			b = rect_of(&root, "b");
+			TB_EV(WSK_EV_DOWN, b.x + 10, 10);
+			TB_EV(WSK_EV_UP, b.x + 10, 10);
+			memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_TEXT; ev.text[0] = 'Q';
+			wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+			ok(f == WSK_TABS_CHOSEN && root.focus == 0 && bufs[0].len == 0,
+			   "another tab chosen: the field's focus dropped, a key typed not into the hidden body");
+			k[0].item = C0; k[0].n = 1;
+			root.buf = 0; root.bufs = 0;
+		}
+
+		/* the bar at the bottom */
+		{
+			wsk_tabs_t bt;
+			static wsk_tabs_t keep;
+			keep = tb;
+			wsk_tabs_init(&bt, &root, strs, 3, 0, WSK_TABS_BOTTOM);
+			wsk_tabs_add(&bt, "a", "main.bas", 0, 1, 0);
+			wsk_tabs_add(&bt, "b", "draw.bas", 1, 1, 0);
+			wsk_tabs_build(&bt);
+			ok((which = 0, wsk_check(&root, &which) == WSK_OK) && rect_of(&root, "a").y == 200 - (root.font + 10) &&
+			   rect_of(&root, "c0").y < rect_of(&root, "a").y, "the bar at the bottom: the tabs along the window's foot, the body above");
+			tb = keep;
+		}
+#undef TB_EV
 	}
 
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);

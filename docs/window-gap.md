@@ -295,8 +295,13 @@ what each lacks is an interaction a person expects for free:
    directly, two by composition** (`tabs`, `tab`). **Floating built the
    same day** (§5ag step 2): a caption double-clicked takes its pane into
    a window of its own (§5af's), and back.
-4. `tabs` / `tab`: nothing missing that a person would name; the program
-   swaps the body, as `wkeys` does.
+4. ~~`tabs` / `tab`: nothing missing that a person would name; the program
+   swaps the body, as `wkeys` does.~~ **Built 2026-11-16 (design §5ah)**:
+   `whisker_tabs.h` — tabs by name with captions that change, closable,
+   the close asked and the program deciding, a right-click or a close on
+   a background tab never switching to it (STU-21), a bar that scrolls
+   and keeps the chosen tab in view, at the top or the bottom. **All 25
+   words answered directly.**
 
 ### And still the host's
 

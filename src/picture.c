@@ -15,6 +15,7 @@
 #include "whisker.h"
 #include "whisker_chooser.h"
 #include "whisker_dock.h"
+#include "whisker_tabs.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -2087,6 +2088,52 @@ int main(void)
 			   "the window holds the pane alone: its caption across the top, none of the frame's dividers or captions under it");
 			shot("dockfloat.ppm");
 		}
+	}
+
+	/*
+	 * Tabs (§5ah) at the pixels: three notes, the second chosen -- its tab
+	 * in the selection's colour; the others in the background, on the trough.
+	 */
+	{
+		static const wsk_widget_t C0[] = { { .kind = WSK_LABEL, .id = "c0", .text = "the first note", .weight = 1 } };
+		static const wsk_widget_t C1[] = { { .kind = WSK_LABEL, .id = "c1", .text = "the second note", .weight = 1 } };
+		static const wsk_widget_t C2[] = { { .kind = WSK_LABEL, .id = "c2", .text = "the third", .weight = 1 } };
+		static const wsk_widget_t TOP[] = { { .kind = WSK_STACK, .sub = 3, .weight = 1 } };
+		static wsk_tabs_t tb;
+		static const char *strs[WSK_TABS_MAX];
+		static wsk_tree_t k[3 + WSK_TABS_TREES];
+		wsk_tree_t root, at;
+		wsk_sink_t s;
+		wsk_rect_t ra, rb;
+		int lo, hi, onb, offa, which = 0;
+
+		wsk_init(&root, WSK_COL, PW, PH);
+		root.bg = 0x10203au; root.font = 12; root.pad = 0; root.gap = 0;
+		root.item = TOP; root.n = 1;
+		root.nest = k; root.nests = 3 + WSK_TABS_TREES; root.str = strs; root.strs = WSK_TABS_MAX;
+		for (int i = 0; i < 3; i++) wsk_nest_init(&k[i], &root, WSK_COL);
+		k[0].item = C0; k[0].n = 1; k[1].item = C1; k[1].n = 1; k[2].item = C2; k[2].n = 1;
+		wsk_tabs_init(&tb, &root, strs, 3, 0, WSK_TABS_TOP);
+		wsk_tabs_add(&tb, "a", "main.bas", 0, 1, 0);
+		wsk_tabs_add(&tb, "b", "* draw.bas", 1, 1, 0);
+		wsk_tabs_add(&tb, "c", "notes", 2, 0, 0);
+		wsk_tabs_choose(&tb, "b");
+		wsk_tabs_build(&tb);
+		printf("\n  tabs (§5ah)\n");
+		ok(wsk_check(&root, &which) == WSK_OK, "a set of three tabs, the second chosen, checks");
+		ra = wsk_rect(&at, wsk__lookup(&root, "a", &at, 0));
+		rb = wsk_rect(&at, wsk__lookup(&root, "b", &at, 0));
+		s.put = to_window; s.ctx = &dev;
+		{ uint32_t v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); }
+		s.len = 0;
+		ok(wsk_render(&root, &s, 4096) > 0, "drawn, in one document under 4 KB");
+		onb = span(rb, pix565(root.selfill), &lo, &hi);
+		offa = span(ra, pix565(root.bg), &lo, &hi);
+		printf("    the chosen tab in the selection's colour: %d of %d pixels; an unchosen one in the background: %d of %d\n",
+		       onb, rb.w * rb.h, offa, ra.w * ra.h);
+		ok(onb > rb.w * rb.h / 2 && offa > ra.w * ra.h / 2 && span(ra, pix565(root.selfill), &lo, &hi) == 0,
+		   "the chosen tab in the selection's colour; the first not -- none of it in it");
+		shot("tabs.ppm");
 	}
 
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);

@@ -50,10 +50,12 @@ GTK tree** (last GTK commit `d997c94`): `gbasic-gap.md` and `studio-gap.md`
 are history. **`docs/window-gap.md` (2026-10-24) is the current distance**:
 Studio's window is a pure record. **Recounted 2026-11-15 (`window-gap.md`
 §8): whisker answers all 25 of its words** — 19 directly, 6 by
-composition (21 of 25 on 2026-11-12). What is left is three interactions,
-not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
-~~keyboard in a menu (`choice`)~~ (§5y), ~~docking (`docks`)~~ (§5ag;
-floating a pane into its own window, step 2, the same day).
+composition (21 of 25 on 2026-11-12). What was left was three
+interactions and a widget: ~~a draggable divider (`split`)~~ (§5x,
+2026-11-15), the ~~keyboard in a menu (`choice`)~~ (§5y), ~~docking
+(`docks`)~~ (§5ag; floating a pane into its own window, step 2, the same
+day), ~~tabs (`tabs`, `tab`)~~ (§5ah) — **since 2026-11-16 all 25
+directly**.
 
 ## Status
 
@@ -338,6 +340,18 @@ floating a pane into its own window, step 2, the same day).
   did. No byte of `whisker.h`; `dock.mjs` floats and docks in Chrome.
   **Matthew used it, 2026-11-16: works in the SDL window and the
   browser.**
+- **§5ah — tabs** (2026-11-16): **`src/whisker_tabs.h`**, a fourth
+  header in the dock's shape, no change to `whisker.h`: tabs by **name**
+  (the caption changes — Studio's `* `), closable — **the close asked**
+  (`WSK_TABS_ASKED`, `t.asked`), the program deciding — and **STU-21**:
+  a background tab's close or right-click never switches to it (the
+  toolkit's selection did switch on a close button; the header passes
+  over that SELECT). The bar scrolls and keeps the chosen tab in view;
+  top or bottom. **The chosen tab is `selfill`**, as a chosen row is:
+  "the body's colour" passed every check and could not be seen. Demo
+  `host/linux/tabs.c` (`run.sh --tabs`, both hosts); `tabs.mjs` (12).
+  **A struct copy is a `memcpy` at `-Os`**: compile a new header for
+  RISC-V with the module flags and `nm -u` it.
 - **A third independent read, 2026-11-16** (design, after §5ag): a grab
   ended by a menu, a dialog or a lost lifting left the dock mid-drag —
   and the program's own grab tree moved a pane; a triple-click floated
@@ -418,14 +432,14 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,152 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,181 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 62 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 63 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
-18 for docking and floating (`dock.mjs`) — 156 in all.
+18 for docking and floating (`dock.mjs`), 12 for tabs (`tabs.mjs`) — 168 in all.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

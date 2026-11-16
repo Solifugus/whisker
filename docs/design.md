@@ -3513,6 +3513,129 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5ah. Tabs (2026-11-16), written before its code
+
+Matthew chose it after the third read: `tabs` and `tab` are the last two
+of Studio's 25 `window` words whisker answers only by composition
+(`window-gap.md` §8). What Studio does with them (gBASIC
+`qt_gui_design.md` §0.8, §0.30 and its `which_tab`): **a tab per open
+document**, whose **caption changes** — `* ` while unsaved — so a tab is
+addressed by a **name**, never its caption; **closable** tabs, the close
+asked for and the program deciding (a document may need saving); and
+**STU-21's rule**: a right-click on a background tab, or its close
+button, acts on *that* tab **without first switching to it**.
+
+Measured before designing (a probe of the existing toolkit): a selecting
+row of tab stacks already does most of it. A tap on a tab's caption is
+CLICK then SELECT, the row's `sel` moved; a right-click on a background
+tab is MENU naming that tab's row, `sel` untouched — STU-21 for nothing.
+But **a tap on a background tab's close button is CLICK *and* SELECT**:
+it switches first. So tabs are a header over the toolkit, as docking
+is, and that header undoes the one wrong thing.
+
+1. **`src/whisker_tabs.h`**, a fourth header in the chooser's and the
+   dock's shape and under the same rules. The caller declares **tabs** —
+   a name, a caption, a content tree in `nest`, closable or not — and
+   the header builds **a tab set** in tree and string slots the program
+   sets aside: a column of the **bar** and the **body**, the body the
+   chosen tab's content. The program places the set where it likes —
+   a stack widget naming the set's tree, as any nested tree is placed —
+   so a window may hold several sets, and a docked pane may be one.
+2. **The bar**: a row of the tabs in order, each its caption and, if
+   closable, a close button; **the chosen tab drawn in the body's
+   colour, joined to it**, the others a shade toward the trough the bar
+   is drawn in. *(Changed by looking — see below: the chosen tab is
+   drawn as a chosen row is.)* Too many tabs to fit, **the bar scrolls** (the wheel, a
+   drag) and **the chosen tab is kept in view** when it is chosen. A
+   caption is never cut (whisker's rule): a tab is as wide as its
+   caption and its button.
+3. **The bar at the top or the bottom** (Qt's `tabPosition`, which the
+   gBASIC fixture tests at the bottom for a reason of its own).
+4. **What happens, through `wsk_tabs_feed`**: a tab tapped is chosen
+   (CHOSEN, the body swapped, the frame rebuilt); **a close button
+   tapped asks** (`t->asked`, the tab's index; the current tab not
+   changed — the switch the toolkit made is undone); a right-click on a
+   tab is the program's MENU as it always was, and **`wsk_tabs_at(t,
+   note)`** names the tab a note is about, so the menu acts on it.
+5. **The program's**: `wsk_tabs_add` (at the end, or after the current),
+   `wsk_tabs_remove` (the current removed, the one to its right is
+   chosen, else the left — Qt's default), `wsk_tabs_choose`,
+   `wsk_tabs_caption`, `wsk_tabs_current` — all by name.
+6. **A demo**, `host/linux/tabs.c`: notes, a tab each — Ctrl-T a new
+   one, typing marks it `* `, Ctrl-S "saves" it, a close button on an
+   unsaved note asks first, a right-click on any tab offers Close, Close
+   others — acting on that tab, never switching to it. Both hosts.
+
+**Not in this step**: dragging a tab to reorder it (the grab of §5ag
+makes it possible — step 2 if wanted); tabs at the sides; Ctrl-Tab
+(neither host delivers it as a chord yet).
+
+Done when: a set built, by the rectangles — the bar, each tab its
+caption's width, the body the chosen tab's content; a tab tapped chosen
+and its content shown; **a background tab's close button asking for it
+with the current tab unchanged** (the toolkit's switch undone — fails on
+the probe's behaviour); a right-click on a background tab named by
+`wsk_tabs_at` and nothing switched; a caption changed; remove choosing
+the right neighbour, then the left at the end, then none; twenty tabs
+scrolling, the chosen kept in view; the bar at the bottom; the chosen
+tab's colour the body's, in the picture through RV-9's rasteriser; in
+Chrome, a tab chosen, a close asked and answered.
+
+**What it came to** (2026-11-16): as written, **not a byte of
+`whisker.h`**, with one thing changed by looking and one by the module
+rules.
+
+- **The chosen tab could not be told from the others.** Every check
+  passed — the chosen tab's rectangle in the body's colour, the others
+  half way to the trough — and in Chrome all three tabs looked alike:
+  the default background and trough are a few steps apart, and the
+  demo's body is a memo, drawn in its darker well, so "the body's
+  colour" was not even the colour under the tab. **The chosen tab is
+  drawn as a chosen row in a list is — `selfill`, §5m** — the others in
+  the window's background on a bar in the trough. Whisker's one colour
+  for "this one" now means it here too.
+- **A tab moved along the array was a struct copy, which gcc made a
+  `memcpy` call at `-Os`** — no libc in a module. Found compiling the
+  header for RISC-V with the module flags and listing what it leaves
+  undefined; moved a byte at a time now, as the headers zero. No
+  `.data` or `.bss`, no absolute relocation, at -Os, -O2 and -O3.
+- The redundant half of the undo: the rebuild already puts the bar's
+  choice back from `cur`, so what keeps STU-21's rule is passing over
+  the SELECT that came with a close button's CLICK — and the check on
+  it fails with that taken out (five checks fail), where it had passed
+  with only the redundant line taken out.
+
+**29 checks** (1,152 → 1,181): a root too small (refused); three tabs,
+names refused (used, empty, too long, no tree); the bar by its
+rectangles, each tab its caption's width, a tab with no close button
+narrower; the body the chosen tab's content and not another's; drawn,
+three captions and two buttons, the chosen tab in `selfill` and another
+in the background; a tab tapped, CHOSEN, the body swapped; **a
+background tab's close button: ASKED, and the current tab unchanged**;
+a right-click on a background tab, MENU, named by `wsk_tabs_at`,
+nothing switched; a tap in the body, nothing (the control); a caption
+marked unsaved, wider, its name the same; removing the chosen tab — the
+right neighbour, then the left at the end, then none, the set still
+checking; added after the current; twenty tabs, the nineteenth chosen
+and the bar scrolled 1,054 to show it whole (fails with the view taken
+out), the first chosen and back to 0; a focused field's focus dropped
+when its tab is left; the bar at the bottom. In the picture
+(`tabs.ppm`, RV-9's rasteriser): the chosen tab in `selfill`, the first
+in the background with none of it. Every earlier output — 45 files —
+byte-identical.
+
+The demo, `host/linux/tabs.c` (`run.sh --tabs`, both hosts): notes, a
+tab each; Ctrl-T, Ctrl-S, Ctrl-W; an unsaved note's close asks first; a
+right-click offers Close and Close others. Started by the Linux suite
+(63); `host/web/tabs.mjs` (12, web 168) finds the close buttons by
+their colour along the bar, closes Note 2 from the background with
+nothing chosen, is asked before an unsaved note goes, and from a
+right-click on a background tab closes the others — never choosing it.
+Looked at: the chosen tab orange, the menu hung from the tab.
+
+**With this, all 25 of Studio's `window` words are answered directly**
+(`window-gap.md` §8).
+
 ## 5ag. Docking (2026-11-16), written before its code
 
 Matthew chose it: the last of Studio's 25 `window` words whisker answered
