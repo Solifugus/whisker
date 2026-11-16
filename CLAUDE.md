@@ -288,8 +288,12 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   change to `whisker.h`** — whisker keeps no state (D5), so a seat is the
   program's second set of trees over the same widgets. The floor gives each
   page a person, its own view, status and speech fading; `seats.mjs`
-  drives two Chrome pages. A page navigated away (not closed) keeps its
-  seat — the host has no timeout yet.
+  drives two Chrome pages. **Step 2**: a page says its size (`WH_SIZE`, CSS
+  pixels — a phone gets a phone's floor), that it is still there every two
+  seconds, and that it is going (a `pagehide` beacon); six seconds of
+  silence is GONE. `wsk_world_view` sets a world's view clamped as a drag
+  would — what a program needs when a resized window would see past a
+  bounded world.
 - **§5aa — hover** (2026-11-15): hosts say `WH_HOVER` (motion with nothing
   held; -1,-1 on leaving) — SDL and the browser, never a touch panel; the
   toolkit takes `WSK_EV_HOVER` and says `WSK_NOTE_HOVER` only when what the
@@ -311,13 +315,13 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **963 checks**, including a step
+`src/run.sh --module` is the whole of it: **972 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 51 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
-the code editor (`code.mjs`) and 20 for the conference floor (`floor.mjs`), 9 for two people on it (`seats.mjs`).
+the code editor (`code.mjs`) and 20 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

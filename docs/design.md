@@ -3427,6 +3427,70 @@ draws as before (2,076 bytes a frame).
 quiet departure (a timeout or a heartbeat); every seat redrawn whole on a
 frame where anyone moved — at 16 seats, 16 documents a frame.
 
+### Step 2, written before its code (2026-11-15): a seat that goes quietly, and a seat its own size
+
+Matthew: *"very nice... ok.. next"*. Two of step 1's named gaps are what a
+real hall would hit first: a phone locked or a tab navigated away keeps
+its person for ever, and a phone is handed the program's 1024 x 600
+shrunk to a postage stamp.
+
+1. **Going quietly.** The page says it is still there — `Y` every two
+   seconds — and the host drops a seat it has not heard from in six
+   (`WH_GONE`, as a closed connection is). A page also says `G` as it is
+   hidden for good (`pagehide`, sent as a beacon, which a leaving page may
+   still send), so a navigation leaves at once rather than six seconds
+   later. Only while serving seats: a mirrored page needs neither.
+2. **Each seat its size.** The page says its size in CSS pixels — `Z w h`
+   — once it knows its seat and whenever it is resized; the host keeps it
+   per seat, bounds that seat's points by it, sizes its documents' canvas
+   by it, and tells the program **`WH_SIZE`** (`x`, `y` = width, height).
+   CSS pixels, so a phone's text is the size its own text is. A program
+   that ignores WH_SIZE draws at its one size, and the page scales it, as
+   now.
+3. **whisker: `wsk_world_view(root, world, vx, vy, zoom, &y0, &y1)`** —
+   set a world's view as a drag or the wheel would: the zoom clamped (no
+   further out than a bounded world whole), the view kept inside a bounded
+   world, wrapped on a torus. A program resizing a window whose world is
+   bounded needs it: a seat twice as wide as before may see past the edge
+   of the floor at the old zoom, which `wsk_check` refuses (`WSK_E_SCROLL`)
+   — so the program asks for the view it had and gets the nearest one
+   allowed. 1 if it changed, with its rows; `WSK_E_NOTFOUND` for no world.
+4. **The floor**: on WH_SIZE, that seat's window becomes that size —
+   root and area — its view re-set through `wsk_world_view`, drawn whole.
+
+Done when: `wsk_world_view` clamps a zoom too far out, keeps a bounded
+view in, wraps a torus, and leaves a good view alone (the control); in
+Chrome a page of 400 x 700 gets a 400 x 700 floor while the other stays
+1024 x 600; a page navigated away is gone at once; a page frozen (no
+script runs, as a locked phone) is gone within six seconds, and one that
+is not frozen is not (the control).
+
+**What it came to**: as written. **972 checks** (963): 9 in the suite for
+`wsk_world_view` — set as asked and its rows; the same again 0 (the
+control); kept inside at 680,0; a zoom of 64 clamped to 82, the whole
+world; a torus wrapping 450 to 50 and -20 to 280; **a window grown to 1100
+wide, refused, then the view it had asked for again: zoom 282, accepted**;
+by id in a window, only its rows; not a world, NOTFOUND. Every earlier
+output — 42 files — byte-identical; the world's bytes in a module
+unchanged (the function is only compiled where it is called).
+
+In Chrome, `seats.mjs` (14 now): the second page made 400 x 700 is told so
+— `size seat 1 is 400x700` — and its canvas is 400 x 700 while the first's
+stays 1024 x 600 (the control; looked at: a phone's floor following Ana);
+navigated away it is gone within a second, by its beacon; frozen in the
+debugger, as a locked phone's page is, it is gone after six seconds of
+silence, while the first page, heard from all along, stays (the control).
+
+Found on the way: **the browser's hover at -1,-1 — the pointer leaving
+the page — had always been dropped by the host as a point off the
+screen**, since §5aa; it reaches the program now. And the first draft
+read the canvas size 14 characters past `viewBox="0 0 `, which is 13 —
+1024 became 24; the size is measured from the literal now.
+
+`floor.mjs` sets its page to 1024 x 600 before it loads: a seated floor
+takes the page's own size, and every position it checks was worked out
+for that one.
+
 ## 5aa. Hover (2026-11-15), written before its code
 
 Matthew chose it after moving items. A desktop needs to know what the

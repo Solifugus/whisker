@@ -44,7 +44,9 @@ enum {
 	                            host with no pointer never sends it (§5aa) */
 	WH_JOIN,                 /* a screen arrived: `seat` (§5ab) -- only to a
 	                            program that called wh_seats(1) */
-	WH_GONE                  /* ... and went */
+	WH_GONE,                 /* ... and went -- or went quiet (§5ab step 2) */
+	WH_SIZE                  /* a seat's screen is x by y pixels: at its
+	                            join, and when resized (§5ab step 2) */
 };
 
 /* The keys a field cares about. The same numbers as whisker's WSK_KEY_*, so

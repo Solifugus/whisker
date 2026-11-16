@@ -5540,6 +5540,36 @@ static inline int wsk_world_follow(wsk_tree_t *root, const char *world, int item
 }
 #endif
 
+#ifndef WSK_NO_WORLD
+/*
+ * Set a world's view as a drag or the wheel would (§5ab step 2): the zoom
+ * clamped -- no further out than a bounded world or torus whole -- the view
+ * kept inside a bounded world, wrapped on a torus. For a program that moves
+ * the view itself, or resizes the window a bounded world is seen through
+ * and must not be left looking past its edge. `world` as wsk_world_follow
+ * takes it. 1 if the view changed, with y0..y1 the rows to repaint; 0 if
+ * not; WSK_E_NOTFOUND if there is no such world.
+ */
+static inline int wsk_world_view(wsk_tree_t *root, const char *world, int vx, int vy,
+                                 int zoom, int *y0, int *y1)
+{
+	wsk_tree_t at, c, *o;
+	int i;
+	*y0 = *y1 = 0;
+	if (world == 0) { wsk__tcopy(&c, root); o = root; }
+	else {
+		if ((i = wsk__lookup(root, world, &at, 0)) < 0 || at.item[i].kind != WSK_STACK ||
+		    !wsk__child(&at, i, &c))
+			return WSK_E_NOTFOUND;
+		o = (wsk_tree_t *)&at.nest[at.item[i].sub];
+	}
+	if (c.overflow != WSK_WORLD || c.place == 0) return WSK_E_NOTFOUND;
+	if (!wsk__view_to(o, &c, vx, vy, zoom)) return 0;
+	if (wsk_area_rows(&c, y0, y1) != WSK_OK) *y0 = *y1 = 0;
+	return 1;
+}
+#endif
+
 #ifndef WSK_NO_SPLIT
 /*
  * A held divider moved `d` pixels along its stack (§5x rules 3 and 4): the

@@ -24,7 +24,11 @@
  *
  * Seats (§5ab): a page's /events connection is its seat, a slot below
  * WH_SEATS, which the host tells it ("S n") once the program serves seats;
- * it posts to /ev?s=n from then on, and a post naming no seat is dropped. A
+ * it posts to /ev?s=n from then on, and a post naming no seat is dropped.
+ * A seated page says its size ("Z w h", in CSS pixels, so a phone's text is
+ * its own size) and that it is still there ("Y", every two seconds); one not
+ * heard from in six seconds is gone, and one hidden for good says so ("G",
+ * a beacon) and is gone at once (§5ab step 2). A
  * program that calls wh_seats(1) hears each seat JOIN and GONE and sends a
  * document to one of them with wh_to; one that does not sees every page as
  * the same screen, as below.
@@ -107,8 +111,12 @@ static const char PAGE[] =
 "    navigator.clipboard.writeText(t).then(()=>{copied='clipboard';},old);\n"
 "  else old();\n"
 "}\n"
+"const size=()=>{if(seat>=0)send('Z '+innerWidth+' '+innerHeight);};\n"
+"let rz=0;addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(size,200);});\n"
+"setInterval(()=>{if(seat>=0)send('Y');},2000);\n"
+"addEventListener('pagehide',()=>{if(seat>=0)navigator.sendBeacon('/ev?s='+seat,'G');});\n"
 "new EventSource('/events').onmessage=e=>{\n"
-"  if(e.data.startsWith('S ')){seat=+e.data.slice(2);return;}\n"
+"  if(e.data.startsWith('S ')){seat=+e.data.slice(2);size();return;}\n"
 "  if(e.data.startsWith('C ')){copy(unesc(e.data.slice(2)));return;}\n"
 "  const m=/^(\\d+) (\\d+) (\\d+) (\\d+) /.exec(e.data);\n"
 "  if(m) draw(+m[1],+m[2],+m[3],+m[4],e.data.slice(m[0].length));\n"
@@ -165,6 +173,8 @@ static const char PAGE[] =
 typedef struct {
 	int  fd;
 	int  sub;                /* subscribed to /events */
+	int  w, h;               /* a seat's screen, once it says (§5ab step 2), or 0 */
+	long last;               /* when it was last heard from, in ms */
 	char req[8192];          /* a paste comes in one: room for a few KB */
 	int  got;
 } client_t;
@@ -188,6 +198,13 @@ static void grow(char **b, int *cap, int need)
 	if (need <= *cap) return;
 	while (*cap < need) *cap = *cap ? *cap * 2 : 8192;
 	*b = realloc(*b, (size_t)*cap);
+}
+
+static long now_ms(void)
+{
+	struct timeval tv;
+	gettimeofday(&tv, 0);
+	return (long)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 static void push(const wh_event_t *e)
@@ -224,6 +241,7 @@ static void drop(int i)
 	S.c[i].fd = -1;
 	S.c[i].sub = 0;
 	S.c[i].got = 0;
+	S.c[i].w = S.c[i].h = 0;
 }
 
 /* The clipboard's text, kept: the host's copy of what the page has. */
@@ -269,6 +287,18 @@ static void event_line(const char *l, int seat)
 	case 'W': e.kind = WH_WHEEL;   sscanf(l + 1, "%d %d %d", &e.x, &e.y, &e.d); break;
 	case 'K': e.kind = WH_KEY;     sscanf(l + 1, "%d", &e.key); break;
 	case 'X': e.kind = WH_EXPOSE;  break;
+	case 'Y': return;                       /* still here: heard, in respond */
+	case 'G':                               /* hidden for good (§5ab step 2) */
+		if (S.seats && seat >= 0 && seat < MAXC && S.c[seat].fd >= 0) drop(seat);
+		return;
+	case 'Z':                               /* the seat's size */
+		if (!S.seats || seat < 0 || seat >= MAXC) return;
+		sscanf(l + 1, "%d %d", &e.x, &e.y);
+		if (e.x < 160 || e.y < 120 || e.x > 4096 || e.y > 4096) return;
+		S.c[seat].w = e.x; S.c[seat].h = e.y;
+		e.kind = WH_SIZE;
+		push(&e);
+		return;
 	case 'T': {
 		int i = 0;
 		e.kind = WH_TEXT;
@@ -282,8 +312,15 @@ static void event_line(const char *l, int seat)
 	}
 	default: return;
 	}
-	if (e.kind != WH_EXPOSE && e.kind != WH_KEY && e.kind != WH_TEXT &&
-	    (e.x < 0 || e.y < 0 || e.x >= S.w || e.y >= S.h)) return;
+	{
+		/* a point on the seat's own screen, when it has said its size;
+		   and a hover at -1,-1 is the pointer leaving, not a point */
+		int bw = S.w, bh = S.h;
+		if (S.seats && seat >= 0 && seat < MAXC && S.c[seat].w > 0) { bw = S.c[seat].w; bh = S.c[seat].h; }
+		if (e.kind != WH_EXPOSE && e.kind != WH_KEY && e.kind != WH_TEXT &&
+		    !(e.kind == WH_HOVER && e.x == -1 && e.y == -1) &&
+		    (e.x < 0 || e.y < 0 || e.x >= bw || e.y >= bh)) return;
+	}
 	push(&e);
 }
 
@@ -307,6 +344,7 @@ static void respond(int i)
 		*stop = '\0';
 		/* serving seats, an event is from a screen that is here, or nothing */
 		if (S.seats && (seat < 0 || seat >= MAXC || S.c[seat].fd < 0 || !S.c[seat].sub)) p = stop;
+		else if (S.seats) S.c[seat].last = now_ms();     /* heard from */
 		while (p < stop) {
 			char *nl = strchr(p, '\n');
 			if (nl) *nl = '\0';
@@ -326,6 +364,7 @@ static void respond(int i)
 		if (!S.seats && S.llen > 0) send_all(c->fd, S.log, S.llen);
 		c->sub = 1;
 		c->got = 0;
+		c->last = now_ms();
 		memset(&e, 0, sizeof e);
 		e.kind = S.seats ? WH_JOIN : WH_EXPOSE;
 		e.seat = i;
@@ -377,6 +416,14 @@ static void service(int ms)
 	struct pollfd p[MAXC + 1];
 	int n = 0, idx[MAXC + 1];
 
+	/* a seat not heard from in six seconds has gone (§5ab step 2): a
+	   locked phone, a tab in the background cache -- its connection may
+	   stay open for ever, so silence is the only sign */
+	if (S.seats) {
+		long t = now_ms();
+		for (int i = 0; i < MAXC; i++)
+			if (S.c[i].fd >= 0 && S.c[i].sub && t - S.c[i].last > 6000) drop(i);
+	}
 	p[n].fd = S.lfd; p[n].events = POLLIN; idx[n] = -1; n++;
 	for (int i = 0; i < MAXC; i++)
 		if (S.c[i].fd >= 0) { p[n].fd = S.c[i].fd; p[n].events = POLLIN; idx[n] = i; n++; }
@@ -446,6 +493,7 @@ void wh_seats(int on)
 		if (S.c[i].fd >= 0 && S.c[i].sub) {
 			wh_event_t e;
 			char sn[32];
+			S.c[i].last = now_ms();
 			send_all(S.c[i].fd, sn, snprintf(sn, sizeof sn, "data: S %d\n\n", i));   /* its seat */
 			memset(&e, 0, sizeof e);
 			e.kind = WH_JOIN;
@@ -480,7 +528,14 @@ void wh_write(const void *bytes, int n)
 		char head[64];
 		int full = (S.y1 <= S.y0), hn, mn;
 		for (int i = 0; i < S.dlen; i++) if (S.doc[i] == '\n' || S.doc[i] == '\r') S.doc[i] = ' ';
-		hn = snprintf(head, sizeof head, "data: %d %d %d %d ", S.y0, S.y1, S.w, S.h);
+		{
+			/* the canvas is the document's own size: a seat may have its own */
+			int dw = S.w, dh = S.h;
+			static const char VB[] = "viewBox=\"0 0 ";
+			const char *vb = strstr(S.doc, VB);
+			if (vb != 0) sscanf(vb + sizeof VB - 1, "%d %d", &dw, &dh);
+			hn = snprintf(head, sizeof head, "data: %d %d %d %d ", S.y0, S.y1, dw, dh);
+		}
 		mn = hn + S.dlen + 2;
 		/* a full document: the log starts again -- and serving seats there
 		   is none, since a seat that joins is drawn whole by its program */

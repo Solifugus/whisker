@@ -5004,6 +5004,52 @@ int main(void)
 		}
 	}
 
+	printf("\n-- §5ab  step 2: setting a world's view\n");
+	{
+		static const wsk_widget_t WV[] = { { .kind = WSK_BUTTON, .id = "me", .text = "Me" } };
+		wsk_place_t pl[1] = { { .x = 100, .y = 80, .w = 40, .h = 20, .scale = 256 } };
+		wsk_tree_t w;
+		int y0, y1;
+
+		wsk_init(&w, WSK_COL, 320, 200);
+		w.item = WV; w.n = 1; w.overflow = WSK_WORLD; w.place = pl;
+		w.wspace = WSK_BOUNDED; w.ww = 1000; w.wh = 800;
+		ok(wsk_world_view(&w, 0, 100, 50, 256, &y0, &y1) == 1 && w.vx == 100 && w.vy == 50 &&
+		   y0 == 0 && y1 == 200, "a view inside the world: set as asked, its rows to repaint");
+		ok(wsk_world_view(&w, 0, 100, 50, 256, &y0, &y1) == 0, "CONTROL: the same again: nothing changed, 0");
+		wsk_world_view(&w, 0, 900, -50, 256, &y0, &y1);
+		ok(w.vx == 680 && w.vy == 0, "past the world's right and top: kept inside, at 680,0");
+		wsk_world_view(&w, 0, 0, 0, 64, &y0, &y1);
+		ok(w.zoom == 82, "zoomed out to a quarter: no further than the whole 1000 wide in 320, 82");
+		w.zoom = 256; w.vx = w.vy = 0;
+		w.wspace = WSK_TORUS; w.ww = 400; w.wh = 300;
+		wsk_world_view(&w, 0, 450, -20, 256, &y0, &y1);
+		ok(w.vx == 50 && w.vy == 280, "a torus: 450 wraps to 50, -20 to 280");
+		w.wspace = WSK_BOUNDED; w.ww = 1000; w.wh = 800; w.vx = w.vy = 0;
+
+		/* a window grown past what the world holds at its zoom */
+		w.w = 1100; w.aw = 1100;
+		ok(wsk_check(&w, 0) == WSK_E_SCROLL, "the window grown to 1100 wide sees past a 1000-wide world: refused");
+		ok(wsk_world_view(&w, 0, w.vx, w.vy, w.zoom, &y0, &y1) == 1 && w.zoom == 282 && wsk_check(&w, 0) == WSK_OK,
+		   "the view it had, asked for again: zoomed in to 282, and accepted");
+		{
+			static const wsk_widget_t TOPV[] = {
+				{ .kind = WSK_LABEL, .id = "bar", .text = "bar", .size = 40 },
+				{ .kind = WSK_STACK, .id = "floor", .sub = 0, .weight = 1 },
+			};
+			wsk_tree_t root, k[1];
+			wsk_init(&root, WSK_COL, 320, 200);
+			root.pad = 0; root.gap = 0; root.item = TOPV; root.n = 2; root.nest = k; root.nests = 1;
+			wsk_nest_init(&k[0], &root, WSK_COL);
+			k[0].pad = 0; k[0].item = WV; k[0].n = 1; k[0].overflow = WSK_WORLD; k[0].place = pl;
+			k[0].wspace = WSK_BOUNDED; k[0].ww = 1000; k[0].wh = 800;
+			ok(wsk_world_view(&root, "floor", 200, 100, 256, &y0, &y1) == 1 && k[0].vx == 200 &&
+			   k[0].vy == 100 && y0 == 40 && y1 == 200, "a world in a window, by its id: set, and only its rows");
+			ok(wsk_world_view(&root, "bar", 0, 0, 256, &y0, &y1) == WSK_E_NOTFOUND,
+			   "CONTROL: asked of something that is not a world, WSK_E_NOTFOUND");
+		}
+	}
+
 	/* ---- what an independent read of the night's code found ---- */
 	printf("\n-- review fixes, 2026-11-15\n");
 	{

@@ -15,7 +15,8 @@
  * has the keyboard from the start: the arrows look around, + and - zoom
  * (§5z).
  *
- * Seats (§5ab): each screen that joins takes over a person -- the first one
+ * Seats (§5ab): a screen is the size it says it is (step 2) -- a phone gets
+ * a phone's floor, not a desk's shrunk. Each screen that joins takes over a person -- the first one
  * free -- who stops wandering and walks where that screen says; leaving
  * gives them back. Each seat has its own view, its own status line, and its
  * own copy of every place, so what people say is scaled and faded by
@@ -290,6 +291,21 @@ static void join(int s, int caps)
 	}
 }
 
+/* A seat's screen is w x h (§5ab step 2): its window that size, and its
+   view asked for again -- a wider window may see past the floor's edge at
+   the zoom it had, and wsk_world_view gives the nearest view allowed. */
+static void resize(int s, int w, int h)
+{
+	seat_t *S = &seat[s];
+	int y0, y1;
+	S->win.w = (short)w; S->win.h = (short)h;
+	wsk_area(&S->win, 0, 0, w, h);
+	wsk_world_view(&S->win, "floor", S->nest[0].vx, S->nest[0].vy, S->nest[0].zoom, &y0, &y1);
+	printf("size   seat %d is %dx%d, its view %d,%d at %d/256\n", s, w, h,
+	       S->nest[0].vx, S->nest[0].vy, S->nest[0].zoom);
+	fflush(stdout);
+}
+
 /* A screen goes: its person walks on by themselves. */
 static void gone(int s)
 {
@@ -303,7 +319,7 @@ static void gone(int s)
 
 int main(void)
 {
-	int h = DEV_H, y0, y1, caps = wh_caps();
+	int y0, y1, caps = wh_caps();
 	wsk_sink_t s;
 
 	/* posters along the top wall: stacks, laid out at the floor's zoom */
@@ -391,17 +407,18 @@ int main(void)
 				if (seat[q].following && seat[q].me >= 0 &&
 				    wsk_world_follow(&seat[q].win, "floor", POSTERS + seat[q].me, 30, 64, &fy0, &fy1) == 1)
 					again = 1;
-				if (again) draw(q, &s, 0, h);
+				if (again) draw(q, &s, 0, seat[q].win.h);
 			}
 			continue;
 		}
 		st = he.seat;
 		if (st < 0 || st >= WH_SEATS) continue;
-		if (k == WH_JOIN) { join(st, caps); draw(st, &s, 0, h); continue; }
+		if (k == WH_JOIN) { join(st, caps); draw(st, &s, 0, seat[st].win.h); continue; }
 		if (k == WH_GONE) { gone(st); continue; }
 		S = &seat[st];
 		if (!S->on) continue;
-		if (k == WH_EXPOSE) { draw(st, &s, 0, h); continue; }
+		if (k == WH_EXPOSE) { draw(st, &s, 0, seat[st].win.h); continue; }
+		if (k == WH_SIZE) { resize(st, he.x, he.y); draw(st, &s, 0, seat[st].win.h); continue; }
 		memset(&ev, 0, sizeof ev);
 		ev.x = (short)he.x; ev.y = (short)he.y;
 		if (k == WH_PRESS) { ev.kind = WSK_EV_DOWN; ev.key = (unsigned short)he.key; ev.d = (short)he.d; }
@@ -506,8 +523,8 @@ int main(void)
 		if (everyone) {
 			/* what every seat sees changed: a poster moved or rose */
 			for (int q = 0; q < WH_SEATS; q++)
-				if (seat[q].on) { place_for(q); draw(q, &s, 0, h); }
-		} else if (all) draw(st, &s, 0, h);
+				if (seat[q].on) { place_for(q); draw(q, &s, 0, seat[q].win.h); }
+		} else if (all) draw(st, &s, 0, seat[st].win.h);
 		else if (status_only) draw(st, &s, 0, 40);         /* the status line's rows */
 		else if (y1 > y0) draw(st, &s, y0, y1);
 	}

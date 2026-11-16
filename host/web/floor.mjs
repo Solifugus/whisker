@@ -98,6 +98,9 @@ try {
   });
   await cdp('Page.enable');
   await cdp('Runtime.enable');
+  // the floor is seated (§5ab): the page says its size, so make it the
+  // 1024 x 600 every position below was worked out for
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 1024, height: 600, deviceScaleFactor: 1, mobile: false });
   await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
   await sleep(500);
   ok((await settle()) > 0, 'the conference floor draws in a real browser');

@@ -43,7 +43,9 @@ class Page {
     const r = await this.cdp('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
     return r.result?.value;
   }
-  async go() { await this.cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` }); await sleep(800); }
+  async size(w, h) { await this.cdp('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false }); }
+  async go() { await this.size(1024, 600); await this.cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` }); await sleep(800); }
+  async canvas() { return this.js('[whisker.canvas.width, whisker.canvas.height]'); }
   async at(x, y) {
     return this.js(`(()=>{const r=whisker.canvas.getBoundingClientRect();
       return [r.left+(${x}+0.5)*r.width/whisker.canvas.width, r.top+(${y}+0.5)*r.height/whisker.canvas.height];})()`);
@@ -129,6 +131,16 @@ try {
   ok(said.includes('walk   Ana to 523,414') && (said.match(/walk   Max/g) || []).length === 1,
      'a click on the second walks Ana, and Max\'s walk is untouched');
 
+  // §5ab step 2: a seat its own size -- the second page becomes a phone's
+  // 400 x 700, and gets a floor that size; the first stays 1024 x 600
+  await b.size(400, 700);
+  await sleep(1200);
+  const cb = await b.canvas(), ca = await a.canvas();
+  ok(new RegExp(`size   seat ${sb} is 400x700`).test(said) && cb[0] === 400 && cb[1] === 700,
+     `the second page resized to 400 x 700: its seat is told, and its canvas is ${cb.join(' x ')}`);
+  ok(ca[0] === 1024 && ca[1] === 600, `CONTROL: the first page's is still ${ca.join(' x ')}`);
+  await b.snap('seats_phone.png');
+
   // a page that goes gives its person back; one that comes takes them again
   await fetch(`http://127.0.0.1:${DEBUG}/json/close/${second.id}`);
   await sleep(1000);
@@ -138,6 +150,25 @@ try {
   await b.open();
   await b.go();
   ok((said.match(/join   seat \d+ is Ana/g) || []).length === 2, 'and a page that comes is Ana again -- the first free');
+
+  // navigated away, not closed: its stream may stay open, so the page says
+  // it is going as it is hidden -- a beacon -- and is gone at once
+  await b.cdp('Page.navigate', { url: 'about:blank' });
+  await sleep(700);
+  ok((said.match(/gone   seat \d+, Ana walks on/g) || []).length === 2,
+     'a page navigated away: gone within a second, by its beacon');
+  await b.go();
+  const sc = await b.js('whisker.seat()');
+
+  // frozen -- no script runs, as on a locked phone -- it says nothing, and
+  // after six seconds of silence it is gone; the first, still talking, stays
+  await b.cdp('Debugger.enable');
+  await b.cdp('Debugger.pause');
+  await sleep(7500);
+  ok(new RegExp(`gone   seat ${sc}, Ana walks on`).test(said.slice(said.lastIndexOf('join'))),
+     'a page frozen for seven seconds: gone, by its silence');
+  ok(!new RegExp(`gone   seat ${sa},`).test(said), 'CONTROL: the first page, heard from all along, is still here');
+  await b.cdp('Debugger.resume');
 } finally {
   if (fails) console.log("---- said:\n" + said.slice(-1500));
   try { a?.ws?.close(); b?.ws?.close(); } catch {}
