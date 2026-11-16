@@ -36,7 +36,9 @@
  * back to the last place that touched no one.
  *
  * Point at a poster and the status line gives its abstract; at a person,
- * their name (hover, §5aa).
+ * their name (hover, §5aa). Rest there half a second -- or hold a finger
+ * there -- and a tip says more (§5ac): a poster's abstract, a person's name
+ * and how far away they are.
  *
  * Nobody walks through anybody: whisker says what a step would touch
  * (wsk_world_in, §5q step 4) and this program decides -- you stop and meet
@@ -117,6 +119,7 @@ typedef struct {
 	wsk_ui_t      ui;
 	char          status[160];
 	const char   *strs[POSTERS + 1];
+	char          tip[96];                /* the tip this seat is shown (§5ac) */
 } seat_t;
 static seat_t seat[WH_SEATS];
 
@@ -306,6 +309,36 @@ static void resize(int s, int w, int h)
 	fflush(stdout);
 }
 
+/* The tip for what seat st rests on (§5ac): the program's words, worked
+   out when asked -- a person's distance changes as they walk. 0, none. */
+static const char *tip_for(int st, const wsk_tree_t *in, int item)
+{
+	seat_t *S = &seat[st];
+	const wsk_tree_t *fl = &S->nest[0];
+	int j = -1;
+	if (in == fl) j = item;
+	else if (in > fl && in < &S->nest[TREES]) {
+		int p = (int)((in - &S->nest[1]) / 2);
+		if (in == &S->nest[1 + 2 * p] && item == 2)
+			snprintf(S->tip, sizeof S->tip, "Visit \"%s\"", TITLES[p]);
+		else
+			snprintf(S->tip, sizeof S->tip, "%s: %s", TITLES[p], ABSTRACTS[p]);
+		return S->tip;
+	}
+	if (j >= 0 && j < POSTERS) snprintf(S->tip, sizeof S->tip, "%s: %s", TITLES[j], ABSTRACTS[j]);
+	else if (j >= POSTERS && j < POSTERS + PEOPLE) {
+		int i = j - POSTERS;
+		if (i == S->me) snprintf(S->tip, sizeof S->tip, "%s (you)", NAMES[i]);
+		else if (S->me < 0) snprintf(S->tip, sizeof S->tip, "%s", NAMES[i]);
+		else {
+			int dx = iabs(px[i] - px[S->me]), dy = iabs(py[i] - py[S->me]);
+			int d = (dx > dy) ? dx + dy / 2 : dy + dx / 2;       /* 50 to a metre */
+			snprintf(S->tip, sizeof S->tip, "%s, %d m away", NAMES[i], d / 50);
+		}
+	} else return 0;
+	return S->tip;
+}
+
 /* A screen goes: its person walks on by themselves. */
 static void gone(int s)
 {
@@ -320,6 +353,7 @@ static void gone(int s)
 int main(void)
 {
 	int y0, y1, caps = wh_caps();
+	long last;
 	wsk_sink_t s;
 
 	/* posters along the top wall: stacks, laid out at the floor's zoom */
@@ -384,6 +418,7 @@ int main(void)
 	if (wh_open(DEV_W, DEV_H, 1, "whisker -- a conference floor") != 0) return 1;
 	wh_seats(1);
 	s.put = to_window; s.ctx = 0; s.len = 0;
+	last = wh_ms();
 
 	for (;;) {
 		wh_event_t he;
@@ -395,12 +430,29 @@ int main(void)
 		if (k == WH_QUIT) break;
 		if (k == WH_NOTHING) {
 			/* a frame: everyone takes a step, and each floor is drawn again */
-			int moved;
+			int moved, ms;
 			wh_wait(40);
+			ms = (int)(wh_ms() - last);
+			last += ms;
 			moved = step();
 			for (int q = 0; q < WH_SEATS; q++) {
-				int fy0, fy1, again = moved;
+				int fy0, fy1, again = moved, tn, ty0 = 0, ty1 = 0;
+				wsk_event_t tick;
+				wsk_note_t tnote[2];
 				if (!seat[q].on) continue;
+				/* time passing, for tips (§5ac): one rested long enough asks */
+				memset(&tick, 0, sizeof tick);
+				tick.kind = WSK_EV_TICK;
+				tick.d = (short)((ms > 30000) ? 30000 : ms);
+				tn = wsk_feed(&seat[q].ui, &tick, tnote, 2, &ty0, &ty1);
+				for (int i = 0; i < tn && i < 2; i++)
+					if (tnote[i].kind == WSK_NOTE_TIP) {
+						const char *t = tip_for(q, tnote[i].in, tnote[i].item);
+						if (t != 0 && wsk_ui_tip(&seat[q].ui, t, &ty0, &ty1) == WSK_OK) {
+							printf("tip    %s\n", t);
+							fflush(stdout);
+						}
+					}
 				if (moved) place_for(q);
 				/* the view glides after its person: 30% margin, a quarter
 				   of the way a frame */
@@ -408,6 +460,7 @@ int main(void)
 				    wsk_world_follow(&seat[q].win, "floor", POSTERS + seat[q].me, 30, 64, &fy0, &fy1) == 1)
 					again = 1;
 				if (again) draw(q, &s, 0, seat[q].win.h);
+				else if (ty1 > ty0) draw(q, &s, ty0, ty1);    /* a tip opened */
 			}
 			continue;
 		}
@@ -525,8 +578,10 @@ int main(void)
 			for (int q = 0; q < WH_SEATS; q++)
 				if (seat[q].on) { place_for(q); draw(q, &s, 0, seat[q].win.h); }
 		} else if (all) draw(st, &s, 0, seat[st].win.h);
-		else if (status_only) draw(st, &s, 0, 40);         /* the status line's rows */
-		else if (y1 > y0) draw(st, &s, y0, y1);
+		else {
+			if (status_only) draw(st, &s, 0, 40);          /* the status line's rows */
+			if (y1 > y0) draw(st, &s, y0, y1);             /* and whisker's: a tip closed */
+		}
 	}
 	wh_close();
 	return 0;

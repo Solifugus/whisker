@@ -1917,6 +1917,51 @@ int main(void)
 		shot("posters.ppm");
 	}
 
+	/*
+	 * A tooltip (§5ac) at the pixels: a finger held on a button, the tip
+	 * the program gave drawn below it -- a box in the window's ink, the
+	 * letters in its background, over the label beneath.
+	 */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_BUTTON, .id = "save", .text = "Save", .size = 40 },
+			{ .kind = WSK_LABEL,  .id = "body", .text = "under the tip", .size = 60 },
+		};
+		wsk_tree_t t;
+		wsk_ui_t ui;
+		wsk_note_t nt[2];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		uint32_t v;
+		int y0, y1, lo, hi, box, dark = 0;
+		wsk_rect_t r = { 8, 50, 120, 24 };
+
+		wsk_init(&t, WSK_COL, PW, PH);
+		t.bg = 0x10203au; t.ink = 0xf0f0e0u; t.item = F; t.n = 2; t.pad = 8; t.gap = 2;
+		wsk_ui_init(&ui, &t);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 60; ev.y = 20; ev.key = WSK_MOD_TOUCH;
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+		ev.kind = WSK_EV_TICK; ev.d = 500; ev.key = 0;
+		wsk_feed(&ui, &ev, nt, 2, &y0, &y1);
+		printf("\n  a tooltip (§5ac)\n");
+		ok(wsk_ui_tip(&ui, "Saves the file", &y0, &y1) == WSK_OK && t.tx == 8 && t.ty == 50 && t.tw == 120 && t.th == 24,
+		   "a finger held on Save: its tip, 120 x 24 at 8,50 -- below the button, over the label");
+		s.put = to_window; s.ctx = &dev;
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&t, &s, 4096);
+		box = span(r, pix565(0xf0f0e0u), &lo, &hi);
+		for (int y = r.y; y < r.y + r.h; y++)
+			for (int x = r.x; x < r.x + r.w; x++) {
+				uint16_t p = at(x, y);
+				if (((p >> 11) & 0x1F) + ((p >> 6) & 0x1F) + (p & 0x1F) < 30) dark++;
+			}
+		printf("    the box: %d pixels of the ink, %d of letters, %d of them dark\n", box, 120 * 24 - box, dark);
+		ok(box > 120 * 24 / 2 && 120 * 24 - box > 300 && dark > 0,
+		   "drawn in the ink, with letters on it -- anti-aliased, a few of them the background itself");
+		shot("tooltip.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

@@ -63,7 +63,8 @@ enum {
 /* Modifiers on `key` (§5s), whisker's WSK_MOD_* numbers: on a named key, or
    on a printable character, lower-case, for a chord -- Ctrl-S is
    's' | WH_MOD_CTRL. On a press, whether Shift was held. */
-enum { WH_MOD_SHIFT = 0x100, WH_MOD_CTRL = 0x200, WH_MOD_ALT = 0x400 };
+enum { WH_MOD_SHIFT = 0x100, WH_MOD_CTRL = 0x200, WH_MOD_ALT = 0x400,
+       WH_MOD_TOUCH = 0x800 };   /* on a press: a finger, not a mouse (§5ac) */
 
 typedef struct {
 	int  kind;               /* WH_* */
@@ -125,6 +126,10 @@ int  wh_poll(wh_event_t *out);
  */
 int  wh_copy(const char *s, int n);
 int  wh_paste(char *b, int cap);
+
+/* Milliseconds from some fixed moment, never going back: what a program
+   measures to tell whisker how much time has passed (§5ac's ticks). */
+long wh_ms(void);
 
 /* Wait up to this long for something to happen, so a loop need not spin. */
 void wh_wait(int ms);

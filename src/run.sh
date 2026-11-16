@@ -85,14 +85,14 @@ for D in "" -DWSK_PANEL -DWSK_MINIMAL -DWSK_NO_FIELD -DWSK_NO_MARKS -DWSK_NO_SCR
          -DWSK_NO_NEST -DWSK_NO_WRAP -DWSK_NO_TEXT -DWSK_NO_OVER -DWSK_NO_CHECK \
          -DWSK_NO_MEMO -DWSK_NO_INPUT -DWSK_NO_UTF8 -DWSK_NO_IMAGE -DWSK_NO_TEXTSEL -DWSK_NO_UNDO -DWSK_NO_SOURCE -DWSK_NO_ENTITY \
          -DWSK_NO_WORDS -DWSK_NO_SPLIT -DWSK_NO_MENUKEYS \
-         -DWSK_NO_WORLD -DWSK_NO_LISTKEYS -DWSK_NO_HOVER; do
+         -DWSK_NO_WORLD -DWSK_NO_LISTKEYS -DWSK_NO_HOVER -DWSK_NO_TIP; do
 	if ${CC:-gcc} -O1 -Wall -Wextra -Werror $D -I"$HERE" -c -o /dev/null /tmp/wsk_switch.c 2>/tmp/wsk_switch.err; then
 		:
 	else
 		echo "FAIL  whisker.h does not build with '${D:-the default}'"; head -5 /tmp/wsk_switch.err; exit 1
 	fi
 done
-echo "ok    whisker.h builds with each of the 25 profiles and switches, -Werror"
+echo "ok    whisker.h builds with each of the 26 profiles and switches, -Werror"
 
 echo
 echo "-- 3, 8  through RV-9's own rasteriser, to a picture"
@@ -158,6 +158,8 @@ link_check module_nest.c "module_nest.c -DWSK_NO_MENUKEYS" -DWSK_NO_MENUKEYS
 NOMENUKEYS="$SIZE"
 link_check module_nest.c "module_nest.c -DWSK_NO_HOVER" -DWSK_NO_HOVER
 NOHOVER="$SIZE"
+link_check module_nest.c "module_nest.c -DWSK_NO_TIP" -DWSK_NO_TIP
+NOTIP="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_SOURCE" -DWSK_NO_SOURCE
 NOSOURCE="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_CHECK" -DWSK_NO_CHECK
@@ -185,7 +187,7 @@ printf "        UTF-8 %d, the world %d;\n" "$(( FULL - NOUTF8 ))" "$(( FULL - NO
 printf "        overlays %d, selection and the clipboard %d, undo %d, words %d, dividers %d,\n" \
 	"$(( NEST - NOOVER ))" "$(( NEST - NOSEL ))" "$(( NEST - NOUNDO ))" "$(( NEST - NOWORDS ))" \
 	"$(( NEST - NOSPLIT ))"
-printf "        menu keys %d, hover %d,\n" "$(( NEST - NOMENUKEYS ))" "$(( NEST - NOHOVER ))"
+printf "        menu keys %d, hover %d, tooltips %d,\n" "$(( NEST - NOMENUKEYS ))" "$(( NEST - NOHOVER ))" "$(( NEST - NOTIP ))"
 echo "        to a toolkit program (module_nest.c)."
 echo "      A reduced build is the same renderer, not a second one (§7): what it"
 echo "      keeps it draws byte for byte, and what it lacks it refuses by name."

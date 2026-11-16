@@ -281,6 +281,16 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   caller's, is the z order (0 = array order, byte-identical), and
   `wsk_world_raise` or a press on a movable item puts it on top
   (`WSK_NOTE_RAISE`). The floor's posters are arranged by hand. +184 bytes.
+- **§5ac — tooltips** (2026-11-15, Matthew chose press-and-hold for touch):
+  a rest — a mouse resting (§5aa), a finger held (a press with
+  `WSK_MOD_TOUCH`), Tab's focus — counted by **`WSK_EV_TICK`** (whisker has
+  no clock; `wh_ms()` in the host contract), and after 500 ms
+  `WSK_NOTE_TIP`, once. **The program gives the text** with `wsk_ui_tip`,
+  or none; whisker places and draws it, inverted, over everything, never
+  hit. A finger lifted after its tip showed does not click. A context
+  menu during a press now ends its click. 912 bytes; kept by `WSK_PANEL`.
+  **Browser tests kill their Chrome however they end** — one left running
+  rejoined the next run as extra seats.
 - **§5ab — seats: several people at one program** (2026-11-15): the host
   contract gains `seat` on each event, `wh_seats(1)`, `WH_JOIN`/`WH_GONE`
   and `wh_to(seat)`; the browser host makes each page's event stream a
@@ -315,13 +325,13 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **972 checks**, including a step
+`src/run.sh --module` is the whole of it: **995 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 51 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
-the code editor (`code.mjs`) and 20 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`).
+the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`).
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

@@ -5050,6 +5050,121 @@ int main(void)
 		}
 	}
 
+	printf("\n-- §5ac  tooltips\n");
+	{
+		static const wsk_widget_t TP[] = {
+			{ .kind = WSK_BUTTON, .id = "save", .text = "Save", .size = 40 },
+			{ .kind = WSK_LABEL,  .id = "body", .text = "body", .size = 100 },
+			{ .kind = WSK_BUTTON, .id = "low",  .text = "Low",  .size = 40 },
+		};
+		wsk_tree_t t3;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		char td[4096];
+		int y0 = 0, y1 = 0, n;
+
+		wsk_init(&t3, WSK_COL, 320, 200);
+		t3.pad = 0; t3.gap = 0; t3.item = TP; t3.n = 3;
+		wsk_ui_init(&ui, &t3);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_HOVER; ev.x = 100; ev.y = 20;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_TICK; ev.d = 300;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.d = 199;
+		n += wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0, "the mouse rests on Save: at 499 ms, nothing");
+		ev.d = 1;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_TIP && nt[0].in == &t3 && nt[0].item == 0,
+		   "at 500, TIP: Save");
+		ev.d = 600;
+		ok(wsk_feed(&ui, &ev, nt, 4, &y0, &y1) == 0, "and resting on, it asks only once");
+		render_into(&t3, td, sizeof td, 4096);
+		ok(!has(td, "Saves the file"), "CONTROL: asked, but not answered, there is no tip");
+		ok(wsk_ui_tip(&ui, "Saves the file", &y0, &y1) == WSK_OK && t3.tx == 0 && t3.ty == 42 &&
+		   t3.tw == 14 * 8 + 8 && t3.th == 24 && y0 <= 42 && y1 >= 66,
+		   "answered: a box below Save, 42..66, 14 characters and its padding wide -- its rows to repaint");
+		render_into(&t3, td, sizeof td, 4096);
+		ok(has(td, "<rect y=\"42\" width=\"120\" height=\"24\" fill=\"#fff\"/><text text-anchor=\"start\" x=\"4\" y=\"58\" fill=\"#102030\">Saves the file</text></g></svg>"),
+		   "drawn last, over everything: a box in the window's ink, the letters in its background");
+
+		/* a mouse moving on closes it */
+		ev.kind = WSK_EV_HOVER; ev.y = 80;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(t3.tip == 0 && y0 <= 42 && y1 >= 66, "the mouse rests on the label instead: the tip closes, its rows repaint");
+		ok(wsk_ui_tip(&ui, "late", &y0, &y1) == WSK_E_NOTFOUND, "CONTROL: a tip nobody asked for is refused");
+
+		/* placed above at the bottom, cut at the width */
+		ev.y = 160;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_TICK; ev.d = 500;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].item == 2 && wsk_ui_tip(&ui, "Low", &y0, &y1) == WSK_OK && t3.ty == 140 - 24 - 2,
+		   "Low, at the bottom: its tip goes above it, at 114");
+		ok(wsk_ui_tip(&ui, "a tip far too long to fit across a screen three hundred and twenty wide", &y0, &y1) == WSK_OK &&
+		   t3.tx == 0 && t3.tw == 320, "a tip wider than the screen: the screen's width");
+		render_into(&t3, td, sizeof td, 4096);
+		ok(has(td, ">a tip far too long to fit across a scre</text>"), "and its text cut to the 39 characters that fit");
+		ok(wsk_ui_tip(&ui, "a < b", &y0, &y1) == WSK_E_TEXT, "a tip the window cannot draw is refused, as a label's text is");
+
+		/* a mouse press never tips; a finger held does */
+		ev.kind = WSK_EV_HOVER; ev.x = -1; ev.y = -1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.x = 100; ev.y = 20; ev.key = 0;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_TICK; ev.d = 800;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n += 10 * wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 10 && nt[0].kind == WSK_NOTE_CLICK, "a mouse pressed on Save and held 800 ms: no tip, and its release clicks");
+		ev.kind = WSK_EV_DOWN; ev.key = WSK_MOD_TOUCH;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_TICK; ev.d = 500; ev.key = 0;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_TIP && nt[0].item == 0, "a finger held on Save 500 ms: TIP");
+		wsk_ui_tip(&ui, "Saves the file", &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0 && t3.tip == 0 && t3.held == 0 && y0 <= 42 && y1 >= 66,
+		   "lifted after its tip showed: no click -- the hold was used -- and the tip closes");
+		ev.kind = WSK_EV_DOWN; ev.key = WSK_MOD_TOUCH;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_TICK; ev.d = 500; ev.key = 0;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK, "CONTROL: held as long, but the program gave no tip: it clicks");
+		ev.kind = WSK_EV_DOWN; ev.key = WSK_MOD_TOUCH;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.y = 60; ev.key = 0;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_TICK; ev.d = 800;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0, "a finger that moves 40 px is dragging: no tip");
+		ev.kind = WSK_EV_UP;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.y = 20; ev.key = WSK_MOD_TOUCH;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_MENU; ev.key = 0;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0, "a long press that asked for a menu: its lifting is not also a click");
+
+		/* the keyboard: focus arriving rests */
+		ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_TAB;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_TICK; ev.d = 500; ev.key = 0;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_TIP && nt[0].in == &t3, "Tab to a button, and 500 ms: TIP for it");
+		wsk_ui_tip(&ui, "Saves the file", &y0, &y1);
+		ev.kind = WSK_EV_TEXT; ev.text[0] = 'x'; ev.text[1] = 0;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(t3.tip == 0, "and typing closes it");
+	}
+
 	/* ---- what an independent read of the night's code found ---- */
 	printf("\n-- review fixes, 2026-11-15\n");
 	{

@@ -21,6 +21,13 @@ const chrome = spawn('google-chrome', ['--headless=new', `--remote-debugging-por
   `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
   '--window-size=1100,700', 'about:blank'], { stdio: 'ignore' });
 
+// however this ends -- a failure, ^C, the reader of its output going away --
+// Chrome and the program go with it: a Chrome left running keeps its pages,
+// which reconnect to the next run's program on the same port as extra seats
+const reap = () => { try { chrome.kill('SIGKILL'); } catch {} try { app.kill('SIGKILL'); } catch {} };
+process.on('exit', reap);
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGPIPE']) process.on(sig, () => { reap(); process.exit(1); });
+
 // one page, driven over its own DevTools connection
 class Page {
   constructor(target) { this.target = target; this.seq = 0; this.waiting = new Map(); }

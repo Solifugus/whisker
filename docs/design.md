@@ -3336,6 +3336,97 @@ wanting flush would search between the two.
 lowers by raising everything else, as the floor does); a move is not
 undone by Escape.
 
+## 5ac. Tooltips — on a mouse, a finger and a key (2026-11-15), written before its code
+
+Matthew: *"With a mouse hover, this is obvious but what about for touch
+displays? Maybe two finger touch?"* — and, on the answer, *"build it that
+way"*. Two fingers was set aside: nobody finds it, and it is pinch's and
+two-finger scroll's. **Press and hold** is what a phone already teaches —
+Android shows a toolbar icon's tooltip on a long press, and lifting then
+does nothing.
+
+1. **What starts a rest**, each restarting the count:
+   - a mouse **resting** on a widget (§5aa's hover, its target changing);
+   - a **finger held** on one — a press whose `key` carries the new
+     **`WSK_MOD_TOUCH`**, which a host sets on a press from a touch screen
+     (SDL's fingers, the browser's touch pointers, the P4);
+   - **keyboard focus** arriving on one by Tab.
+2. **Time**: whisker has no clock (it never had). **`WSK_EV_TICK`**, `d` the
+   milliseconds since the last tick, is how time reaches it; a host
+   contract gains **`wh_ms()`** so a loop can measure them. A program that
+   never ticks never gets a tip.
+3. After **500 ms** of rest (`ui.tip_wait`, the caller's) whisker says
+   **`WSK_NOTE_TIP`** once, with the widget. **The text is the program's**:
+   it answers with **`wsk_ui_tip(ui, text, &y0, &y1)`** — or does not, and
+   there is no tip. Widgets may be in flash and some tips are worked out
+   when asked ("Ana, 12 m away"), so the text is never a widget field.
+4. **whisker draws it**: one line in a box of the window's ink with its
+   background's colour for the letters — inverted, so it reads over
+   anything — placed below the widget, else above, kept on the screen
+   across, cut to fit. On the root, after any overlay; drawn, never hit:
+   it takes no press from what it covers.
+5. **Closing**: the pointer resting on something else, a press, a key,
+   typing, the wheel, a context menu — and for a finger, lifting or a drag
+   past the slop. **A finger lifted after its tip showed does not click**:
+   the hold was used. Lifted before — or when the program gave no tip —
+   it clicks as always. A mouse press never shows a tip, held or not.
+6. **The context menu**, which a long press also asks for on a phone: the
+   program decides per widget — one with a menu ignores TIP and opens its
+   menu on MENU; one with a tip answers TIP. Nothing in whisker chooses.
+7. **`WSK_NO_TIP`**, implied by `WSK_NO_INPUT`. Not set by `WSK_PANEL`: a
+   touch panel holds a finger as well as a desk rests a mouse.
+
+Done when: a rest of 499 ms says nothing and 500 says TIP, once; a tip
+shown below, above at the bottom, clamped at the right, cut at the width;
+closed by each closer with its rows; a finger's tip eating the click and a
+declined one not; a mouse press held never tipping; a drag cancelling; Tab
+tipping; text refused as a label's is; nothing drawn without a tip (every
+earlier output byte-identical); a picture; and in Chrome a poster tipped by
+a mouse resting and by a finger held.
+
+### What it came to, 2026-11-15
+
+As written. **995 checks** (972): 22 in the suite, the picture, a 26th
+switch built. Every earlier output — 42 files — byte-identical. Web 106
+(101), the Linux host 51.
+
+- In the suite: 499 ms of rest says nothing and 500 says TIP, once; asked
+  but unanswered draws nothing (the control); answered, a box below Save at
+  42..66, 120 wide, drawn last in the window's ink with its letters in the
+  background's; the mouse moving on closes it with its rows; a tip nobody
+  asked for refused; at the bottom it goes above; wider than the screen it
+  is the screen's width, its text cut to 39 characters; text the window
+  cannot draw refused. A mouse pressed and held 800 ms never tips and
+  clicks; a finger held 500 ms tips, and lifted then does not click — but
+  held as long with no tip given, it does (the control); a finger moved
+  40 px is dragging, no tip; a long press that asked for a menu does not
+  also click; Tab to a button, 500 ms, TIP; typing closes it.
+- **At the pixels** (`tooltip.ppm`, looked at): the box under Save, over
+  the label, 2,302 pixels of the ink and 578 of letters.
+- **In Chrome**: the mouse resting on a poster's title shows its tip — a
+  white box of ~7,000 pixels under it — and moving off closes it (167 left:
+  the abstract's own letters); a finger (`Input.dispatchTouchEvent`) held on
+  Visit shows *Visit "Tiny GUIs on RISC-V"* and lifting does not visit; a
+  quick tap visits exactly once (the control — the browser's mouse events
+  that follow a touch do not press twice).
+- The floor's tips are worked out when asked: a poster's abstract, Visit's
+  title, a person's name and distance ("Ana, 12 m away"), your own "(you)".
+
+**Found on the way**:
+
+- **A long press that asked for a menu also clicked** when the finger
+  lifted — true before tips, and visible with them. A context menu asked
+  for during a press now ends that press's click.
+- **A test run cut short left Chrome running**, with its pages pointed at
+  the next run's program on the same port — they rejoined as extra seats,
+  and the seat checks failed for a reason that was not the code. Every
+  browser test now kills its Chrome and program however it ends.
+
+**§7's question**: 912 bytes to a toolkit program; kept by `WSK_PANEL` —
+168 bytes on a small panel, 808 on the keyboard module, which uses the
+toolkit. **Not checked by hand**: SDL's `WH_MOD_TOUCH` on a real
+touchscreen (the test harness cannot fake one), and the P4.
+
 ## 5ab. Seats — several people at one program (2026-11-15), written before its code
 
 Matthew chose it from five: the step toward the conference he means to

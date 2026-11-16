@@ -114,6 +114,7 @@
  *     -DWSK_NO_WORLD    a world: placed items, a view and a zoom (§5q)
  *     -DWSK_NO_LISTKEYS a list or a world as one Tab stop, and its keys (§5z)
  *     -DWSK_NO_HOVER    what the pointer rests on, for a host that has one (§5aa)
+ *     -DWSK_NO_TIP      tooltips: a rest, a hold, a key's focus (§5ac)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -248,6 +249,9 @@
 #endif
 #if (defined(WSK_NO_INPUT) || defined(WSK_NO_FIELD)) && !defined(WSK_NO_WORDS)
 #  define WSK_NO_WORDS 1           /* and words are the toolkit's moves (§5w) */
+#endif
+#if defined(WSK_NO_INPUT) && !defined(WSK_NO_TIP)
+#  define WSK_NO_TIP 1             /* a tip answers a rest the toolkit counts (§5ac) */
 #endif
 #if defined(WSK_NO_INPUT) && !defined(WSK_NO_HOVER)
 #  define WSK_NO_HOVER 1           /* hover is an event the toolkit takes (§5aa) */
@@ -652,6 +656,13 @@ typedef struct wsk_tree {
 
 	/* What the host can draw beyond /w0: WSK_CAP_*, on the root (§5r). */
 	unsigned char caps;
+
+#ifndef WSK_NO_TIP
+	/* A tooltip (§5ac), on the root, set by wsk_ui_tip: the program's text,
+	   its memory, or 0; and the box whisker placed it in. */
+	const char   *tip;
+	short         tx, ty, tw, th;
+#endif
 
 #ifndef WSK_NO_WORLD
 	/*
@@ -1598,6 +1609,10 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->rdepth = 0;
 	t->rindent = 0;
 	t->caps = 0;
+#ifndef WSK_NO_TIP
+	t->tip = 0;
+	t->tx = t->ty = t->tw = t->th = 0;
+#endif
 #ifndef WSK_NO_SPLIT
 	t->sizes = 0;
 #endif
@@ -4424,6 +4439,28 @@ static inline void wsk_shut(wsk_sink_t *s) { wsk__s(s, "</g></svg>"); }
 /* One stack, which is open + part + shut and is deliberately nothing else:
    the single-stack path and the composite path are the same code, so they
    cannot come to disagree about what a document looks like (D2). */
+#ifndef WSK_NO_TIP
+/*
+ * A tip (§5ac rule 4): a box in the window's ink, its letters in the
+ * window's background -- inverted, so it reads over whatever it covers --
+ * one line, cut to the box. Nothing when there is no tip, so a window
+ * without one draws exactly what it always did.
+ */
+static inline void wsk__tipbox(const wsk_doc_t *d, const wsk_tree_t *t, wsk_sink_t *s)
+{
+	wsk_rect_t v;
+	int pad = 4, len, fit, n;
+	if (t->tip == 0 || t->ty >= d->y1 || t->ty + t->th <= d->y0) return;
+	v.x = t->tx; v.y = t->ty; v.w = t->tw; v.h = t->th;
+	wsk__box(s, 0, v, t->ink);
+	len = wsk__len(t->tip);
+	fit = (t->tw - 2 * pad) / wsk_advance(t->font);
+	n = (wsk__chars(t->tip, len) > fit) ? wsk__byte_of(t->tip, len, fit) : len;
+	if (n > 0)
+		wsk__textel(s, 1, t->tx + pad, wsk_baseline_of(t->ty + pad, t->font), t->bg, t->tip, n);
+}
+#endif
+
 static inline void wsk__doc(const wsk_tree_t *t, int y0, int y1, wsk_sink_t *s)
 {
 	wsk_doc_t d;
@@ -4436,6 +4473,9 @@ static inline void wsk__doc(const wsk_tree_t *t, int y0, int y1, wsk_sink_t *s)
 	(void)wsk_part(&d, t, s);    /* d came from t: it cannot be refused here */
 #ifndef WSK_NO_OVER
 	wsk__overlay(&d, t, s);      /* after the root, so on top of it (§5l) */
+#endif
+#ifndef WSK_NO_TIP
+	wsk__tipbox(&d, t, s);       /* and a tip over everything (§5ac) */
 #endif
 	wsk_shut(s);
 }
@@ -4580,8 +4620,10 @@ static inline int wsk_compose(wsk_body_t body, void *ctx, wsk_sink_t *sink,
  */
 enum { WSK_EV_DOWN = 1, WSK_EV_MOVE, WSK_EV_UP, WSK_EV_WHEEL, WSK_EV_KEY, WSK_EV_TEXT,
        WSK_EV_MENU,               /* a right-click, or a long press: at x, y (§5s) */
-       WSK_EV_HOVER };            /* the pointer moved with nothing held: at x, y, or
+       WSK_EV_HOVER,              /* the pointer moved with nothing held: at x, y, or
                                      -1, -1 when it left the window (§5aa) */
+       WSK_EV_TICK };             /* time passed: d milliseconds since the last tick --
+                                     whisker has no clock of its own (§5ac) */
 
 typedef struct {
 	unsigned char  kind;
@@ -4609,8 +4651,10 @@ enum { WSK_NOTE_CLICK = 1, WSK_NOTE_SCROLL, WSK_NOTE_TEXT, WSK_NOTE_ENTER,
                                      its zoom (§5q step 3) */
        WSK_NOTE_MOVE,             /* a world's item dragged: in, the world; item (step 6) */
        WSK_NOTE_RAISE,            /* ... and brought to the top of its order */
-       WSK_NOTE_HOVER };          /* the pointer rests on something else: in, item and
+       WSK_NOTE_HOVER,            /* the pointer rests on something else: in, item and
                                      value (the word) as a click's; in 0, nothing (§5aa) */
+       WSK_NOTE_TIP };            /* it has rested long enough for a tip: answer with
+                                     wsk_ui_tip, or do not (§5ac) */
 
 /* The keys that mean something to a field (§5j). A character typed is TEXT,
    not a key, so that a keyboard layout stays the host's business. */
@@ -4622,7 +4666,8 @@ enum { WSK_KEY_LEFT = 1, WSK_KEY_RIGHT, WSK_KEY_HOME, WSK_KEY_END,
 /* Modifiers ride on the key (§5s rule 2): a named key above, or for a chord
    a printable character, lower-case -- Ctrl-S is 's' | WSK_MOD_CTRL. A key
    with none is exactly what it always was. On a press, whether Shift is held. */
-enum { WSK_MOD_SHIFT = 0x100, WSK_MOD_CTRL = 0x200, WSK_MOD_ALT = 0x400 };
+enum { WSK_MOD_SHIFT = 0x100, WSK_MOD_CTRL = 0x200, WSK_MOD_ALT = 0x400,
+       WSK_MOD_TOUCH = 0x800 };   /* on a press: a finger, which may hold for a tip (§5ac) */
 
 typedef struct {
 	unsigned char     kind;
@@ -4676,6 +4721,15 @@ typedef struct {
 #ifndef WSK_NO_SOURCE
 	int               gline;     /* a press in a source's gutter: its line, or -1 */
 #endif
+#ifndef WSK_NO_TIP
+	/* A rest, counted toward a tip (§5ac): what rests, where it is, how
+	   long; 0 none, 1 counting, 2 asked; whether a finger holds it */
+	const wsk_tree_t *tip_in;
+	short             tip_item;
+	wsk_rect_t        tip_r;
+	int               tip_ms, tip_wait;  /* tip_wait: the caller's, 500 by default */
+	unsigned char     tip_state, tip_hold;
+#endif
 #ifndef WSK_NO_HOVER
 	const wsk_tree_t *hover_in;  /* what the pointer rests on: its tree, or 0, */
 	short             hover_item, hover_word; /* its index and word (§5aa) */
@@ -4712,6 +4766,14 @@ static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
 	ui->hover_in = 0;
 	ui->hover_item = ui->hover_word = -1;
 #endif
+#ifndef WSK_NO_TIP
+	ui->tip_in = 0;
+	ui->tip_item = -1;
+	ui->tip_ms = 0;
+	ui->tip_wait = 500;
+	ui->tip_state = ui->tip_hold = 0;
+	root->tip = 0;
+#endif
 #ifndef WSK_NO_SPLIT
 	ui->split = 0;
 #endif
@@ -4723,6 +4785,78 @@ static inline void wsk_ui_init(wsk_ui_t *ui, wsk_tree_t *root)
 	for (int i = 0; root->buf != 0 && i < root->bufs; i++) root->buf[i].span = 0;
 #endif
 }
+
+#ifndef WSK_NO_TIP
+/* Rows y0..y1, band-snapped as wsk_feed's are, from a span. */
+static inline void wsk__rows_out(const wsk_tree_t *r, int lo, int hi, int *y0, int *y1)
+{
+	if (hi > lo) {
+		lo = (lo / WSK_BAND) * WSK_BAND;
+		hi = wsk__round_band(hi);
+		if (lo < 0) lo = 0;
+		if (hi > r->h) hi = r->h;
+	} else lo = hi = 0;
+	*y0 = lo;
+	*y1 = hi;
+}
+
+/* An open tip closed, its rows to repaint. */
+static inline void wsk__tip_close(wsk_ui_t *ui, int *lo, int *hi)
+{
+	wsk_tree_t *r = ui->root;
+	if (r->tip == 0) return;
+	if (*lo > r->ty) *lo = r->ty;
+	if (*hi < r->ty + r->th) *hi = r->ty + r->th;
+	r->tip = 0;
+}
+
+/* A new rest (§5ac rule 1) -- on item of in, at rect, held by a finger or
+   not -- or, item < 0, none: either way any tip shown is closed. */
+static inline void wsk__tip_rest(wsk_ui_t *ui, const wsk_tree_t *in, int item,
+                                 wsk_rect_t rect, int hold, int *lo, int *hi)
+{
+	wsk__tip_close(ui, lo, hi);
+	ui->tip_in = (item >= 0) ? in : 0;
+	ui->tip_item = (short)((item >= 0) ? item : -1);
+	ui->tip_r = rect;
+	ui->tip_ms = 0;
+	ui->tip_state = (item >= 0) ? 1 : 0;
+	ui->tip_hold = (unsigned char)(hold && item >= 0);
+}
+
+/*
+ * Show a tip (§5ac rule 3): the program's answer to WSK_NOTE_TIP, its text
+ * in its own memory, which must outlive the tip. One line, placed below the
+ * widget that rested -- else above -- and kept on the screen; the rows to
+ * repaint. WSK_E_NOTFOUND if no rest has asked for one; WSK_E_TEXT for text
+ * the window cannot draw, as a label's would be refused.
+ */
+static inline int wsk_ui_tip(wsk_ui_t *ui, const char *text, int *y0, int *y1)
+{
+	wsk_tree_t *r = ui->root;
+	wsk_rect_t a = ui->tip_r;
+	int lo = 32767, hi = -1, pad = 4, w, h, x, y;
+	*y0 = *y1 = 0;
+	if (ui->tip_state != 2 || ui->tip_item < 0) return WSK_E_NOTFOUND;
+	if (text == 0 || text[0] == '\0' || !wsk__text_ok(text, r->caps)) return WSK_E_TEXT;
+	wsk__tip_close(ui, &lo, &hi);
+	w = wsk_text_w(r->font, wsk__chars(text, wsk__len(text))) + 2 * pad;
+	h = r->font + 2 * pad;
+	if (w > r->w) w = r->w;
+	x = a.x;
+	if (x + w > r->w) x = r->w - w;
+	if (x < 0) x = 0;
+	y = a.y + a.h + 2;
+	if (y + h > r->h) y = a.y - h - 2;
+	if (y < 0) y = 0;
+	r->tip = text;
+	r->tx = (short)x; r->ty = (short)y; r->tw = (short)w; r->th = (short)h;
+	if (lo > y) lo = y;
+	if (hi < y + h) hi = y + h;
+	wsk__rows_out(r, lo, hi, y0, y1);
+	return WSK_OK;
+}
+#endif
 
 /* The deepest widget at a point, its tree, its rectangle as cut, and its
    word if it is a paragraph's. */
@@ -5714,7 +5848,17 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
                            wsk_note_t *note, int max, int *y0, int *y1)
 {
 	wsk_tree_t *r = ui->root;
-	int n = 0, lo = 32767, hi = -1, x = ev->x, y = ev->y, used = 0;
+	int n = 0, lo = 32767, hi = -1, x = ev->x, y = ev->y, used = 0, ate = 0;
+
+#ifndef WSK_NO_TIP
+	/* a press, a key, typing, the wheel, a menu: any tip closes and the
+	   rest ends (§5ac rule 5) -- a finger's press and Tab start another */
+	if (ev->kind == WSK_EV_DOWN || ev->kind == WSK_EV_KEY || ev->kind == WSK_EV_TEXT ||
+	    ev->kind == WSK_EV_WHEEL || ev->kind == WSK_EV_MENU) {
+		wsk_rect_t z = { 0, 0, 0, 0 };
+		wsk__tip_rest(ui, 0, -1, z, 0, &lo, &hi);
+	}
+#endif
 
 #ifndef WSK_NO_OVER
 	/* A press off an open overlay closes it, and goes no further: the tap
@@ -5790,6 +5934,15 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		wsk_tree_t at;
 		wsk_rect_t rect = { 0, 0, 0, 0 };
 		int word = -1, k;
+		/* asked by a finger still down -- a phone's long press -- the press
+		   was for the menu, and its lifting is not also a click (§5ac) */
+		if (ui->down) {
+			ui->hit = -1;
+			if (r->held != 0) {
+				r->held = 0;
+				wsk__span(&lo, &hi, ui->held.y, ui->held.y + ui->held.h);
+			}
+		}
 #ifndef WSK_NO_OVER
 		if (r->over != WSK_NONE && !wsk__on_over(r, x, y)) {
 			const wsk_tree_t *was = &r->nest[r->over];
@@ -5836,6 +5989,20 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			ui->hover_item = (short)k;
 			ui->hover_word = (short)word;
 			n = wsk__note(note, max, n, WSK_NOTE_HOVER, in, k, word);
+#ifndef WSK_NO_TIP
+			wsk__tip_rest(ui, in, k, rect, 0, &lo, &hi);     /* a mouse resting (§5ac) */
+#endif
+		}
+#endif
+#ifndef WSK_NO_TIP
+	} else if (ev->kind == WSK_EV_TICK) {
+		/* time passing (§5ac rule 2): a rest long enough asks, once */
+		if (ui->tip_state == 1 && ev->d > 0) {
+			ui->tip_ms += ev->d;
+			if (ui->tip_ms >= ui->tip_wait) {
+				ui->tip_state = 2;
+				n = wsk__note(note, max, n, WSK_NOTE_TIP, ui->tip_in, ui->tip_item, 0);
+			}
 		}
 #endif
 	} else if (ev->kind == WSK_EV_DOWN) {
@@ -5850,6 +6017,10 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		ui->hit = (short)k;
 		ui->hit_in = in;
 		ui->word = (short)word;
+#ifndef WSK_NO_TIP
+		/* a finger held is a rest; a mouse's press never is (§5ac rule 1) */
+		if ((ev->key & WSK_MOD_TOUCH) && k >= 0) wsk__tip_rest(ui, in, k, rect, 1, &lo, &hi);
+#endif
 		if (k >= 0 && in->item[k].kind == WSK_BUTTON) {
 			r->held = &in->item[k];
 			wsk__rput(&ui->held, rect);
@@ -5959,6 +6130,14 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 #endif
 	} else if (ev->kind == WSK_EV_MOVE && ui->down) {
 		int took = 0;
+#ifndef WSK_NO_TIP
+		/* a finger that moves past the slop is dragging, not holding */
+		if (ui->tip_hold && (x - ui->x0 > ui->slop || ui->x0 - x > ui->slop ||
+		                     y - ui->y0 > ui->slop || ui->y0 - y > ui->slop)) {
+			wsk_rect_t z = { 0, 0, 0, 0 };
+			wsk__tip_rest(ui, 0, -1, z, 0, &lo, &hi);
+		}
+#endif
 #ifndef WSK_NO_SPLIT
 		if (ui->split != 0) {
 			const wsk_tree_t *t = &ui->split_at;
@@ -6058,6 +6237,15 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		(void)took;
 	} else if (ev->kind == WSK_EV_UP && ui->down) {
 		ui->down = 0;
+#ifndef WSK_NO_TIP
+		/* a finger lifted after its tip showed: the hold was used, and it
+		   does not click (§5ac rule 5); lifted before, or with no tip, it does */
+		if (ui->tip_hold) {
+			wsk_rect_t z = { 0, 0, 0, 0 };
+			ate = (r->tip != 0);
+			wsk__tip_rest(ui, 0, -1, z, 0, &lo, &hi);
+		}
+#endif
 #ifndef WSK_NO_SPLIT
 		ui->split = 0;
 #endif
@@ -6075,7 +6263,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		if (!ui->dragging && ui->hit < 0 && ui->drag == r && r->overflow == WSK_WORLD)
 			n = wsk__note(note, max, n, WSK_NOTE_CLICK, r, -1, -1);
 #endif
-		if (!ui->dragging && ui->hit >= 0) {
+		if (!ui->dragging && ui->hit >= 0 && !ate) {
 			const wsk_tree_t *in = 0, *lay = r;
 			wsk_tree_t at;
 			wsk_rect_t rect = { 0, 0, 0, 0 };
@@ -6157,6 +6345,9 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			(void)wsk__fields(r, r, 0, 0, to, 0, &in, &item, &fr, &nb, 0);
 			wsk__refocus(ui, in, item, fr, nb, &lo, &hi);
 			n = wsk__note(note, max, n, WSK_NOTE_FOCUS, in, item, 0);
+#ifndef WSK_NO_TIP
+			wsk__tip_rest(ui, in, item, fr, 0, &lo, &hi);   /* focus arriving rests (§5ac) */
+#endif
 		}
 	}
 #if !defined(WSK_NO_LISTKEYS)
@@ -6381,6 +6572,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	/* A chord no widget used is the program's: its shortcuts (§5s rule 3). */
 	if (ev->kind == WSK_EV_KEY && (ev->key & (WSK_MOD_CTRL | WSK_MOD_ALT)) && !used)
 		n = wsk__note(note, max, n, WSK_NOTE_KEY, r, -1, ev->key);
+	(void)ate;
 
 	if (hi > lo) {
 		lo = (lo / WSK_BAND) * WSK_BAND;

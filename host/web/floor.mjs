@@ -22,6 +22,13 @@ const chrome = spawn('google-chrome', ['--headless=new', `--remote-debugging-por
   `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
   '--window-size=1100,700', 'about:blank'], { stdio: 'ignore' });
 
+// however this ends -- a failure, ^C, the reader of its output going away --
+// Chrome and the program go with it: a Chrome left running keeps its pages,
+// which reconnect to the next run's program on the same port as extra seats
+const reap = () => { try { chrome.kill('SIGKILL'); } catch {} try { app.kill('SIGKILL'); } catch {} };
+process.on('exit', reap);
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGPIPE']) process.on(sig, () => { reap(); process.exit(1); });
+
 let ws, seq = 0;
 const waiting = new Map();
 function cdp(method, params = {}) {
@@ -132,6 +139,43 @@ try {
     await sleep(400);
     ok(said.slice(-200).includes('hover  Max\n'), 'and on a person, their name');
     await snap('floor_hover.png');
+  }
+
+  // §5ac: a tip -- the mouse resting half a second on the first poster's
+  // title (screen 62..84) shows one below it: a box in the window's ink,
+  // white, across about 350 px; moving off closes it
+  {
+    const white = () => js(`(()=>{const d=whisker.canvas.getContext("2d").getImageData(24,86,380,24).data;
+      let n=0;for(let i=0;i<d.length;i+=4)if(d[i]>250&&d[i+1]>250&&d[i+2]>250)n++;return n;})()`);
+    const mv = async (x, y) => { const [px, py] = await at(x, y);
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: px, y: py, button: 'none', buttons: 0 }); };
+    await mv(100, 72);
+    await sleep(1000);
+    const shown = await white();
+    ok(said.includes('tip    Tiny GUIs on RISC-V: a GUI in 3.8 KB on a C5') && shown > 4000,
+       `the mouse resting on a poster: its tip, a white box under the title (${shown} white pixels)`);
+    await snap('floor_tip.png');
+    await mv(600, 230);
+    await sleep(400);
+    const gone = await white();
+    ok(gone < 1500, `moved off: the tip closes (${gone} white pixels left -- the abstract's letters)`);
+
+    // a finger held on Visit (30..318, 140..166): its tip, and lifting it
+    // does not visit; a quick tap does (the control)
+    const [vx, vy] = await at(174, 153);
+    const visits = () => (said.match(/poster You visit/g) || []).length;
+    const v0 = visits();
+    await cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: vx, y: vy }] });
+    await sleep(1000);
+    ok(said.includes('tip    Visit "Tiny GUIs on RISC-V"'), 'a finger held on Visit: its tip, "Visit ..."');
+    await cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await sleep(500);
+    ok(visits() === v0, 'lifted after the tip showed: no visit -- the hold was used');
+    await cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: vx, y: vy }] });
+    await sleep(100);
+    await cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await sleep(500);
+    ok(visits() === v0 + 1, `CONTROL: a quick tap visits, once (${visits() - v0})`);
   }
 
   // §5q step 2b: a poster is a stack -- world 120,20, 300 x 116, so on the

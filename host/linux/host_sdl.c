@@ -312,7 +312,7 @@ int wh_poll(wh_event_t *out)
 			if (!point_of((int)(e.tfinger.x * S.w * S.scale),
 			              (int)(e.tfinger.y * S.h * S.scale), out)) break;
 			if (e.type == SDL_FINGERDOWN)
-				{ out->kind = WH_PRESS; out->key = 0; out->d = 1; return WH_PRESS; }
+				{ out->kind = WH_PRESS; out->key = WH_MOD_TOUCH; out->d = 1; return WH_PRESS; }
 			out->kind = (e.type == SDL_FINGERUP) ? WH_RELEASE : WH_MOVE;
 			return out->kind;
 		default:
@@ -323,6 +323,8 @@ int wh_poll(wh_event_t *out)
 }
 
 void wh_wait(int ms) { SDL_WaitEventTimeout(NULL, ms); }
+
+long wh_ms(void) { return (long)SDL_GetTicks(); }
 
 /* The clipboard is SDL's: the desktop's under X11 or Wayland, and SDL's own
    copy under its dummy driver, which is what the self test runs on. */

@@ -133,7 +133,7 @@ static const char PAGE[] =
    click is the platform's, timing and all (§5w); a finger's, from
    pointerdown, as a single. */
 "c.addEventListener('pointerdown',e=>{if(e.button!==0)return;c.focus();c.setPointerCapture(e.pointerId);\n"
-"  if(e.pointerType!=='mouse')send('D '+pt(e)+' '+(e.shiftKey?256:0)+' 1');});\n"
+"  if(e.pointerType!=='mouse')send('D '+pt(e)+' '+((e.shiftKey?256:0)|(e.pointerType==='touch'?2048:0))+' 1');});\n"
 "c.addEventListener('mousedown',e=>{if(e.button===0)send('D '+pt(e)+' '+(e.shiftKey?256:0)+' '+e.detail);});\n"
 "c.addEventListener('pointermove',e=>{if(e.buttons&1)send('M '+pt(e));\n"
 "  else if(e.buttons===0&&e.pointerType!=='touch')send('H '+pt(e));});\n"
@@ -562,6 +562,8 @@ int wh_poll(wh_event_t *out)
 }
 
 void wh_wait(int ms) { if (S.qh == S.qt) service(ms); }
+
+long wh_ms(void) { return now_ms(); }
 
 /* Copy: kept here, and sent to every page to put on the system clipboard,
    escaped so that it is one line of an event. Not added to the log a late
