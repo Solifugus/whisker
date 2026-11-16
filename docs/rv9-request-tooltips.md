@@ -118,3 +118,11 @@ desk.
 whisker's own `src/module_*.c` stay at the default profile on purpose: the
 suite measures what each switch costs against them. **The staged copies
 should choose their tier**, as `wstat` and `wkeys` already do.
+
+**Applied by RV-9** (same day, uncommitted there, not yet on a board):
+`cflags="-DWSK_PANEL"` for wflick, wtap, wcompose, wscroll, wpiano and
+wnest; wkeys' stack 9,216; wnest's 12,288 kept. RV-9's P4 sizes: wflick
+11,172, wtap 12,000, wcompose 10,932, wscroll 12,356, wpiano 14,160, wnest
+17,888, wkeys 26,112 — within ~200 bytes of the figures above. The P4 store
+is 319 KB, a little smaller than before the refresh; the C5's slot 91 %.
+The P4 image waits for Matthew's word to restart the board.
