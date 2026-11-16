@@ -31,7 +31,10 @@
 #include "fit.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <limits.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,7 +51,7 @@ static const wsk_widget_t WIN[] = {
 
 static char text[CAP], clip[CAP], undo_b[256 * 1024], out[8192];
 static wsk_ink_t inks[INKS];
-static unsigned char brk[65536];        /* breakpoints, by line */
+static unsigned char breaks[65536];        /* breakpoints, by line */
 static wsk_gmark_t marks[4096];         /* ...as whisker draws them, in order */
 static wsk_widget_t win_items[4];
 static wsk_buf_t buf[3];                /* the code, the output, the chooser's name */
@@ -138,8 +141,8 @@ static void say(const char *line)
 static void remark(void)
 {
 	int n = 0;
-	for (int l = 0; l < (int)sizeof brk && n < (int)(sizeof marks / sizeof marks[0]); l++)
-		if (brk[l]) { marks[n].line = l; marks[n].ink = 0xe51400u; marks[n].shape = WSK_GM_DOT; n++; }
+	for (int l = 0; l < (int)sizeof breaks && n < (int)(sizeof marks / sizeof marks[0]); l++)
+		if (breaks[l]) { marks[n].line = l; marks[n].ink = 0xe51400u; marks[n].shape = WSK_GM_DOT; n++; }
 	buf[0].marks = marks;               /* set even with none: the column is kept */
 	buf[0].nmarks = n;
 }
@@ -166,12 +169,30 @@ static int load(const char *p)
 {
 	static char keep[CAP];
 	FILE *f = fopen(p, "rb");
-	int len, was = buf[0].len;
+	struct stat st;
+	int len, was = buf[0].len, bad;
 	char m[PATH_MAX + 64];
 	if (f == NULL) { snprintf(m, sizeof m, "cannot open %s", p); say(m); return -1; }
+	/* a folder, a device, a file bigger than the editor holds: refused,
+	   not opened as empty or cut short -- a cut file saved back would lose
+	   its tail (found by review, 2026-11-16) */
+	if (fstat(fileno(f), &st) != 0 || !S_ISREG(st.st_mode) || st.st_size > CAP - 1) {
+		fclose(f);
+		snprintf(m, sizeof m, "%s is %s: not opened", p,
+		         (st.st_size > CAP - 1) ? "larger than this editor holds (400 KB)" : "not a file");
+		say(m);
+		return -1;
+	}
 	memcpy(keep, text, (size_t)was + 1);
 	len = (int)fread(text, 1, CAP - 1, f);
+	bad = ferror(f) || fgetc(f) != EOF;
 	fclose(f);
+	if (bad) {
+		memcpy(text, keep, (size_t)was + 1);
+		snprintf(m, sizeof m, "%s could not be read whole: not opened", p);
+		say(m);
+		return -1;
+	}
 	text[len] = '\0';
 	buf[0].len = len;
 	buf[0].caret = 0; buf[0].span = 0;
@@ -188,7 +209,7 @@ static int load(const char *p)
 	buf[0].len = len;
 	buf[0].caret = 0; buf[0].span = 0; buf[0].top = 0;
 	undo.used = 0; undo.end = 0;
-	memset(brk, 0, sizeof brk);
+	memset(breaks, 0, sizeof breaks);
 	snprintf(pathbuf, sizeof pathbuf, "%s", p);
 	path = pathbuf;
 	colour();
@@ -221,6 +242,7 @@ int main(int argc, char **argv)
 	f = fopen(path, "rb");
 	if (f == NULL) { fprintf(stderr, "code: cannot open %s\n", path); return 1; }
 	buf[0].len = (int)fread(text, 1, CAP - 1, f);
+	if (fgetc(f) != EOF) { fprintf(stderr, "code: %s is larger than this editor holds\n", path); return 1; }
 	fclose(f);
 	text[buf[0].len] = '\0';
 	buf[0].b = text;
@@ -304,14 +326,27 @@ int main(int argc, char **argv)
 			if (r == WSK_CHOSEN && choosing == 'o') {
 				(void)load(chooser.path);
 			} else if (r == WSK_CHOSEN && choosing == 's') {
-				FILE *f = fopen(chooser.path, "wb");
-				char m[PATH_MAX + 32];
-				if (f != NULL && (int)fwrite(text, 1, (size_t)buf[0].len, f) == buf[0].len) {
+				/* written beside it, then put in its place: a write that
+				   fails -- a full disk, which may only say so at the close --
+				   leaves the old file as it was (found by review) */
+				char tmp[PATH_MAX + 16], m[PATH_MAX + 32];
+				FILE *f;
+				int okw = 0;
+				snprintf(tmp, sizeof tmp, "%s.saving", chooser.path);
+				f = fopen(tmp, "wb");
+				if (f != NULL) {
+					okw = (int)fwrite(text, 1, (size_t)buf[0].len, f) == buf[0].len;
+					okw = (fflush(f) == 0) && okw;
+					okw = (fsync(fileno(f)) == 0 || errno == EINVAL) && okw;
+					okw = (fclose(f) == 0) && okw;
+					if (okw) okw = (rename(tmp, chooser.path) == 0);
+					if (!okw) unlink(tmp);
+				}
+				if (okw) {
 					snprintf(pathbuf, sizeof pathbuf, "%s", chooser.path);
 					path = pathbuf;
 					snprintf(m, sizeof m, "saved %s", chooser.path);
-				} else snprintf(m, sizeof m, "could not write %s", chooser.path);
-				if (f != NULL) fclose(f);
+				} else snprintf(m, sizeof m, "could not write %s: nothing changed", chooser.path);
 				say(m);
 			} else if (r == WSK_CANCELLED) say("nothing chosen");
 			if (r != 0) choosing = 0;
@@ -320,10 +355,10 @@ int main(int argc, char **argv)
 		for (int i = 0; i < n && i < 4; i++) {
 			const wsk_note_t *t = &note[i];
 			if (t->kind == WSK_NOTE_TEXT) text_changed = 1;
-			else if (t->kind == WSK_NOTE_GUTTER && t->value < (int)sizeof brk) {
+			else if (t->kind == WSK_NOTE_GUTTER && t->value < (int)sizeof breaks) {
 				char m[48];
-				brk[t->value] = (unsigned char)!brk[t->value];
-				snprintf(m, sizeof m, "breakpoint %s line %d", brk[t->value] ? "on " : "off", t->value + 1);
+				breaks[t->value] = (unsigned char)!breaks[t->value];
+				snprintf(m, sizeof m, "breakpoint %s line %d", breaks[t->value] ? "on " : "off", t->value + 1);
 				say(m);
 				remark();
 				y0 = 0; y1 = h;                 /* the gutter: the widget's height */

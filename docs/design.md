@@ -3451,6 +3451,113 @@ with a new `seathost.py` over raw sockets). Every earlier output — 43 files
   stays away rather than rejoining every nine seconds; a seatless program's
   seat is always 0.
 
+## A second independent read, 2026-11-16 — pinch to the chooser
+
+Matthew agreed to it before several windows. The same two-reader shape:
+one on `whisker.h` and `whisker_chooser.h` from `1d97b82`, one on the hosts
+and programs. **Seven confirmed and four suspected in the headers, five
+and four in the hosts** — and the fix to one of the hosts' found a
+twelfth, older than any of it. Each has a check that fails before its fix
+where it can be had (two pass on the old header only because an earlier
+failure had already closed the chooser). **1,069 checks** (1,054); web 133
+(127); Linux host 52; every earlier output — 44 files — byte-identical.
+
+**whisker.h**:
+
+- **A lost finger's lifting froze every press after it.** Since §5ad a
+  press from another finger off the world was ignored while one was down,
+  and a browser's cancelled touch never lifts — so one cancelled touch
+  ended all input, the mouse's too. Now another finger's press presses
+  afresh (the first let go), and so does a third finger's during a pinch.
+  The rule a check had held — a second finger off the world ignored — was
+  the rule that froze; the checks now hold the new one.
+- **A menu opened over a dialog** — a right-click on its field, the
+  program's usual context menu — closed the dialog without giving focus
+  back, so typing went into the closed dialog and the chooser could never
+  open again. A menu over a dialog is refused.
+- **A press held as a dialog opens clicked beneath it on release**, and a
+  second finger off a dialog cancelled the first's press on it, leaving
+  OK drawn held. `wsk__press_end` lets go of a press, a drag, a selection,
+  a divider, a pinch — on a dialog opening, closing, and a new finger.
+- The Menu key in a dialog with nothing focused named the window; a
+  dialog replaced by a smaller one left the larger on the screen.
+
+**whisker_chooser.h**: a path too long to hold was **cut and answered**
+— Save as would have written another name; now refused, never cut.
+**Open answered the last file clicked, not the one the arrows chose.** Up
+from a relative folder went to `/`; a name chosen in one folder was
+opened from the next; row ids went wrong past 999; a name the lister did
+not end was read past; the chooser counted itself open when its dialog
+had been refused.
+
+**The hosts and programs**: the code editor **cut a file over 400 KB and
+saved the cut copy** (now refused, the open text kept); **opened a folder
+as empty text and wiped the undo** (now refused); **said "saved" when the
+disk took nothing** — and wrote over the file first (now written beside
+it and renamed in, a failure leaving the old file whole). **The lister
+let hidden names take the chooser's places**, so files went missing in
+readdir's order (300 dotfiles and 10 files: 10 now, 256 before). The
+page's finger ids could collide after 254 touches; a finger number from
+the network is folded into range; a cancelled touch now lifts.
+`host/web/editorfiles.py` and `host/linux/listertest.c` hold these.
+
+**The twelfth**: `fit.h` dropped a band it could not split, without a
+word. Sending it instead showed why it could not be split — **a memo
+drew every visible line into every band**, so the code editor's 8-row
+repaint carried all its text, 6.5 KB. It draws only the lines in the
+document's rows now: the editor's largest document is 4,082 bytes with
+nothing dropped, and a check holds a band to its one line.
+
+**And the build**: RV-9's session was half way through a change across
+its drivers, and every build here broke on its working tree. The suites
+now build against **RV-9 as committed** — a `git archive` of its HEAD —
+unless `RV9_WORKTREE=1`.
+
+## 5af. Several windows (2026-11-16), written before its code
+
+Matthew chose it after the second review. gBASIC's Qt backend measured
+that a second window was never its gap (gBASIC `qt_gui_design.md` §0.17):
+two windows open at once already worked. What it needed — and what a
+whisker backend would have to answer — is the **lifecycle**: `qt.open` and
+`qt.close` a window at a time; `on win.closed`, run while the window is
+still readable; and `qt.run()` ending when the last window closes.
+
+**whisker itself needs nothing** — the same finding as seats (§5ab). A
+window is a root tree and a `wsk_ui_t`, which a program may hold as many
+of as it likes (D5). What is missing is **in the host contract**, which
+today opens one window, ever, and calls its close button QUIT.
+
+1. **`int wh_window(w, h, title)`** opens another window and answers its
+   number (1, 2, …; `wh_open`'s window is 0); **`wh_window_close(win)`**
+   closes one; **`wh_on(win)`** says which window the documents after it go
+   to, as `wh_to` says which seat. Each event carries **`win`**.
+2. **`WH_CLOSE`**, with `win`: the person asked to close a window — its
+   close button, Alt-F4. **The program decides**: it may read what is in
+   it, close it (`wh_window_close`), or keep it. QUIT stays what it was
+   for a program that opened one window and never asked for more, so
+   nothing written against today's contract changes.
+3. **SDL**: each window a real one — its own `SDL_Window` and its own
+   `/w0` (RV-9's `drv_svgwin`, a device each), events told apart by SDL's
+   window id. **The browser**: each window a floating panel in the page —
+   a title bar to drag it by and a close button, the page's own HTML (the
+   host's, not whisker's: whisker's rules are for what whisker draws), a
+   canvas each; one in front, raised by a press. Separate browser windows
+   were the other answer and are refused here: browsers block them as
+   pop-ups, and a phone has none.
+4. **With seats**: windows are the program's, and every seat sees all of
+   them — a window opened is opened on every screen. (A window for one
+   person only is a later question.)
+5. **A demo**: the code editor's Ctrl-N opens a second editor window on a
+   new buffer; closing the first while the second is open leaves the
+   program running; closing the last ends it.
+
+Done when: two windows in both hosts, drawn and typed into separately,
+events told apart; WH_CLOSE heard and obeyed or not, as the program says;
+the last one closed ends the program; a one-window program exactly as
+before (the existing host suites, unchanged, are the control); in
+Chrome, two panels, the second dragged by its title bar, raised by a
+press, closed by its button.
+
 ## 5ae. Choosing a file (2026-11-16), written before its code
 
 Matthew chose it as the next desktop gap. gBASIC asks it three ways —

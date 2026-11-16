@@ -38,6 +38,7 @@ if [[ "${1:-}" == "--test" ]]; then
 	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-code-web" \
 		"$HERE/../linux/code.c" "$HERE/host_web.c" -I"$HERE/../linux" -I"$HERE/../../src"
 	python3 "$HERE/docsize.py" "$OUT/whisker-code-web" "$HERE/../linux/sample.bas"
+	python3 "$HERE/editorfiles.py" "$OUT/whisker-code-web" "$HERE/../linux/sample.bas" "$OUT"
 	if command -v google-chrome >/dev/null && command -v node >/dev/null; then
 		node "$HERE/chrome.mjs" "$OUT/whisker-edit-web" "$OUT"
 		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-code-web" \

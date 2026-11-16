@@ -314,6 +314,15 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   Cancel answers *cancelled*, never an empty path. The code editor opens by
   Ctrl-O and saves as by Ctrl-Shift-S, in both hosts. **Matthew used it in
   the SDL window, 2026-11-16: Cancel, then a file chosen and opened.**
+- **A second independent read, 2026-11-16** (design, before §5af): a lost
+  finger's lifting froze all input; a menu over a dialog broke it; the
+  chooser cut long paths and answered the clicked file not the arrows';
+  the editor cut big files, opened folders and said "saved" to a full
+  disk; the lister let dotfiles hide files; and **a memo drew every
+  visible line into every band** (an 8-row repaint carried all its text).
+  **The suites build against RV-9's committed HEAD** (`git archive`), not
+  its working tree — its session may be mid-change; `RV9_WORKTREE=1` to
+  override.
 - **A desktop program's frames must fit 4 KB too**: RV-9's window — the
   SDL host compiles it — drops a document over 4,096 bytes, so a program
   whose picture can grow (an editor scrolled to busy lines, a floor zoomed
@@ -370,10 +379,10 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,054 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,069 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 51 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 52 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`).

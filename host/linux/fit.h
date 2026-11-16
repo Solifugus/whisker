@@ -17,12 +17,21 @@
 
 static void wh_draw_fit(const wsk_tree_t *t, wsk_sink_t *s, int y0, int y1)
 {
-	int mid = ((y0 + y1) / 2) & ~7;
+	int mid;
 	if (y1 <= y0) { y0 = 0; y1 = t->h; }
+	mid = ((y0 + y1) / 2) & ~7;
 	wh_clip(y0, y1);
 	s->len = 0;
 	if (wsk_render_rows(t, y0, y1, s, 4096) != WSK_E_BUDGET) return;
-	if (mid <= y0 || mid >= y1) return;      /* one band too dense: nothing to split */
+	if (mid <= y0 || mid >= y1) {
+		/* one band too dense to split: sent anyway -- the window may drop
+		   it, and says so, which is better than a silence that leaves
+		   old pixels (found by review, 2026-11-16) */
+		wh_clip(y0, y1);
+		s->len = 0;
+		(void)wsk_render_rows(t, y0, y1, s, 0);
+		return;
+	}
 	wh_draw_fit(t, s, y0, mid);
 	wh_draw_fit(t, s, mid, y1);
 }

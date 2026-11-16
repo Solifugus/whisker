@@ -11,6 +11,16 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RV9="${RV9:-$HOME/development/esp32/rv9}"
+# RV-9 as committed, not as its working tree: RV-9's own session may be
+# half way through a change (2026-11-16: a driver field half-added there
+# broke every build here). RV9_WORKTREE=1 builds against the working tree.
+RV9_SNAP=""
+if [[ -z "${RV9_WORKTREE:-}" ]] && git -C "$RV9" rev-parse --verify HEAD >/dev/null 2>&1; then
+	RV9_SNAP="$(mktemp -d)"
+	git -C "$RV9" archive HEAD components tools modules | tar -x -C "$RV9_SNAP"
+	RV9="$RV9_SNAP"
+fi
+trap '[[ -n "$RV9_SNAP" ]] && rm -rf "$RV9_SNAP"' EXIT
 cd "$HERE"
 
 echo "-- 1..6  the suite"
@@ -97,7 +107,7 @@ echo "ok    whisker.h builds with each of the 26 profiles and switches, -Werror"
 echo
 echo "-- 3, 8  through RV-9's own rasteriser, to a picture"
 W="$(mktemp -d)"
-trap 'rm -rf "$W"' EXIT
+trap 'rm -rf "$W" ${RV9_SNAP:+"$RV9_SNAP"}' EXIT
 cp "$RV9/components/rv9_io/src"/{raster.c,raster.h,drv_svgwin.c,font.c,font.h} "$W/"
 ${CC:-gcc} -O1 -w -I"$RV9/tools/hosttest/stub" -I"$W" -I"$HERE" \
 	-o "$W/picture" picture.c "$W/raster.c" "$W/font.c"

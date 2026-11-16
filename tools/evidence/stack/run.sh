@@ -11,6 +11,15 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RV9="${RV9:-$HOME/development/esp32/rv9}"
+# RV-9 as committed, not as its working tree: RV-9's own session may be
+# half way through a change (2026-11-16: a driver field half-added there
+# broke every build here). RV9_WORKTREE=1 builds against the working tree.
+RV9_SNAP=""
+if [[ -z "${RV9_WORKTREE:-}" ]] && git -C "$RV9" rev-parse --verify HEAD >/dev/null 2>&1; then
+	RV9_SNAP="$(mktemp -d)"
+	git -C "$RV9" archive HEAD components tools modules | tar -x -C "$RV9_SNAP"
+	RV9="$RV9_SNAP"
+fi
 SRC="$HERE/../../../src"
 cd "$HERE"
 
@@ -19,7 +28,7 @@ CC9="$(echo "$TOOLS"/*/riscv32-esp-elf/bin/riscv32-esp-elf-gcc | cut -d' ' -f1)"
 [[ -x "$CC9" ]] || { echo "no riscv32-esp-elf-gcc under $TOOLS"; exit 1; }
 OBJDUMP="${CC9%gcc}objdump"; NM="${CC9%gcc}nm"
 
-W="$(mktemp -d)"; trap 'rm -rf "$W"' EXIT
+W="$(mktemp -d)"; trap 'rm -rf "$W" ${RV9_SNAP:+"$RV9_SNAP"}' EXIT
 FLAGS=(-march=rv32imac_zicsr_zifencei_zaamo_zalrsc -mabi=ilp32 -mcmodel=medany
        -Os -ffreestanding -fno-builtin -fno-jump-tables
        -fno-tree-switch-conversion -ffunction-sections -fdata-sections

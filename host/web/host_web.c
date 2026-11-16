@@ -136,7 +136,7 @@ static const char PAGE[] =
 /* events, in order: each POST waits for the one before */
 "function send(line){sent=sent.then(()=>fetch(url(),{method:'POST',body:line}).catch(()=>{}));}\n"
 "/* which finger (§5ad): a mouse is 0, any other pointer its id */\n"
-"const fid=e=>e.pointerType==='mouse'?0:(e.pointerId&255||1);\n"
+"const fid=e=>e.pointerType==='mouse'?0:1+(e.pointerId%255);\n"
 "function pt(e){const r=c.getBoundingClientRect();\n"
 "  return Math.floor((e.clientX-r.left)*W/r.width)+' '+Math.floor((e.clientY-r.top)*H/r.height);}\n"
 /* the primary button presses; the secondary asks for a context menu, which
@@ -158,6 +158,9 @@ static const char PAGE[] =
 "  if(e.buttons&1)send('M '+pt(e)+' '+fid(e));\n"
 "  else if(e.buttons===0&&e.pointerType!=='touch')send('H '+pt(e));});\n"
 "c.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')send('H -1 -1');});\n"
+/* a touch the platform cancels -- a palm, a system gesture -- lifts, or
+   whisker would think the finger still down (found by review) */
+"c.addEventListener('pointercancel',e=>{if(e.pointerType!=='mouse'){touched=Date.now();send('U '+pt(e)+' '+fid(e));}});\n"
 "c.addEventListener('pointerup',e=>{if(e.pointerType==='touch')touched=Date.now();\n"
 "  else if(e.pointerType==='mouse'&&Date.now()-touched<800)return;\n"
 "  if(e.button===0)send('U '+pt(e)+' '+fid(e));});\n"
@@ -340,6 +343,9 @@ static void event_line(const char *l, int seat)
 	}
 	default: return;
 	}
+	/* a finger's number is the page's, so untrusted: 0 the mouse, any
+	   other folded into 1..255, never onto the mouse's 0 */
+	if (e.finger != 0) e.finger = 1 + (int)(((unsigned)e.finger - 1u) % 255u);
 	{
 		/* a point on the seat's own screen, when it has said its size;
 		   and a hover at -1,-1 is the pointer leaving, not a point */

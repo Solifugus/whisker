@@ -3825,8 +3825,14 @@ static inline void wsk__inked(wsk_sink_t *s, const wsk_tree_t *t, const wsk_widg
  * A memo's lines, each from the same column, and its caret. Every line is
  * whole or not drawn (§5e), as a field's one line is.
  */
+/*
+ * ry0..ry1 are the document's rows: a line outside them is walked past and
+ * not drawn. Before 2026-11-16 every visible line was drawn into every
+ * band, so a code editor's 8-row repaint carried all its text -- 6.5 KB,
+ * over what RV-9's window takes (found by the second review's fit.h fix).
+ */
 static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
-                             const wsk_widget_t *w, wsk_rect_t r)
+                             const wsk_widget_t *w, wsk_rect_t r, int ry0, int ry1)
 {
 	const wsk_buf_t *b = wsk__fbuf(t, w);
 	const char *txt = (b != 0) ? b->b : w->text;
@@ -3873,7 +3879,7 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 		int y = r.y + WSK_FIELD_PAD + (k - top) * pitch, next = wsk__vrow(txt, len, at, wr, &end);
 		/* columns are characters: `left` and `room` count them (§5v step 3) */
 		int from = at + wsk__byte_of(txt + at, end - at, left), n = end - from;
-		if (wsk__shows(t, r.x, r.x + r.w, y)) {
+		if (y + pitch > ry0 && y < ry1 && wsk__shows(t, r.x, r.x + r.w, y)) {
 			n = wsk__byte_of(txt + from, n, room);
 #ifndef WSK_NO_SOURCE
 			const wsk_gmark_t *m = 0;
@@ -4400,7 +4406,7 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 		else
 #endif
 #ifndef WSK_NO_MEMO
-		if (wsk__lined(w->kind)) wsk__memo(s, t, w, r);
+		if (wsk__lined(w->kind)) wsk__memo(s, t, w, r, d->y0, d->y1);
 		else
 #endif
 		wsk__text(s, t, w, wsk__say(t, t, i), r);
@@ -5155,6 +5161,40 @@ static inline void wsk__span(int *lo, int *hi, int a, int b)
 	if (b > *hi) *hi = b;
 }
 
+/*
+ * Whatever press is in progress, let go (found by review, 2026-11-16): the
+ * held button's rows repainted, and no click, drag, selection, divider or
+ * pinch left to finish -- for a dialog opening or closing over it, or a new
+ * finger's press when the old one's lifting was lost.
+ */
+static inline void wsk__press_end(wsk_ui_t *ui, int *lo, int *hi)
+{
+	wsk_tree_t *r = ui->root;
+	ui->down = 0;
+	ui->dragging = 0;
+	ui->hit = -1;
+	if (r->held != 0) {
+		r->held = 0;
+		wsk__span(lo, hi, ui->held.y, ui->held.y + ui->held.h);
+	}
+#ifndef WSK_NO_TEXTSEL
+	ui->selecting = 0;
+#endif
+#ifndef WSK_NO_SPLIT
+	ui->split = 0;
+#endif
+#ifndef WSK_NO_SCROLL
+	ui->drag = 0;
+#endif
+#ifndef WSK_NO_WORLD
+	ui->pinch = 0;
+	ui->witem = -1;
+#endif
+#ifndef WSK_NO_SOURCE
+	ui->gline = -1;
+#endif
+}
+
 static inline int wsk__note(wsk_note_t *note, int max, int n, int kind,
                             const wsk_tree_t *in, int item, int value)
 {
@@ -5673,6 +5713,9 @@ static inline int wsk_ui_open(wsk_ui_t *ui, int sub, const char *anchor,
 	int lo = 32767, hi = -1, a0, a1, e, i;
 	wsk_rect_t ar;
 
+	/* one overlay at a time, and a dialog's is not to be closed by a menu
+	   opening over it: refused (found by review, 2026-11-16) */
+	if (r->omodal && r->over != WSK_NONE) { *y0 = *y1 = 0; return WSK_E_KIND; }
 #ifndef WSK_NO_TIP
 	wsk__tip_close(ui, &lo, &hi);        /* whisker's overlay covers a tip (§5ac) */
 #endif
@@ -5700,6 +5743,9 @@ static inline int wsk_ui_open_at(wsk_ui_t *ui, int sub, int x, int y, int *y0, i
 	int lo = 32767, hi = -1, a0, a1, e;
 	wsk_rect_t ar;
 
+	/* one overlay at a time, and a dialog's is not to be closed by a menu
+	   opening over it: refused (found by review, 2026-11-16) */
+	if (r->omodal && r->over != WSK_NONE) { *y0 = *y1 = 0; return WSK_E_KIND; }
 #ifndef WSK_NO_TIP
 	wsk__tip_close(ui, &lo, &hi);        /* whisker's overlay covers a tip (§5ac) */
 #endif
@@ -5723,6 +5769,7 @@ static inline int wsk_ui_dialog_close(wsk_ui_t *ui, int *y0, int *y1)
 	*y0 = *y1 = 0;
 	if (r->over == WSK_NONE || !r->omodal) return WSK_OK;
 	if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
+	wsk__press_end(ui, &lo, &hi);       /* a drag begun in it ends with it */
 	wsk_over_close(r);
 	r->focus = ui->dfocus;
 	ui->dfocus = 0;
@@ -5751,10 +5798,15 @@ static inline int wsk_ui_dialog(wsk_ui_t *ui, int sub, int w, int h, int *y0, in
 #ifndef WSK_NO_TIP
 	wsk__tip_close(ui, &lo, &hi);
 #endif
+	/* a press on the window, or on a dialog this one replaces, ends here:
+	   its lifting must not click beneath a dialog (found by review) */
+	wsk__press_end(ui, &lo, &hi);
 	if (r->over != WSK_NONE) {
-		if (r->omodal) (void)wsk_ui_dialog_close(ui, &a0, &a1);
 		if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
-		wsk_over_close(r);
+		if (r->omodal) {
+			(void)wsk_ui_dialog_close(ui, &a0, &a1);
+			if (a1 > a0) wsk__span(&lo, &hi, a0, a1);
+		} else wsk_over_close(r);
 	}
 	if (w > r->w) w = r->w;
 	if (h > r->h) h = r->h;
@@ -5765,7 +5817,11 @@ static inline int wsk_ui_dialog(wsk_ui_t *ui, int sub, int w, int h, int *y0, in
 #ifndef WSK_NO_MENUKEYS
 	r->ohi = WSK_NONE;
 #endif
-	if ((e = wsk_check(r, 0)) != WSK_OK) { wsk_over_close(r); return e; }
+	if ((e = wsk_check(r, 0)) != WSK_OK) {
+		wsk_over_close(r);
+		*y0 = lo; *y1 = hi;                /* what was closed still repaints */
+		return e;
+	}
 	/* focus is the dialog's now; what had it is kept */
 	ui->dfocus = r->focus;
 	if (r->focus != 0) wsk__span(&lo, &hi, ui->focus_r.y, ui->focus_r.y + ui->focus_r.h);
@@ -6177,10 +6233,18 @@ static inline int wsk__pinch(wsk_ui_t *ui, const wsk_event_t *ev, wsk_note_t *no
 			if (ev->kind == WSK_EV_MOVE) { ui->fx = (short)x; ui->fy = (short)y; }
 			return 0;
 		}
-		/* another finger: a second on the first one's world, or nothing */
-		if (ev->kind != WSK_EV_DOWN || ui->drag == 0 || at->overflow != WSK_WORLD || at->zoom <= 0 ||
-		    x < at->ax || x >= at->ax + at->aw || y < at->ay || y >= at->ay + at->ah)
-			return 1;
+		/* another finger: its moving and lifting are nothing; its press, a
+		   second on the first one's world, a pinch -- anywhere else, a new
+		   press, the first let go: a press is one finger's, and a lifting
+		   lost (a browser's cancelled touch) must not freeze every press
+		   after it (found by review, 2026-11-16) */
+		if (ev->kind != WSK_EV_DOWN) return 1;
+		if (ui->drag == 0 || at->overflow != WSK_WORLD || at->zoom <= 0 ||
+		    x < at->ax || x >= at->ax + at->aw || y < at->ay || y >= at->ay + at->ah) {
+			wsk__press_end(ui, lo, hi);
+			ui->f0 = ev->finger; ui->fx = (short)x; ui->fy = (short)y;
+			return 0;
+		}
 		ui->f1 = ev->finger;
 		ui->gx = (short)x; ui->gy = (short)y;
 		/* the first finger's press is let go: no click, no drag, no hold */
@@ -6210,7 +6274,14 @@ static inline int wsk__pinch(wsk_ui_t *ui, const wsk_event_t *ev, wsk_note_t *no
 	}
 	if (ui->pinch == 1) {
 		int z, mx, my;
-		if (ev->finger != ui->f0 && ev->finger != ui->f1) return 1;      /* a third */
+		if (ev->finger != ui->f0 && ev->finger != ui->f1) {
+			if (ev->kind != WSK_EV_DOWN) return 1;
+			/* a third finger's press: the pinch ends, and it presses --
+			   what the two were doing cannot be told from a lost lifting */
+			wsk__press_end(ui, lo, hi);
+			ui->f0 = ev->finger; ui->fx = (short)x; ui->fy = (short)y;
+			return 0;
+		}
 		if (ev->kind == WSK_EV_DOWN) return 1;
 		if (ev->kind == WSK_EV_UP) {
 			ui->fleft = (ev->finger == ui->f0) ? ui->f1 : ui->f0;
@@ -6271,10 +6342,8 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	   -- and the pointer resting off it rests on nothing. */
 	if (r->over != WSK_NONE && r->omodal && !wsk__on_over(r, x, y)) {
 		if (ev->kind == WSK_EV_HOVER) x = y = -1;
-		else if (ev->kind == WSK_EV_DOWN || ev->kind == WSK_EV_MENU || ev->kind == WSK_EV_WHEEL) {
-			ui->down = 0;
-			goto rows;
-		}
+		else if (ev->kind == WSK_EV_DOWN || ev->kind == WSK_EV_MENU || ev->kind == WSK_EV_WHEEL)
+			goto rows;          /* and a press already on the dialog goes on */
 	}
 #endif
 #ifndef WSK_NO_WORLD
@@ -6747,6 +6816,11 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			wsk__focus_now(ui);
 			n = wsk__note(note, max, n, WSK_NOTE_MENU, ui->focus_in, ui->focus_item, -1);
 		} else
+#endif
+#ifndef WSK_NO_OVER
+		if (r->omodal && r->over != WSK_NONE)       /* the dialog's, not the window's */
+			n = wsk__note(note, max, n, WSK_NOTE_MENU, &r->nest[r->over], -1, -1);
+		else
 #endif
 		n = wsk__note(note, max, n, WSK_NOTE_MENU, r, -1, -1);
 	}

@@ -248,7 +248,12 @@ static void draw(int st, wsk_sink_t *s, int y0, int y1)
 	wh_clip(y0, y1);
 	s->len = 0;
 	if (wsk_render_rows(&seat[st].win, y0, y1, s, 4096) != WSK_E_BUDGET) return;
-	if (mid <= y0 || mid >= y1) return;      /* one band too dense: nothing to split */
+	if (mid <= y0 || mid >= y1) {            /* too dense to split: sent anyway, not dropped */
+		wh_clip(y0, y1);
+		s->len = 0;
+		(void)wsk_render_rows(&seat[st].win, y0, y1, s, 0);
+		return;
+	}
 	if (!split_told) { split_told = 1; printf("bands  a frame over 4 KB goes in parts\n"); }
 	draw(st, s, y0, mid);
 	draw(st, s, mid, y1);

@@ -155,15 +155,22 @@ static inline int wsk__ch_admits(const char *f, const char *name)
 }
 
 /* Folder and name joined: "/" and "a" make "/a", "/x" and "a" "/x/a"; a
-   name that is a path from the top already is itself. */
-static inline void wsk__ch_join(char *out, const char *folder, const char *name)
+   name that is a path from the top already is itself. 0, or -1 if it would
+   not fit -- never a path cut short, which would name another file (found
+   by review, 2026-11-16). */
+static inline int wsk__ch_join(char *out, const char *folder, const char *name)
 {
 	int k = 0;
-	if (name[0] == '/') { wsk__ch_cpy(out, name, WSK_CH_PATH); return; }
-	for (int i = 0; folder[i] != '\0' && k < WSK_CH_PATH - 1; i++) out[k++] = folder[i];
-	if (k > 0 && out[k - 1] != '/' && k < WSK_CH_PATH - 1) out[k++] = '/';
-	for (int i = 0; name[i] != '\0' && k < WSK_CH_PATH - 1; i++) out[k++] = name[i];
+	if (name[0] == '/') {
+		if (wsk__ch_len(name) >= WSK_CH_PATH) return -1;
+		wsk__ch_cpy(out, name, WSK_CH_PATH);
+		return 0;
+	}
+	for (int i = 0; folder[i] != '\0'; i++) { if (k >= WSK_CH_PATH - 1) return -1; out[k++] = folder[i]; }
+	if (k > 0 && out[k - 1] != '/') { if (k >= WSK_CH_PATH - 1) return -1; out[k++] = '/'; }
+	for (int i = 0; name[i] != '\0'; i++) { if (k >= WSK_CH_PATH - 1) return -1; out[k++] = name[i]; }
 	out[k] = '\0';
+	return 0;
 }
 
 static inline wsk_tree_t *wsk__ch_tree(wsk_chooser_t *ch, int k)
@@ -185,8 +192,13 @@ static inline int wsk__ch_read(wsk_chooser_t *ch)
 	if (n < 0) return -1;
 	if (n > WSK_CH_MAX) n = WSK_CH_MAX;
 	for (int i = 0; i < n; i++) {
-		const char *nm = ch->names + e[i].name;
-		if (e[i].name < 0 || e[i].name >= WSK_CH_NAMES || nm[0] == '\0' || nm[0] == '.') continue;
+		const char *nm;
+		int end = e[i].name;
+		if (e[i].name < 0 || e[i].name >= WSK_CH_NAMES) continue;
+		while (end < WSK_CH_NAMES && ch->names[end] != '\0') end++;
+		if (end >= WSK_CH_NAMES) continue;                        /* a name the lister did not end */
+		nm = ch->names + e[i].name;
+		if (nm[0] == '\0' || nm[0] == '.') continue;
 		if (!wsk__text_ok(nm, ch->root->caps)) continue;          /* the window cannot draw it */
 		if (!e[i].dir && ch->kind == WSK_CHOOSE_FOLDER) continue;
 		if (!e[i].dir && !wsk__ch_admits(ch->filter, nm)) continue;
@@ -210,12 +222,12 @@ static inline int wsk__ch_read(wsk_chooser_t *ch)
 		ch->shown[at++] = '\0';
 		wsk__ch_zero(&ch->rows[i], (int)sizeof ch->rows[i]);
 		ch->rows[i].kind = WSK_TEXT;
-		{                                               /* "r0".."r255": an id each */
-			int d = 1, v = i;
+		{                                               /* "r0", "r1", ...: an id each */
+			char dg[8];
+			int d = 1, k = 0, v = i;
+			do { dg[k++] = (char)('0' + v % 10); v /= 10; } while (v > 0 && k < 7);
 			ch->rows[i].id[0] = 'r';
-			if (v >= 100) ch->rows[i].id[d++] = (char)('0' + v / 100);
-			if (v >= 10) ch->rows[i].id[d++] = (char)('0' + (v / 10) % 10);
-			ch->rows[i].id[d++] = (char)('0' + v % 10);
+			while (k > 0 && d < WSK_ID_MAX - 1) ch->rows[i].id[d++] = dg[--k];
 			ch->rows[i].id[d] = '\0';
 		}
 		ch->rows[i].sub = (short)(ch->sb + 2 + i);
@@ -312,8 +324,11 @@ static inline int wsk_chooser_open(wsk_chooser_t *ch, wsk_ui_t *ui, int kind, co
 	nb->b = ch->name; nb->cap = WSK_CH_PATH; nb->len = wsk__ch_len(ch->name); nb->caret = nb->len;
 
 	if (wsk__ch_read(ch) != 0) return WSK_E_NOTFOUND;
-	ch->open = 1;
-	return wsk_ui_dialog(ui, ch->nb, w, h, y0, y1);
+	{
+		int e = wsk_ui_dialog(ui, ch->nb, w, h, y0, y1);
+		ch->open = (e == WSK_OK);           /* open only if its dialog is */
+		return e;
+	}
 }
 
 /* The dialog closed with an answer: WSK_CHOSEN with ch->path, or
@@ -331,7 +346,9 @@ static inline int wsk__ch_end(wsk_chooser_t *ch, wsk_ui_t *ui, int how, int *y0,
 	return how;
 }
 
-/* Into another folder, or out of this one: read, and all of it repainted. */
+/* Into another folder, or out of this one: read, and all of it repainted.
+   Opening a file, a name typed or chosen in the folder left is left behind
+   with it; saving, the name is what is being saved, and stays. */
 static inline void wsk__ch_go(wsk_chooser_t *ch, const char *to, int *y0, int *y1)
 {
 	char was[WSK_CH_PATH];
@@ -340,20 +357,39 @@ static inline void wsk__ch_go(wsk_chooser_t *ch, const char *to, int *y0, int *y
 	if (wsk__ch_read(ch) != 0) {                   /* unreadable: stay where it was */
 		wsk__ch_cpy(ch->folder, was, WSK_CH_PATH);
 		(void)wsk__ch_read(ch);
+	} else if (ch->kind == WSK_CHOOSE_FILE) {
+		wsk_buf_t *nb = &ch->root->buf[ch->bb];
+		ch->name[0] = '\0';
+		nb->len = nb->caret = nb->span = 0;
 	}
 	(void)wsk_over_rows(ch->root, y0, y1);
 }
 
-/* The folder above this one: "/a/b" is "/a", "/a" is "/". */
+/* The folder above this one: "/a/b" is "/a", "/a" is "/"; a relative one,
+   "proj/src" is "proj", "proj" is ".", "." is ".." -- never the top (found
+   by review: a program with no absolute path started at "."). */
 static inline void wsk__ch_up(wsk_chooser_t *ch, int *y0, int *y1)
 {
 	char to[WSK_CH_PATH];
-	int k;
+	int k, rel = (ch->folder[0] != '/');
 	wsk__ch_cpy(to, ch->folder, WSK_CH_PATH);
 	k = wsk__ch_len(to);
 	while (k > 1 && to[k - 1] == '/') to[--k] = '\0';
-	while (k > 0 && to[k - 1] != '/') k--;
-	if (k <= 1) { to[0] = '/'; to[1] = '\0'; } else to[k - 1] = '\0';
+	if (rel) {
+		int dots = (k == 1 && to[0] == '.') || (k >= 2 && to[k - 1] == '.' && to[k - 2] == '.' &&
+		                                        (k == 2 || to[k - 3] == '/'));
+		if (dots) {                                /* "." or "..": one more ".." */
+			if (k + 3 >= WSK_CH_PATH) return;
+			if (k == 1) { to[0] = '.'; to[1] = '.'; to[2] = '\0'; }
+			else { to[k] = '/'; to[k + 1] = '.'; to[k + 2] = '.'; to[k + 3] = '\0'; }
+		} else {
+			while (k > 0 && to[k - 1] != '/') k--;
+			if (k == 0) { to[0] = '.'; to[1] = '\0'; } else to[k - 1] = '\0';
+		}
+	} else {
+		while (k > 0 && to[k - 1] != '/') k--;
+		if (k <= 1) { to[0] = '/'; to[1] = '\0'; } else to[k - 1] = '\0';
+	}
 	wsk__ch_go(ch, to, y0, y1);
 }
 
@@ -364,17 +400,17 @@ static inline int wsk__ch_ok(wsk_chooser_t *ch, wsk_ui_t *ui, int *y0, int *y1)
 	int s = l->sel;
 	if (s >= 0 && s < ch->n && ch->ent[s].dir && ch->kind != WSK_CHOOSE_FOLDER) {
 		char to[WSK_CH_PATH];                      /* a folder chosen: go into it */
-		wsk__ch_join(to, ch->folder, ch->names + ch->ent[s].name);
-		wsk__ch_go(ch, to, y0, y1);
+		if (wsk__ch_join(to, ch->folder, ch->names + ch->ent[s].name) == 0) wsk__ch_go(ch, to, y0, y1);
 		return 0;
 	}
 	if (ch->kind == WSK_CHOOSE_FOLDER) {
-		if (s >= 0 && s < ch->n) wsk__ch_join(ch->path, ch->folder, ch->names + ch->ent[s].name);
-		else wsk__ch_cpy(ch->path, ch->folder, WSK_CH_PATH);
+		if (s >= 0 && s < ch->n) {
+			if (wsk__ch_join(ch->path, ch->folder, ch->names + ch->ent[s].name) != 0) return 0;
+		} else wsk__ch_cpy(ch->path, ch->folder, WSK_CH_PATH);
 		return wsk__ch_end(ch, ui, WSK_CHOSEN, y0, y1);
 	}
 	if (ch->name[0] == '\0') return 0;             /* nothing named yet */
-	wsk__ch_join(ch->path, ch->folder, ch->name);
+	if (wsk__ch_join(ch->path, ch->folder, ch->name) != 0) return 0;   /* too long: stays open */
 	return wsk__ch_end(ch, ui, WSK_CHOSEN, y0, y1);
 }
 
@@ -393,6 +429,20 @@ static inline int wsk_chooser_feed(wsk_chooser_t *ch, wsk_ui_t *ui, const wsk_no
 		const wsk_note_t *t = &note[i];
 		if (t->kind == WSK_NOTE_CLOSE && t->in == d) return wsk__ch_end(ch, ui, WSK_CANCELLED, y0, y1);
 		if (t->kind == WSK_NOTE_ENTER && t->in == d) return wsk__ch_ok(ch, ui, y0, y1);
+		/* a row chosen by the arrows names its file, as a click does --
+		   or OK would answer the last file clicked (found by review) */
+		if (t->kind == WSK_NOTE_SELECT && t->in == l && t->item >= 0 && t->item < ch->n &&
+		    !ch->ent[t->item].dir && ch->kind != WSK_CHOOSE_FOLDER) {
+			wsk_buf_t *nb = &ch->root->buf[ch->bb];
+			int a0, a1;
+			wsk__ch_cpy(ch->name, ch->names + ch->ent[t->item].name, WSK_CH_PATH);
+			nb->len = wsk__ch_len(ch->name); nb->caret = nb->len; nb->span = 0;
+			if (wsk_over_rows(ch->root, &a0, &a1) == WSK_OK) {
+				if (*y1 <= *y0) { *y0 = a0; *y1 = a1; }
+				else { if (a0 < *y0) *y0 = a0; if (a1 > *y1) *y1 = a1; }
+			}
+			continue;
+		}
 		if (t->kind != WSK_NOTE_CLICK) continue;
 		if (t->in == b && t->item == 1) return wsk__ch_end(ch, ui, WSK_CANCELLED, y0, y1);
 		if (t->in == b && t->item == 2) return wsk__ch_ok(ch, ui, y0, y1);
@@ -414,8 +464,7 @@ static inline int wsk_chooser_feed(wsk_chooser_t *ch, wsk_ui_t *ui, const wsk_no
 			if (again) {
 				if (e->dir) {                      /* the chosen folder again: into it */
 					char to[WSK_CH_PATH];
-					wsk__ch_join(to, ch->folder, ch->names + e->name);
-					wsk__ch_go(ch, to, y0, y1);
+					if (wsk__ch_join(to, ch->folder, ch->names + e->name) == 0) wsk__ch_go(ch, to, y0, y1);
 					return 0;
 				}
 				return wsk__ch_ok(ch, ui, y0, y1); /* the chosen file again: it */
@@ -435,7 +484,7 @@ static inline int wsk_chooser_answer(wsk_chooser_t *ch, wsk_ui_t *ui, const char
 	*y0 = *y1 = 0;
 	if (!ch->open) return 0;
 	if (path == 0) return wsk__ch_end(ch, ui, WSK_CANCELLED, y0, y1);
-	wsk__ch_join(ch->path, ch->folder, path);
+	if (wsk__ch_join(ch->path, ch->folder, path) != 0) return 0;   /* too long: not answered */
 	return wsk__ch_end(ch, ui, WSK_CHOSEN, y0, y1);
 }
 

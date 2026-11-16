@@ -22,6 +22,9 @@ static int posix_lister(void *ctx, const char *folder, wsk_entry_t *e, int max, 
 		char full[4096];
 		struct stat st;
 		int len = (int)strlen(de->d_name);
+		/* hidden names left out here, not after: counted, they took the
+		   places of files that are shown (found by review, 2026-11-16) */
+		if (de->d_name[0] == '.') continue;
 		if (at + len + 1 > cap) break;
 		snprintf(full, sizeof full, "%s/%s", folder, de->d_name);
 		if (stat(full, &st) != 0) continue;          /* a link to nowhere: not offered */

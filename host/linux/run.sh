@@ -16,10 +16,21 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RV9="${RV9:-$HOME/development/esp32/rv9}"
+# RV-9 as committed, not as its working tree: RV-9's own session may be
+# half way through a change (2026-11-16: a driver field half-added there
+# broke every build here). RV9_WORKTREE=1 builds against the working tree.
+RV9_SNAP=""
+if [[ -z "${RV9_WORKTREE:-}" ]] && git -C "$RV9" rev-parse --verify HEAD >/dev/null 2>&1; then
+	RV9_SNAP="$(mktemp -d)"
+	git -C "$RV9" archive HEAD components tools modules | tar -x -C "$RV9_SNAP"
+	RV9="$RV9_SNAP"
+fi
 OUT="${OUT:-/tmp/whisker-host}"
-mkdir -p "$OUT"
+mkdir -p "$OUT/stub"
 cp "$RV9/components/rv9_io/src"/{raster.c,raster.h,drv_svgwin.c,font.c,font.h} "$OUT/"
-INC=(-I"$RV9/tools/hosttest/stub" -I"$OUT" -I"$HERE" -I"$HERE/../../src")
+cp -r "$RV9/tools/hosttest/stub/." "$OUT/stub/"
+[[ -n "$RV9_SNAP" ]] && rm -rf "$RV9_SNAP"         # copied: this script ends by exec
+INC=(-I"$OUT/stub" -I"$OUT" -I"$HERE" -I"$HERE/../../src")
 
 if [[ "${1:-}" == "--test" ]]; then
 	# every demo program opens and keeps running: one that refuses its own
@@ -36,6 +47,8 @@ if [[ "${1:-}" == "--test" ]]; then
 		if [[ $rc == 124 ]]; then echo "ok    $P.c opens its window and keeps running"
 		else echo "FAIL  $P.c exited ($rc): $(head -1 "$OUT/$P.err")"; exit 1; fi
 	done
+	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/listertest" "$HERE/listertest.c" "${INC[@]}"
+	"$OUT/listertest" || exit 1
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/selftest" \
 		"$HERE/selftest.c" "$OUT/raster.c" "$OUT/font.c" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)

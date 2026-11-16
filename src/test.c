@@ -5552,11 +5552,6 @@ int main(void)
 		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
 		ok(w.zoom == 384 && w.vx == 160 - 235 * 256 / 384 && w.vy == 85 - 85 * 256 / 384,
 		   "the first moves in, 150 apart: zoom 1.5, the same world point under the new midpoint, 235");
-		ev.kind = WSK_EV_DOWN; ev.x = 20; ev.y = 20; ev.finger = 3;
-		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
-		ev.kind = WSK_EV_MOVE; ev.x = 300;
-		n += wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
-		ok(n == 0 && w.zoom == 384, "CONTROL: a third finger, down and moving: nothing");
 		ev.kind = WSK_EV_MOVE; ev.x = 305; ev.y = 85; ev.finger = 1;
 		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
 		ok(w.zoom == 82, "pinched almost shut, 5 px apart: no further out than the whole 1000-wide world, 82");
@@ -5585,6 +5580,18 @@ int main(void)
 		ev.kind = WSK_EV_UP;
 		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
 		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK, "a pinch whose last lifting was lost: the next press starts afresh, and clicks");
+		/* a third finger during a pinch: the pinch ends and it presses --
+		   a lost lifting cannot be told from a hand, and must not freeze */
+		ev.kind = WSK_EV_DOWN; ev.x = 110; ev.y = 85; ev.finger = 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.x = 210; ev.finger = 2;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.x = 110; ev.finger = 3;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(ui.pinch == 0 && w.held == &PB[0], "a third finger pressed on B mid-pinch: the pinch ends, B held by the third");
+		ev.kind = WSK_EV_UP; ev.finger = 3;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK, "and its lifting clicks B");
 	}
 	{
 		/* a second finger off the world changes nothing */
@@ -5613,8 +5620,16 @@ int main(void)
 		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
 		ev.kind = WSK_EV_UP; ev.x = 110; ev.y = 125; ev.finger = 1;
 		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
-		ok(k[0].zoom == 256 && n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[0],
-		   "a second finger on the bar, off the world: no pinch -- the first's tap on B still clicks");
+		ok(k[0].zoom == 256 && n == 0 && root.held == 0,
+		   "a second finger on the bar, off the world: no pinch -- a new press, the first let go, so its lifting is nothing "
+		   "(a lifting lost before it must not freeze every press after)");
+		ev.kind = WSK_EV_UP; ev.x = 100; ev.y = 20; ev.finger = 2;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.x = 110; ev.y = 125; ev.finger = 7;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[0], "CONTROL: then a tap on B clicks it");
 	}
 
 	/* ---- what an independent read of 2026-11-15/16's code found ---- */
@@ -5763,6 +5778,155 @@ int main(void)
 		wsk_ui_tip(&ui, "tip", &y0, &y1);
 		ok(t4.tip != 0 && wsk_ui_open(&ui, 0, "a", &y0, &y1) == WSK_OK && t4.tip == 0 && y0 <= t4.ty,
 		   "a menu opened over a tip closes the tip, and repaints where it was");
+	}
+
+	printf("\n-- review fixes, 2026-11-16, the second read\n");
+	{
+		static const wsk_widget_t RW[] = {
+			{ .kind = WSK_FIELD,  .id = "f0", .sub = 0, .size = 40 },
+			{ .kind = WSK_BUTTON, .id = "b",  .text = "B", .size = 40 },
+		};
+		static const wsk_widget_t DW[] = {
+			{ .kind = WSK_FIELD,  .id = "d0", .sub = 1, .size = 32 },
+			{ .kind = WSK_BUTTON, .id = "ok", .text = "OK", .size = 32 },
+		};
+		static const wsk_widget_t MW[] = { { .kind = WSK_BUTTON, .id = "m", .text = "M", .size = 30 } };
+		char b0[16] = "", b1[16] = "";
+		wsk_buf_t bufs[2];
+		wsk_tree_t t6, k[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0, y1, n, r6;
+
+		memset(bufs, 0, sizeof bufs);
+		bufs[0].b = b0; bufs[0].cap = 16; bufs[1].b = b1; bufs[1].cap = 16;
+		wsk_init(&t6, WSK_COL, 320, 200);
+		t6.pad = 0; t6.gap = 0; t6.item = RW; t6.n = 2; t6.nest = k; t6.nests = 2; t6.buf = bufs; t6.bufs = 2;
+		wsk_nest_init(&k[0], &t6, WSK_COL); k[0].item = DW; k[0].n = 2; k[0].pad = 4; k[0].gap = 4;
+		wsk_nest_init(&k[1], &t6, WSK_COL); k[1].item = MW; k[1].n = 1;
+		wsk_ui_init(&ui, &t6);
+		memset(&ev, 0, sizeof ev);
+
+		/* a press held on the window as a dialog opens does not click beneath it */
+		ev.kind = WSK_EV_DOWN; ev.x = 160; ev.y = 60;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		wsk_ui_dialog(&ui, 0, 200, 80, &y0, &y1);
+		ok(t6.held == 0 && y0 <= 40 && y1 >= 80, "a dialog opening over a held button lets it go, and repaints it");
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0, "and its lifting, off the dialog, clicks nothing beneath");
+		/* a menu may not open over a dialog */
+		ok(wsk_ui_open(&ui, 1, "b", &y0, &y1) == WSK_E_KIND && t6.over == 0 && t6.omodal,
+		   "a menu opened while a dialog is: refused, the dialog untouched");
+		/* the Menu key in a dialog with nothing focused names the dialog */
+		ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_MENU;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_MENU && nt[0].in == &k[0], "the Menu key, nothing focused in a dialog: MENU for the dialog");
+		/* a second finger off the dialog does not cancel the first's press on it */
+		ev.kind = WSK_EV_DOWN; ev.key = 0; ev.x = 160; ev.y = 60 + 4 + 32 + 4 + 10; ev.finger = 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.x = 10; ev.y = 10; ev.finger = 2;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP; ev.x = 160; ev.y = 60 + 4 + 32 + 4 + 10; ev.finger = 1;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[0] && t6.held == 0,
+		   "a finger on OK, a second off the dialog, the first lifting on OK: OK's click -- nothing left held");
+		/* a dialog replaced repaints where it was */
+		ui.down = 0;
+		wsk_ui_dialog(&ui, 0, 300, 180, &y0, &y1);
+		r6 = wsk_ui_dialog(&ui, 0, 120, 80, &y0, &y1);
+		ok(r6 == WSK_OK && t6.oy == 60 && y0 <= 10 && y1 >= 190,
+		   "a dialog replaced by a smaller one: the larger one's rows repaint too");
+		wsk_ui_dialog_close(&ui, &y0, &y1);
+	}
+	{
+		/* the chooser: arrows choose a file, too-long paths, relative Up, a name left behind */
+		static const wsk_widget_t MAINW[] = { { .kind = WSK_LABEL, .id = "main", .text = "x", .weight = 1 } };
+		static wsk_chooser_t ch;
+		static const char *strs[2 + WSK_CH_MAX];
+		wsk_buf_t cb[1];
+		wsk_tree_t root, k[4];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0, y1, r;
+		char longf[WSK_CH_PATH];
+
+		memset(cb, 0, sizeof cb);
+		wsk_init(&root, WSK_COL, 640, 400);
+		root.item = MAINW; root.n = 1; root.nest = k; root.nests = 4;
+		root.str = strs; root.strs = 2 + WSK_CH_MAX; root.buf = cb; root.bufs = 1;
+		for (int i = 0; i < 4; i++) wsk_nest_init(&k[i], &root, WSK_COL);
+		wsk_ui_init(&ui, &root);
+		wsk_chooser_init(&ch, &root, strs, 0, 0, 0, fake_lister, 0);
+		wsk_chooser_open(&ch, &ui, WSK_CHOOSE_FILE, "Open", "/home/me", 0, "*.bas", 400, 300, &y0, &y1);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = 200; ev.y = 190;              /* a.bas */
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		wsk_chooser_feed(&ch, &ui, nt, wsk_feed(&ui, &ev, nt, 4, &y0, &y1), &y0, &y1);
+		ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_TAB;                 /* Up, the list */
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.key = WSK_KEY_DOWN;
+		wsk_chooser_feed(&ch, &ui, nt, wsk_feed(&ui, &ev, nt, 4, &y0, &y1), &y0, &y1);
+		ok(k[2].sel == 3 && strcmp(ch.name, "B.bas") == 0, "a.bas clicked, then Down: B.bas chosen, and named in the field");
+		ok(wsk_chooser_answer(&ch, &ui, 0, &y0, &y1) == WSK_CANCELLED, "(closed)");
+		/* entering a folder leaves a file's name behind */
+		wsk_chooser_open(&ch, &ui, WSK_CHOOSE_FILE, "Open", "/home/me", "a.bas", 0, 400, 300, &y0, &y1);
+		ev.kind = WSK_EV_DOWN; ev.key = 0; ev.x = 200; ev.y = 142;  /* src/ */
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		wsk_chooser_feed(&ch, &ui, nt, wsk_feed(&ui, &ev, nt, 4, &y0, &y1), &y0, &y1);
+		ev.kind = WSK_EV_DOWN;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		wsk_chooser_feed(&ch, &ui, nt, wsk_feed(&ui, &ev, nt, 4, &y0, &y1), &y0, &y1);
+		ok(strcmp(ch.folder, "/home/me/src") == 0 && ch.name[0] == '\0',
+		   "into src/: the a.bas named in the folder left is left behind, not opened from this one");
+		/* a path too long to hold is never cut */
+		memset(longf, 'd', sizeof longf);
+		longf[0] = '/'; longf[WSK_CH_PATH - 3] = '\0';
+		strcpy(ch.folder, longf);
+		r = wsk_chooser_answer(&ch, &ui, "a.bas", &y0, &y1);
+		ok(r == 0 && ch.open, "a folder of 509 bytes and a.bas: too long -- not answered, still open, never a path cut short");
+		/* Up from a relative folder never jumps to the top */
+		strcpy(ch.folder, "proj");
+		ev.kind = WSK_EV_DOWN; ev.x = 160; ev.y = 108;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP;
+		wsk_chooser_feed(&ch, &ui, nt, wsk_feed(&ui, &ev, nt, 4, &y0, &y1), &y0, &y1);
+		ok(strcmp(ch.folder, "proj") == 0 || strcmp(ch.folder, ".") == 0,
+		   "Up from \"proj\": \".\" -- or, unreadable here, it stays -- never \"/\"");
+		wsk_chooser_answer(&ch, &ui, 0, &y0, &y1);
+	}
+
+	{
+		/* a memo's band carries its band's lines, not all of them */
+		static const wsk_widget_t MW[] = { { .kind = WSK_MEMO, .id = "m", .sub = 0, .weight = 1 } };
+		char mb[256] = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
+		wsk_buf_t bufs[1];
+		wsk_tree_t t7;
+		char md[4096];
+		int pitch;
+		memset(bufs, 0, sizeof bufs);
+		bufs[0].b = mb; bufs[0].cap = 256; bufs[0].len = (int)strlen(mb);
+		wsk_init(&t7, WSK_COL, 320, 200);
+		t7.pad = 0; t7.gap = 0; t7.item = MW; t7.n = 1; t7.buf = bufs; t7.bufs = 1;
+		pitch = t7.font + t7.font / 4;
+		render_into(&t7, md, sizeof md, 4096);
+		ok(count(md, "<text") == 8, "a memo of eight lines, the whole window: eight lines drawn");
+		wsk_render_rows(&t7, 3 * pitch + WSK_FIELD_PAD, 3 * pitch + WSK_FIELD_PAD + 8, &(wsk_sink_t){0}, 0);
+		{
+			buf_t o; wsk_sink_t sk;
+			o.b = md; o.cap = sizeof md;
+			sk.put = to_buf; sk.ctx = &o; sk.len = 0;
+			int nn = wsk_render_rows(&t7, 3 * pitch + WSK_FIELD_PAD, 3 * pitch + WSK_FIELD_PAD + 8, &sk, 4096);
+			md[(nn > 0 && nn < (int)sizeof md) ? nn : 0] = '\0';
+		}
+		ok(count(md, "<text") == 1 && has(md, ">four</text>"),
+		   "an 8-row band across its fourth line: that line alone -- not all eight (review, 2026-11-16)");
 	}
 
 	/* Leave the documents where run.sh can hand them to a real XML parser. */
