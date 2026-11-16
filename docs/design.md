@@ -5540,7 +5540,9 @@ is **met** — file dialogs (§5ae), several windows (§5af), the divider
 (§5v); left are proportional fonts, Unicode on the desktop host, input
 methods, and **tab characters, which a memo refuses** (measured). Item 1
 has every window word; left are the `highlighting` and `notebook`
-groups. Item 4 is undecided. **Bar 1** is now one piece of code and its
+groups. Item 4 is **decided** (D24): MCP first — a gBASIC program's
+tools, a window describable to them — and whisker's own colours gated
+for contrast and colour vision. **Bar 1** is now one piece of code and its
 measure: gBASIC built the rename, one vocabulary, the 148-member backend
 table and `ui.can` (its `ui_design.md`), and a `ui_whisker.c` — a
 retained model over whisker, gBASIC's code — waits on gBASIC's step 6,

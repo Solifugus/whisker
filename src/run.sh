@@ -105,6 +105,10 @@ done
 echo "ok    whisker.h builds with each of the 27 profiles and switches, -Werror"
 
 echo
+echo "-- the default palette: legible, and told apart in every kind of colour vision (D24)"
+python3 "$HERE/../tools/evidence/palette/audit.py" "$HERE/whisker.h" || exit 1
+
+echo
 echo "-- 3, 8  through RV-9's own rasteriser, to a picture"
 W="$(mktemp -d)"
 trap 'rm -rf "$W" ${RV9_SNAP:+"$RV9_SNAP"}' EXIT

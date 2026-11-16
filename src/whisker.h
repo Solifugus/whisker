@@ -1600,7 +1600,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->bg = 0x102030u;
 	t->ink = 0xffffffu;
 	t->accent = 0x2a6b8fu;
-	t->trough = 0x081620u;
+	t->trough = 0x040a10u;           /* 13 delta-E from bg for every vision; was 0x081620, 6.5 (D24) */
 	t->ids = 0;
 	t->justify = WSK_START;
 	t->overflow = WSK_REFUSE;
@@ -1627,7 +1627,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 #ifndef WSK_NO_GRAB
 	t->grab = 0;
 #endif
-	t->selfill = 0xb06a2au;
+	t->selfill = 0xa05c24u;          /* white on it 5.18:1; was 0xb06a2a, 4.25 (D24) */
 	t->head = WSK_NONE;
 	t->talign = WSK_MIDDLE;
 	t->ghead = 0;

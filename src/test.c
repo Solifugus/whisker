@@ -1093,7 +1093,7 @@ int main(void)
 			cx = r.x + WSK_FIELD_PAD + room * adv;
 			ok(n > 0 && cx + WSK_CARET_W <= r.x + r.w,
 			   "the caret is still inside the trough on a full field");
-			ok(has(doc, "fill=\"#081620\""),
+			ok(has(doc, "fill=\"#040a10\""),
 			   "and the trough is not the accent, so it is not a button");
 		}
 
@@ -2418,7 +2418,7 @@ int main(void)
 		/* Rule 1, without state: drawn unticked, read-only. */
 		render_into(&w, cd, sizeof cd, 4096);
 		ok(has(cd, "<rect id=\"bt\" x=\"8\" y=\"50\" width=\"12\" height=\"12\" fill=\"#fff\"/>"
-		           "<rect x=\"10\" y=\"52\" width=\"8\" height=\"8\" fill=\"#081620\"/>") &&
+		           "<rect x=\"10\" y=\"52\" width=\"8\" height=\"8\" fill=\"#040a10\"/>") &&
 		   !has(cd, "width=\"6\" height=\"6\""),
 		   "with no state, a check is a box -- a border in the ink, the trough inside -- and nothing in it");
 		/* With state: Bluetooth's byte is 1. */
@@ -2455,7 +2455,7 @@ int main(void)
 		ok(k[0].sel == 0 && y0 == 120 && y1 == 216,
 		   "a tap on Apple: the old choice's rows and the new one's both repaint");
 		render_into(&w, cd, sizeof cd, 4096);
-		ok(has(cd, "<rect id=\"a0\" x=\"4\" y=\"120\" width=\"312\" height=\"30\" fill=\"#b06a2a\"/>"),
+		ok(has(cd, "<rect id=\"a0\" x=\"4\" y=\"120\" width=\"312\" height=\"30\" fill=\"#a05c24\"/>"),
 		   "and Apple is drawn in the list's selection fill");
 		k[0].select = 0;
 		TAP(100, 200);
@@ -2593,7 +2593,7 @@ int main(void)
 		   nt[1].kind == WSK_NOTE_SELECT && nt[1].in == &k[1] && nt[1].value == 1 && k[1].sel == 1,
 		   "a tap on row 1's date cell: a CLICK on the cell, and SELECT row 1 of the body");
 		render_into(&w, td, sizeof td, 8192);
-		ok(has(td, "<g id=\"r1\"><rect y=\"62\" width=\"400\" height=\"28\" fill=\"#b06a2a\"/>"),
+		ok(has(td, "<g id=\"r1\"><rect y=\"62\" width=\"400\" height=\"28\" fill=\"#a05c24\"/>"),
 		   "and the chosen row is drawn on the selection fill, behind its cells");
 	}
 
@@ -2906,7 +2906,7 @@ int main(void)
 		wsk_event_t ev;
 		char sd[4096];
 		int n, y0 = 0, y1 = 0;
-		const char *SEL = "fill=\"#b06a2a\"";
+		const char *SEL = "fill=\"#a05c24\"";
 
 		memset(buf, 0, sizeof buf);
 		buf[0].b = fb; buf[0].cap = 16;
@@ -2940,9 +2940,9 @@ int main(void)
 		ok(buf[0].caret == 3 && buf[0].span == 2 && n == 0 && y0 == 0 && y1 == 40,
 		   "Shift-Left twice: the caret at 3, the selection two on (\"lo\"), the field's rows, no notice");
 		render_into(&w, sd, sizeof sd, 4096);
-		ok(count(sd, SEL) == 1 && has(sd, "<rect x=\"34\" y=\"12\" width=\"16\" height=\"16\" fill=\"#b06a2a\"/>"),
+		ok(count(sd, SEL) == 1 && has(sd, "<rect x=\"34\" y=\"12\" width=\"16\" height=\"16\" fill=\"#a05c24\"/>"),
 		   "drawn: one box of selfill behind characters 3 and 4 -- x 34, 16 wide, the text's height");
-		ok(strstr(sd, "fill=\"#b06a2a\"") < strstr(sd, ">hello</text>"), "and behind the text, not over it");
+		ok(strstr(sd, "fill=\"#a05c24\"") < strstr(sd, ">hello</text>"), "and behind the text, not over it");
 		KEY(WSK_KEY_RIGHT);
 		ok(buf[0].caret == 5 && buf[0].span == 0, "Right, unshifted: the selection collapses to its end");
 		render_into(&w, sd, sizeof sd, 4096);
@@ -3027,8 +3027,8 @@ int main(void)
 		KEY(WSK_KEY_DOWN | WSK_MOD_SHIFT);
 		ok(buf[1].caret == 5 && buf[1].span == -4, "in a memo, Shift-Down: from line 0 column 1 to line 1 column 1");
 		render_into(&w, sd, sizeof sd, 4096);
-		ok(count(sd, SEL) == 2 && has(sd, "<rect x=\"18\" y=\"46\" width=\"16\" height=\"16\" fill=\"#b06a2a\"/>") &&
-		   has(sd, "<rect x=\"10\" y=\"66\" width=\"8\" height=\"16\" fill=\"#b06a2a\"/>"),
+		ok(count(sd, SEL) == 2 && has(sd, "<rect x=\"18\" y=\"46\" width=\"16\" height=\"16\" fill=\"#a05c24\"/>") &&
+		   has(sd, "<rect x=\"10\" y=\"66\" width=\"8\" height=\"16\" fill=\"#a05c24\"/>"),
 		   "drawn as two boxes: \"bc\" on line 0, \"d\" on line 1");
 		TYPE("-");
 		ok(strcmp(mb, "a-ef\nghi") == 0, "and typing replaces it, the line break with it");
@@ -3179,7 +3179,7 @@ int main(void)
 		wsk_event_t ev;
 		char md[4096];
 		int n, y0 = 0, y1 = 0;
-		const char *SEL = "fill=\"#b06a2a\"";
+		const char *SEL = "fill=\"#a05c24\"";
 
 		/* 120 wide: the memo is 112, (112 - 12 - 2) / 8 = 12 characters a row;
 		   (120 - 12) / 20 = 5 rows show, from y 10, 20 apart */
@@ -3242,8 +3242,8 @@ int main(void)
 		KEY(WSK_KEY_DOWN | WSK_MOD_SHIFT);
 		render_into(&w, md, sizeof md, 4096);
 		ok(buf[0].caret == 15 && count(md, SEL) == 2 &&
-		   has(md, "<rect x=\"50\" y=\"10\" width=\"32\" height=\"16\" fill=\"#b06a2a\"/>") &&
-		   has(md, "<rect x=\"10\" y=\"30\" width=\"40\" height=\"16\" fill=\"#b06a2a\"/>"),
+		   has(md, "<rect x=\"50\" y=\"10\" width=\"32\" height=\"16\" fill=\"#a05c24\"/>") &&
+		   has(md, "<rect x=\"10\" y=\"30\" width=\"40\" height=\"16\" fill=\"#a05c24\"/>"),
 		   "Shift-Down from 5 to 15: \"uick\" on row 0, \"brown\" on row 1");
 
 		/* the view counts rows: twelve words of four, two a row, six rows */
@@ -3966,7 +3966,7 @@ int main(void)
 		   rect_is(wsk_rect(&w, 1), 104, 4, 6, 192) && rect_is(wsk_rect(&w, 2), 110, 4, 206, 192),
 		   "with one, all zero, the layout is the widgets': nav 100, the divider 6, the editor the rest, 206");
 		render_into(&w, sd, sizeof sd, 2048);
-		ok(has(sd, "<rect x=\"104\" y=\"4\" width=\"6\" height=\"192\" fill=\"#081620\"/>"),
+		ok(has(sd, "<rect x=\"104\" y=\"4\" width=\"6\" height=\"192\" fill=\"#040a10\"/>"),
 		   "the divider is drawn as its bar, in the trough's colour");
 		sz[0] = 150;
 		ok(rect_is(wsk_rect(&w, 0), 4, 4, 150, 192) && rect_is(wsk_rect(&w, 2), 160, 4, 156, 192),
@@ -4103,7 +4103,7 @@ int main(void)
 			wsk_init(&c, WSK_COL, 320, 200);
 			c.pad = 4; c.gap = 4; c.item = CH; c.n = 2; c.select = 1; c.sel = 1;
 			render_into(&c, sd, sizeof sd, 2048);
-			ok(has(sd, "<rect x=\"4\" y=\"38\" width=\"312\" height=\"30\" fill=\"#b06a2a\"/>") &&
+			ok(has(sd, "<rect x=\"4\" y=\"38\" width=\"312\" height=\"30\" fill=\"#a05c24\"/>") &&
 			   !has(sd, "<rect x=\"4\" y=\"38\" width=\"312\" height=\"30\" fill=\"#2a6b8f\"/>") &&
 			   has(sd, "<rect x=\"4\" y=\"4\" width=\"312\" height=\"30\" fill=\"#2a6b8f\"/>"),
 			   "a chosen button is drawn in the selection's fill and nothing over it; the other in the accent (the control)");

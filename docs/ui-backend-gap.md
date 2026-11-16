@@ -194,7 +194,10 @@ Design §6.1's four, as they stand:
 4. **`ui_whisker.c`** — the retained model and the 148 members, on the
    browser host first, `groups` = `windows file_dialogs docking`;
    proven by step 6's tiers, withholding nothing it claims.
-5. **Matthew's decisions**: where the desktop host's rasteriser comes
-   from (§6); and accessibility (§7.4).
+5. **Matthew's decisions**, made the same day: **one binary as far as is
+   reasonably possible** (D23 — the desktop host's rasteriser built in,
+   pinned); **accessibility is MCP first, and not only MCP** (D24 —
+   whisker's palette is now gated for contrast and colour vision, and
+   two defaults changed to pass).
 
 Steps 1–2 are whisker's and can start now; 3 is gBASIC's and gates 4.

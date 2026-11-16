@@ -295,7 +295,7 @@ try {
     await sleep(400);
     await settle();
     const chosen = await js(`(()=>{const d=whisker.canvas.getContext("2d").getImageData(200,166,624,264).data;
-      let n=0;for(let i=0;i<d.length;i+=4)if(Math.abs(d[i]-0xb0)<4&&Math.abs(d[i+1]-0x6a)<4&&Math.abs(d[i+2]-0x2a)<4)n++;return n;})()`);
+      let n=0;for(let i=0;i<d.length;i+=4)if(Math.abs(d[i]-0xa0)<4&&Math.abs(d[i+1]-0x5c)<4&&Math.abs(d[i+2]-0x24)<4)n++;return n;})()`);
     await snap('code_chooser_down.png');
     ok(chosen > 2000, `Down twelve times, past the list's bottom: the chosen row is drawn, in view (${chosen} pixels of it)`);
     await key('Escape', 'Escape');

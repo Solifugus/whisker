@@ -55,7 +55,15 @@ eight capability groups (gBASIC `docs/ui_design.md`); the question is now
 what a `ui_whisker.c` needs — a **retained model** (gBASIC's code: the
 table is an object API, whisker keeps nothing) and a list of named word
 gaps, the first any program meets being **a tab character, which a memo
-refuses**. Read it before choosing what to build. **Recounted 2026-11-15 (`window-gap.md`
+refuses**. Read it before choosing what to build. **Matthew ruled the
+two questions it raised the same day**: one binary as far as is
+reasonably possible (**D23** — the desktop host's rasteriser built in,
+pinned), and accessibility **MCP first, not only MCP (D24)** — whisker's
+default palette is now **gated** in `src/run.sh` (white ink 4.5:1 on
+every fill, state colours 10 ΔE apart under three simulated colour
+deficiencies; `tools/evidence/palette/audit.py`), and the selection and
+the field's well were darkened to pass (17 of 45 outputs rebaselined,
+colours only). **Recounted 2026-11-15 (`window-gap.md`
 §8): whisker answers all 25 of its words** — 19 directly, 6 by
 composition (21 of 25 on 2026-11-12). What was left was three
 interactions and a widget: ~~a draggable divider (`split`)~~ (§5x,
@@ -442,7 +450,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,181 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,191 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 63 — every demo program started — including the
@@ -532,7 +540,7 @@ layout is compiled in cannot change without a reflash).
 
 ## Read before working
 
-1. `docs/decisions.md` — twenty-three ratified outcomes (D0–D22), one screen. **First**, so that
+1. `docs/decisions.md` — twenty-five ratified outcomes (D0–D24), one screen. **First**, so that
    the design's §4 arguments read as history rather than as open questions.
    Then `docs/roadmap.md`, which is what is left and what would let us stop.
 2. `docs/design.md` — all of it. It is the whole project, and it has been
