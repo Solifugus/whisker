@@ -336,6 +336,8 @@ floating a pane into its own window, step 2, the same day).
   buffers and state shared; its own focus) and feeds that window's
   toolkit to `wsk_dock_feed` too. A step-1 layout line loads as it
   did. No byte of `whisker.h`; `dock.mjs` floats and docks in Chrome.
+  **Matthew used it, 2026-11-16: works in the SDL window and the
+  browser.**
 - **§5af — several windows** (2026-11-16): the host contract gains
   `wh_window`, `wh_window_close`, `wh_on` (which window documents go to),
   `win` on every event, and **`WH_CLOSE`** — the program decides; a

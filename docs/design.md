@@ -3705,6 +3705,9 @@ host's bar and the pane's own caption, which is what is double-clicked
 to dock it and holds its ×. Dragging a floating pane back onto an edge
 of the frame waits on a drag between windows, which no host reports.
 
+**Used by Matthew, 2026-11-16**: floating and docking again work in the
+SDL window and in the browser.
+
 ## 5af. Several windows (2026-11-16), written before its code
 
 Matthew chose it after the second review. gBASIC's Qt backend measured
