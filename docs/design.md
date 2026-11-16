@@ -3636,6 +3636,18 @@ Looked at: the chosen tab orange, the menu hung from the tab.
 **With this, all 25 of Studio's `window` words are answered directly**
 (`window-gap.md` §8).
 
+**Used by Matthew, 2026-11-16**: it works in both hosts — but in the
+browser **Ctrl-W closed the browser's own tab**, and the three whisker
+tabs in it. A browser keeps Ctrl-T, Ctrl-W and Ctrl-N (and their Shift
+forms, and Ctrl-Tab) and never gives them to a page, whatever its
+keydown handler does; the Chrome checks send keys to the page directly,
+below where the browser takes those, so none could have seen it. So
+**a program that binds one of those gives an Alt chord too**: the tabs
+demo Alt-T and Alt-W, the code editor's scratch pad Alt-N, in both
+hosts; `tabs.mjs` (13) and `code.mjs` use the Alt ones. The rule is the
+program's, as every shortcut is (§5s) — whisker never sees a chord the
+host was not given.
+
 ## 5ag. Docking (2026-11-16), written before its code
 
 Matthew chose it: the last of Studio's 25 `window` words whisker answered

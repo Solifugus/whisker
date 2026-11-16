@@ -141,9 +141,10 @@ try {
   ok(said.includes('Note 1 closed'), 'its close button again: closed');
 
   // a right-click on a background tab: the menu acts on it, never switching
-  await key('t', 'KeyT', 2); await sleep(200);
-  await key('t', 'KeyT', 2); await sleep(400); await settle();
-  ok(said.includes('Note 4 made') && said.includes('Note 5 made'), 'Ctrl-T twice: Note 4 and Note 5');
+  // Alt-T: a browser never gives a page Ctrl-T (nor Ctrl-W), so Alt does it
+  await key('t', 'KeyT', 1); await sleep(200);
+  await key('t', 'KeyT', 1); await sleep(400); await settle();
+  ok(said.includes('Note 4 made') && said.includes('Note 5 made'), 'Alt-T twice: Note 4 and Note 5');
   const b2 = said.length;
   await press(20, 14, 'right');                      // Note 3's tab, the first now
   ok(said.slice(b2).includes('a menu on Note 3'), 'a right-click on Note 3, in the background: its menu');
@@ -156,6 +157,9 @@ try {
   x = await xs();
   ok(x.length === 1, `one tab left (close buttons at ${x})`);
   await snap('tabs_last.png');
+  await key('w', 'KeyW', 1);
+  await sleep(400); await settle();
+  ok(said.includes('Note 3 closed') && (await xs()).length === 0, 'Alt-W: the last note closed, no tab left');
 } finally {
   try { ws?.close(); } catch {}
   chrome.kill();

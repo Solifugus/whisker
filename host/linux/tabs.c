@@ -10,6 +10,9 @@
  * discards it. A right-click on any tab offers Close and Close others, and
  * acts on THAT tab without switching to it (STU-21's rule).
  *
+ * A browser keeps Ctrl-T and Ctrl-W for its own tabs -- a page is never
+ * given them -- so Alt-T and Alt-W do the same, in either host.
+ *
  * The tab set is whisker_tabs.h's, built in tree slots this program sets
  * aside; each note's memo is this program's own tree.
  */
@@ -155,7 +158,7 @@ int main(void)
 	if (wsk_tabs_init(&tabs, &root, strs, T_SET, 0, WSK_TABS_TOP) != WSK_OK) return 1;
 	wsk_ui_init(&ui, &root);
 	new_note(); new_note(); new_note();
-	say("Ctrl-T a new note, Ctrl-S saves it, Ctrl-W or its x closes it; right-click a tab");
+	say("Alt-T (Ctrl-T) a new note, Ctrl-S saves it, Alt-W (Ctrl-W) or its x closes it; right-click a tab");
 	if ((e = wsk_check(&root, &which)) != WSK_OK) {
 		fprintf(stderr, "tabs: the window was refused (%d at %d)\n", e, which);
 		return 1;
@@ -225,7 +228,7 @@ int main(void)
 					if (kept > 0) { char m[64]; snprintf(m, sizeof m, "closed the others but %d unsaved", kept); say(m); }
 				}
 				whole = 1;
-			} else if (t->kind == WSK_NOTE_KEY && t->value == ('t' | WSK_MOD_CTRL)) {
+			} else if (t->kind == WSK_NOTE_KEY && (t->value == ('t' | WSK_MOD_CTRL) || t->value == ('t' | WSK_MOD_ALT))) {
 				new_note();
 				whole = 1;
 			} else if (t->kind == WSK_NOTE_KEY && t->value == ('s' | WSK_MOD_CTRL)) {
@@ -238,7 +241,7 @@ int main(void)
 					confirm = -1;
 					whole = 1;
 				}
-			} else if (t->kind == WSK_NOTE_KEY && t->value == ('w' | WSK_MOD_CTRL)) {
+			} else if (t->kind == WSK_NOTE_KEY && (t->value == ('w' | WSK_MOD_CTRL) || t->value == ('w' | WSK_MOD_ALT))) {
 				int c = slot_of(wsk_tabs_current(&tabs));
 				close_note(c, confirm == c);
 				whole = 1;

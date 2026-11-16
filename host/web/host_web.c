@@ -186,7 +186,11 @@ static const char PAGE[] =
 /* keys with their modifiers (§5s): Shift only where it means something --
    a key that moves the caret, and a chord -- and a chord a printable key
    with Ctrl (or Command) or Alt, lower-case. Ctrl-V is left to the
-   browser, whose paste event brings the text. */
+   browser, whose paste event brings the text. And a browser keeps some
+   chords for itself and never gives them to a page, whatever it does
+   with keydown -- Ctrl-T, Ctrl-W, Ctrl-N, their Shift forms, Ctrl-Tab
+   (Matthew, 2026-11-16: Ctrl-W closed the browser's tab, and the three
+   whisker tabs in it). A program that binds one gives an Alt one too. */
 "  cv.addEventListener('keydown',e=>{\n"
 "    const ctl=e.ctrlKey||e.metaKey;\n"
 "    let k=KEYS[e.key],m=(ctl?0x200:0)|(e.altKey?0x400:0);\n"

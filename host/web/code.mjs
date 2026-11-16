@@ -302,11 +302,11 @@ try {
     await sleep(300);
 
     // §5af: a second window, the scratch pad -- a panel over the page
-    await key('n', 'KeyN', 2);                          // Ctrl-N
+    await key('n', 'KeyN', 1);                          // Alt-N: a browser keeps Ctrl-N
     await sleep(500);
     await settle();
     const panels = await js('whisker.panels()');
-    ok(said.includes('scratch opened') && panels.includes(1), `Ctrl-N: a second window, a panel over the page (windows ${panels})`);
+    ok(said.includes('scratch opened') && panels.includes(1), `Alt-N: a second window, a panel over the page (windows ${panels})`);
     await js(`window.__p=whisker.panel(1).getContext("2d").getImageData(0,0,600,360).data.slice();1`);
     await type('hello');
     await sleep(400);

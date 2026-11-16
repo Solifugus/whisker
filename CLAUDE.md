@@ -351,7 +351,9 @@ directly**.
   "the body's colour" passed every check and could not be seen. Demo
   `host/linux/tabs.c` (`run.sh --tabs`, both hosts); `tabs.mjs` (12).
   **A struct copy is a `memcpy` at `-Os`**: compile a new header for
-  RISC-V with the module flags and `nm -u` it.
+  RISC-V with the module flags and `nm -u` it. **A browser keeps Ctrl-T,
+  Ctrl-W, Ctrl-N** (Matthew's Ctrl-W closed the browser tab): a program
+  binding one gives an Alt chord too; Chrome checks cannot see this.
 - **A third independent read, 2026-11-16** (design, after §5ag): a grab
   ended by a menu, a dialog or a lost lifting left the dock mid-drag —
   and the program's own grab tree moved a pane; a triple-click floated
@@ -439,7 +441,7 @@ looking at the pictures. `host/linux/run.sh --test` adds 63 — every demo progr
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
-18 for docking and floating (`dock.mjs`), 12 for tabs (`tabs.mjs`) — 168 in all.
+18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`) — 169 in all.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

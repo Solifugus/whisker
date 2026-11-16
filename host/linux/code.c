@@ -22,8 +22,9 @@
  * this one does not. Ctrl-O opens another file and Ctrl-Shift-S saves this
  * one as a name of your choosing -- the chooser (§5ae), which reads folders
  * through POSIX here (lister.h) because whisker reads none. Ctrl-S says
- * that only Save as writes. Ctrl-N opens a second window, a scratch pad
- * (§5af). Closing the last window quits.
+ * that only Save as writes. Ctrl-N (Alt-N in a browser, which keeps Ctrl-N)
+ * opens a second window, a scratch pad (§5af). Closing the last window
+ * quits.
  */
 #include "host.h"
 #include "whisker.h"
@@ -451,7 +452,9 @@ int main(int argc, char **argv)
 			} else if (t->kind == WSK_NOTE_KEY && t->value == ('s' | WSK_MOD_CTRL)) {
 				say("save: only Save as (Ctrl-Shift-S) writes, to a name you choose");
 				y0 = 0; y1 = h;
-			} else if (t->kind == WSK_NOTE_KEY && !choosing && t->value == ('n' | WSK_MOD_CTRL)) {
+			} else if (t->kind == WSK_NOTE_KEY && !choosing &&
+			           (t->value == ('n' | WSK_MOD_CTRL) || t->value == ('n' | WSK_MOD_ALT))) {
+				/* Alt-N too: a browser keeps Ctrl-N for a window of its own */
 				pad_open(&s);                       /* a second window (§5af) */
 				y0 = 0; y1 = h;                     /* and what it said, in Output */
 			} else if (t->kind == WSK_NOTE_KEY && !choosing &&
