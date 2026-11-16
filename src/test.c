@@ -5265,6 +5265,43 @@ int main(void)
 		}
 	}
 
+	printf("\n-- §5ab  step 3: the rows an item covers\n");
+	{
+		static const wsk_widget_t TOPR[] = {
+			{ .kind = WSK_LABEL, .id = "bar", .text = "bar", .size = 40 },
+			{ .kind = WSK_STACK, .id = "floor", .sub = 0, .weight = 1 },
+		};
+		static const wsk_widget_t RB[] = {
+			{ .kind = WSK_BUTTON, .id = "a", .text = "A" },
+			{ .kind = WSK_BUTTON, .id = "b", .text = "B" },
+		};
+		wsk_place_t pl[2] = {
+			{ .x = 100, .y = 80, .w = 40, .h = 20, .scale = 256 },
+			{ .x = 100, .y = 900, .w = 40, .h = 20, .scale = 256 },     /* far below the view */
+		};
+		wsk_tree_t root, k[1];
+		int y0, y1;
+		wsk_init(&root, WSK_COL, 320, 200);
+		root.pad = 0; root.gap = 0; root.item = TOPR; root.n = 2; root.nest = k; root.nests = 1;
+		wsk_nest_init(&k[0], &root, WSK_COL);
+		k[0].pad = 0; k[0].item = RB; k[0].n = 2; k[0].overflow = WSK_WORLD; k[0].place = pl;
+		ok(wsk_world_rows(&root, "floor", 0, &y0, &y1) == 1 && y0 == 120 && y1 == 144,
+		   "A, at world y 80 in a world under a 40-px bar: screen rows 120..140, banded 120..144");
+		ok(wsk_world_rows(&root, "floor", 1, &y0, &y1) == 0 && y0 == 0 && y1 == 0,
+		   "B, below the view: it shows nowhere, nothing to repaint");
+		k[0].zoom = 512; pl[0].y = 70;
+		ok(wsk_world_rows(&root, "floor", 0, &y0, &y1) == 1 && y0 == 176 && y1 == 200,
+		   "zoomed 2, A at world 70, screen 40 + 140 = 180..220: cut to the view, 180..200, banded 176..200");
+		k[0].zoom = 256; pl[0].y = 80;
+		k[0].wspace = WSK_TORUS; k[0].ww = 1000; k[0].wh = 1000;
+		ok(wsk_world_rows(&root, "floor", 0, &y0, &y1) == 1 && y0 == 40 && y1 == 200,
+		   "on a torus: the whole view, where its copies may be");
+		k[0].wspace = WSK_OPEN;
+		ok(wsk_world_rows(&root, "bar", 0, &y0, &y1) == WSK_E_NOTFOUND &&
+		   wsk_world_rows(&root, "floor", 2, &y0, &y1) == WSK_E_NOTFOUND,
+		   "CONTROL: not a world, or not an item of it: WSK_E_NOTFOUND");
+	}
+
 	printf("\n-- §5ad  pinch\n");
 	{
 		static const wsk_widget_t PB[] = { { .kind = WSK_BUTTON, .id = "b", .text = "B" } };

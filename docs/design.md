@@ -3336,6 +3336,68 @@ wanting flush would search between the two.
 lowers by raising everything else, as the floor does); a move is not
 undone by Escape.
 
+### §5ab step 3, written before its code (2026-11-16): each seat repaints only what changed for it
+
+Matthew chose it after pinch worked on his phone. Today every frame in
+which anyone on the floor took a step redraws **every seat's whole
+window** — 25 documents a second to every phone, the same whether one
+person moved at the far end of the hall or everyone did. A room of phones
+on one Wi-Fi is where that would show first.
+
+1. **whisker: `wsk_world_rows(root, world, item, &y0, &y1)`** — the band
+   of screen rows item i of a world covers in that window now, cut by the
+   view (a torus's whole view, since its copies may be anywhere), band-
+   snapped as `wsk_feed`'s rows are. 1 if it shows, 0 if not, WSK_E_NOTFOUND
+   for no such world. A program that moves things knows *what* moved;
+   only whisker knows *where that is on a screen*, so the arithmetic stays
+   whisker's.
+2. **The floor**, each frame, for each seat: for every person who moved,
+   the rows of that person and of their words **before** the seat's places
+   are brought up to date and **after**; the status line if a bump spoke to
+   it. **Whole** only when its own view moved (following) or its own person
+   walked — then every word's scale and fade, measured from its person,
+   may change. The spans are merged; past two thirds of the window it is
+   one whole document. A poster moved or raised still redraws every seat
+   whole: a person's hand did that, not the clock.
+3. **What is proved**: the bytes a seat is sent per second, before and
+   after, with people wandering and that seat looking on; and **a canvas
+   kept by partial repaints equals a full redraw, pixel for pixel**, once
+   everyone has stopped — a row missed would be a smear left behind, which
+   is exactly what to fear. The floor learns to stop the wanderers on
+   request (`WHISKER_FLOOR_SETTLE`), a test's switch, so that there is a
+   still moment to compare.
+
+**What it came to**: **1,018 checks** (1,013): 5 for `wsk_world_rows` —
+an item's band under a bar, one out of view showing nowhere, one cut at
+the view's edge when zoomed, a torus's whole view, and NOTFOUND for what
+is not a world (the control). Every earlier output — 43 files — byte-
+identical. Web 122 (117): `seathost.py` measures the bytes, and a new
+`repaint.mjs` compares the canvas.
+
+- **What a seat is sent**, people wandering and that seat looking on,
+  measured against the same program told to redraw whole
+  (`WHISKER_FLOOR_WHOLE`): 56,441 bytes a second whole, **29,368 only what
+  changed** — about half.
+- **The canvas is right**: after five seconds of wandering kept by 89
+  partial documents (and 2 whole), everyone stops, and the canvas equals a
+  full redraw with **0 pixels different**; a canvas taken mid-walk differs
+  from it by 17,711 (the control: the comparison sees change). And the check
+  was proved able to fail: the floor built to skip the rows where people
+  *were* left 25 pixels of smear, and the check said so.
+
+**One thing the measurement taught**: the first build sent a document
+for each span, and saved only 23 %. A document carries its frame whatever
+its rows — backing, the floor and its clip path, the focus ring's four
+bars, ~650 bytes — so three small ones cost nearly a whole window. One
+document a frame from the first changed row to the last: 37.6 → 19.6 KB/s
+where a document each had been 29.1. The frame's cost is whisker's to
+look at one day (a box cut to the document's rows, a ring only where it
+shows) — but every earlier partial document would change, so not here.
+
+**Named, not done**: the wanderers are the worst case — nine walking
+nonstop, three or four in view; a hall of seated people, each walking now
+and then, saves far more. A seat's own walk still redraws it whole.
+
 ## An independent read, 2026-11-16 — posters to tooltips
 
 Matthew asked for it before pinch. Two agents read the code from `092f5b2`

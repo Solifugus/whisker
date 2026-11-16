@@ -40,6 +40,14 @@
  * there -- and a tip says more (§5ac): a poster's abstract, a person's name
  * and how far away they are.
  *
+ * Each seat is sent only what changed for it (§5ab step 3): the rows of
+ * whoever stepped -- where they were and are, and their words -- found by
+ * wsk_world_rows; the whole window only when its own view or its own person
+ * moved. Two switches are for tests: WHISKER_FLOOR_SETTLE=<seconds> stops
+ * everyone after that long, so there is a still moment to compare a canvas
+ * with a full redraw; WHISKER_FLOOR_WHOLE=1 redraws whole, as before, so the
+ * bytes saved can be measured against the same program.
+ *
  * Nobody walks through anybody: whisker says what a step would touch
  * (wsk_world_in, §5q step 4) and this program decides -- you stop and meet
  * whoever it is; the others choose somewhere else to go.
@@ -48,6 +56,7 @@
 #include "whisker.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define PEOPLE  10
@@ -108,6 +117,10 @@ static wsk_tree_t world;                        /* ... as a world whisker can as
 static unsigned int seed = 12345;
 static int split_told, checking;
 static int max_waits = 1;                       /* Max stands at the door until a screen takes him */
+static unsigned char stepped[PEOPLE];           /* who moved this frame */
+static unsigned char spoke[WH_SEATS];           /* whose status line a step changed */
+static long settle_at;                          /* the tests' still moment, or 0 */
+static int whole_frames;                        /* the tests' old way, for comparison */
 
 /* One person's screen (§5ab): trees over the shared widgets, its own view,
    its own toolkit state, its own status line and places. */
@@ -175,11 +188,15 @@ static void model_people(void)
    anyone moved. */
 static int step(void)
 {
-	int moved = 0;
+	int moved = 0, settled = (settle_at != 0 && wh_ms() >= settle_at);
+	memset(stepped, 0, sizeof stepped);
+	memset(spoke, 0, sizeof spoke);
 	for (int i = 0; i < PEOPLE; i++) {
-		int o = owner[i], v = (o >= 0) ? 10 : 3, dx = tx[i] - px[i], dy = ty[i] - py[i], nx, ny, b;
+		int o = owner[i], v = (o >= 0) ? 10 : 3, dx, dy, nx, ny, b;
+		if (settled && o < 0) { tx[i] = px[i]; ty[i] = py[i]; }    /* a test's still moment */
+		dx = tx[i] - px[i]; dy = ty[i] - py[i];
 		if (dx == 0 && dy == 0) {
-			if (o >= 0 || (i == 0 && max_waits) || rnd(40) != 0) continue;
+			if (o >= 0 || settled || (i == 0 && max_waits) || rnd(40) != 0) continue;
 			tx[i] = 100 + rnd(FLOOR_W - 200 - PW_);
 			ty[i] = 260 + rnd(FLOOR_H - 360);
 			continue;
@@ -195,6 +212,7 @@ static int step(void)
 				if (b < POSTERS) snprintf(m, sizeof m, "You reach \"%s\".", TITLES[b]);
 				else snprintf(m, sizeof m, "You meet %s.", NAMES[b - POSTERS]);
 				say(o, m);
+				spoke[o] = 1;
 				printf("bump   %s\n", m);
 				fflush(stdout);
 				moved = 1;
@@ -205,8 +223,9 @@ static int step(void)
 		/* where they are now, before the next person looks: two walking
 		   toward each other must not both step into the same frame's gap */
 		model[POSTERS + i].x = nx; model[POSTERS + i].y = ny;
+		stepped[i] = 1;
 		moved = 1;
-		if (o >= 0 && px[i] == tx[i] && py[i] == ty[i]) say(o, "You arrive.");
+		if (o >= 0 && px[i] == tx[i] && py[i] == ty[i]) { say(o, "You arrive."); spoke[o] = 1; }
 	}
 	if (moved) model_people();
 	return moved;
@@ -233,6 +252,48 @@ static void draw(int st, wsk_sink_t *s, int y0, int y1)
 	if (!split_told) { split_told = 1; printf("bands  a frame over 4 KB goes in parts\n"); }
 	draw(st, s, y0, mid);
 	draw(st, s, mid, y1);
+}
+
+/* Rows to repaint, a frame's worth for one seat: spans, merged when drawn. */
+typedef struct { int n, a[2 * PEOPLE * 2 + 4], b[2 * PEOPLE * 2 + 4]; } spans_t;
+
+static void span_add(spans_t *sp, int a, int b)
+{
+	if (b <= a || sp->n >= (int)(sizeof sp->a / sizeof sp->a[0])) return;
+	sp->a[sp->n] = a; sp->b[sp->n] = b; sp->n++;
+}
+
+/* The rows of everyone who stepped, and their words, in seat q's window as
+   its places stand now. */
+static void movers(int q, spans_t *sp)
+{
+	for (int i = 0; i < PEOPLE; i++) {
+		int a, b;
+		if (!stepped[i]) continue;
+		if (wsk_world_rows(&seat[q].win, "floor", POSTERS + i, &a, &b) == 1) span_add(sp, a, b);
+		if (wsk_world_rows(&seat[q].win, "floor", POSTERS + PEOPLE + i, &a, &b) == 1) span_add(sp, a, b);
+	}
+}
+
+/*
+ * Seat q's spans drawn as ONE document, from the first row any of them
+ * touches to the last -- or the whole window, past two thirds of it. One,
+ * not one each: a document carries its frame whatever its rows (the
+ * backing, the floor and its clip, the focus ring, ~650 bytes), so three
+ * small ones cost nearly a whole window. Measured with people wandering,
+ * one seat looking on: whole 37.6 KB/s, a document per span 29.1, one for
+ * them all 19.6.
+ */
+static void draw_spans(int q, wsk_sink_t *s, spans_t *sp)
+{
+	int h = seat[q].win.h, a = h, b = 0;
+	for (int i = 0; i < sp->n; i++) {
+		if (sp->a[i] < a) a = sp->a[i];
+		if (sp->b[i] > b) b = sp->b[i];
+	}
+	if (b <= a) return;
+	if ((b - a) * 3 > h * 2) { a = 0; b = h; }
+	draw(q, s, a, b);
 }
 
 /* A screen arrives: its trees over the shared widgets, and a person. */
@@ -422,6 +483,8 @@ int main(void)
 		}
 	}
 	if (wh_open(DEV_W, DEV_H, 1, "whisker -- a conference floor") != 0) return 1;
+	if (getenv("WHISKER_FLOOR_SETTLE") != 0) settle_at = wh_ms() + 1000L * atoi(getenv("WHISKER_FLOOR_SETTLE"));
+	whole_frames = (getenv("WHISKER_FLOOR_WHOLE") != 0);
 	wh_seats(1);
 	s.put = to_window; s.ctx = 0; s.len = 0;
 	last = wh_ms();
@@ -442,6 +505,11 @@ int main(void)
 			if (ms < 40) { wh_wait(40 - ms); continue; }
 			last += ms;
 			moved = step();
+			if (settle_at != 0 && !moved && wh_ms() >= settle_at && settle_at > 0) {
+				printf("still  everyone has stopped\n");
+				fflush(stdout);
+				settle_at = -1;                                 /* said once */
+			}
 			for (int q = 0; q < WH_SEATS; q++) {
 				int fy0, fy1, again = moved, tn, ty0 = 0, ty1 = 0;
 				wsk_event_t tick;
@@ -460,14 +528,27 @@ int main(void)
 							fflush(stdout);
 						}
 					}
-				if (moved) place_for(q);
-				/* the view glides after its person: 30% margin, a quarter
-				   of the way a frame */
-				if (seat[q].following && seat[q].me >= 0 &&
-				    wsk_world_follow(&seat[q].win, "floor", POSTERS + seat[q].me, 30, 64, &fy0, &fy1) == 1)
-					again = 1;
-				if (again) draw(q, &s, 0, seat[q].win.h);
-				else if (ty1 > ty0) draw(q, &s, ty0, ty1);    /* a tip opened */
+				/* only what changed for this seat (§5ab step 3): whoever
+				   stepped, where they were and are; the whole window when
+				   its own person walked -- every word's fade is measured
+				   from them -- or its view moved */
+				{
+					spans_t sp;
+					sp.n = 0;
+					again = moved && (whole_frames || (seat[q].me >= 0 && stepped[seat[q].me]));
+					if (moved && !again) movers(q, &sp);           /* where they were */
+					if (moved) place_for(q);
+					if (moved && !again) movers(q, &sp);           /* and are */
+					/* the view glides after its person: 30% margin, a
+					   quarter of the way a frame */
+					if (seat[q].following && seat[q].me >= 0 &&
+					    wsk_world_follow(&seat[q].win, "floor", POSTERS + seat[q].me, 30, 64, &fy0, &fy1) == 1)
+						again = 1;
+					if (again) { draw(q, &s, 0, seat[q].win.h); continue; }
+					if (spoke[q]) span_add(&sp, 0, 40);            /* the status line */
+					span_add(&sp, ty0, ty1);                       /* a tip opened */
+					if (sp.n > 0) draw_spans(q, &s, &sp);
+				}
 			}
 			continue;
 		}

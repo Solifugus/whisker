@@ -281,6 +281,15 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   caller's, is the z order (0 = array order, byte-identical), and
   `wsk_world_raise` or a press on a movable item puts it on top
   (`WSK_NOTE_RAISE`). The floor's posters are arranged by hand. +184 bytes.
+- **§5ab step 3 — each seat repaints only what changed for it**
+  (2026-11-16): `wsk_world_rows` gives the band an item covers on a
+  screen; the floor sends each seat one document a frame from the first
+  changed row to the last — where movers were and are, and their words —
+  and the whole window only when that seat's own person or view moved.
+  About half the bytes with nine people wandering; the canvas equals a
+  full redraw to the pixel (`host/web/repaint.mjs`, proved able to fail).
+  **One document a frame, not one a span**: each carries ~650 bytes of
+  frame, and a document per span saved only 23 %.
 - **§5ac — tooltips** (2026-11-15, Matthew chose press-and-hold for touch):
   a rest — a mouse resting (§5aa), a finger held (a press with
   `WSK_MOD_TOUCH`), Tab's focus — counted by **`WSK_EV_TICK`** (whisker has
@@ -345,7 +354,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,013 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,018 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 51 — every demo program started — including the

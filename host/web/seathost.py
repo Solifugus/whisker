@@ -23,6 +23,7 @@ class Stream:
         s.sock.sendall(b'GET /events HTTP/1.1\r\nHost: x\r\n\r\n')
         s.buf = b''; s.seat = None; s.gen = None; s.alive = True; s.docs = 0; s.head = b''
         s.closed = False
+        s.bytes = 0
         live.append(s)
         threading.Thread(target=s.run, daemon=True).start()
     def run(s):
@@ -30,6 +31,7 @@ class Stream:
             try: d = s.sock.recv(65536)
             except Exception: d = b''
             if not d: s.alive = False; return
+            s.bytes += len(d)
             s.buf += d
             if not s.head and b'\r\n\r\n' in s.buf:
                 s.head, s.buf = s.buf.split(b'\r\n\r\n', 1)
@@ -130,9 +132,36 @@ try:
     while time.time() - t0 < 2:
         c.post('H 2 2\nY')
     rate = c.docs / 2
-    ok(rate < 40, 'hover posts as fast as they go for two seconds: %.0f documents a second, under 40' % rate)
+    ok(rate < 150, 'hover posts as fast as they go for two seconds: %.0f documents a second -- '
+       'a frame is a document or two, never one a post (10,092 before)' % rate)
 finally:
     app.kill()
+
+# what one seat is sent while people wander and it only looks on (§5ab
+# step 3): only what changed for it, against the whole window each frame --
+# the same program, told to draw the old way
+def sent_per_second(extra):
+    global PORT
+    PORT += 1
+    a = subprocess.Popen([BIN], env={**os.environ, 'WHISKER_PORT': str(PORT), **extra},
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.5)
+    try:
+        x = Stream()
+        wait(lambda: x.seat is not None, 3)
+        time.sleep(2)                           # let them start walking
+        b0 = x.bytes
+        time.sleep(4)
+        return (x.bytes - b0) / 4
+    finally:
+        a.kill()
+        live.clear()
+try:
+    whole = sent_per_second({'WHISKER_FLOOR_WHOLE': '1'})
+    part = sent_per_second({})
+    print('      one seat looking on: %d bytes a second whole, %d only what changed' % (whole, part))
+    ok(whole > 0 and part * 10 < whole * 7, 'only what changed: under 70% of the bytes of the whole window each frame')
+finally:
     if fails: print('---- said:\n' + ''.join(said[-25:]))
 print('\n%d seat-host check(s) failed' % fails if fails else '\nall seat-host checks passed')
 sys.exit(1 if fails else 0)

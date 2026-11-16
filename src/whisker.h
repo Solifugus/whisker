@@ -5808,6 +5808,36 @@ static inline int wsk_world_follow(wsk_tree_t *root, const char *world, int item
 
 #ifndef WSK_NO_WORLD
 /*
+ * The rows item i of a world covers in this window now (§5ab step 3): cut by
+ * the view -- a torus's whole view, since its copies may be anywhere -- and
+ * band-snapped, as wsk_feed's rows are. For a program that moved something
+ * and would repaint only where it was and where it is. `world` as
+ * wsk_world_follow takes it. 1 with y0..y1 if it shows; 0, and nothing to
+ * repaint, if not; WSK_E_NOTFOUND if there is no such world or item.
+ */
+static inline int wsk_world_rows(wsk_tree_t *root, const char *world, int item,
+                                 int *y0, int *y1)
+{
+	wsk_tree_t at, c;
+	int i, lo = 32767, hi = -1;
+	*y0 = *y1 = 0;
+	if (world == 0) wsk__tcopy(&c, root);
+	else if ((i = wsk__lookup(root, world, &at, 0)) < 0 || at.item[i].kind != WSK_STACK ||
+	         !wsk__child(&at, i, &c))
+		return WSK_E_NOTFOUND;
+	if (c.overflow != WSK_WORLD || c.place == 0 || item < 0 || item >= c.n) return WSK_E_NOTFOUND;
+	wsk__wrows(&c, item, &lo, &hi);
+	if (hi <= lo) return 0;
+	lo = (lo / WSK_BAND) * WSK_BAND;
+	hi = wsk__round_band(hi);
+	if (lo < 0) lo = 0;
+	if (hi > root->h) hi = root->h;
+	*y0 = lo;
+	*y1 = hi;
+	return 1;
+}
+
+/*
  * Set a world's view as a drag or the wheel would (§5ab step 2): the zoom
  * clamped -- no further out than a bounded world or torus whole -- the view
  * kept inside a bounded world, wrapped on a torus. For a program that moves
