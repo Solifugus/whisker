@@ -355,7 +355,10 @@ int main(int argc, char **argv)
 		   editor's closes the editor, and the program only when no window
 		   is left */
 		if (k == WH_CLOSE) {
-			if (he.win == pad && pad >= 0) { wh_window_close(pad); pad = -1; say("scratch closed"); }
+			if (he.win == pad && pad >= 0) {
+				wh_window_close(pad); pad = -1; say("scratch closed");
+				dirty0 = 0; dirty1 = h;             /* Output, drawn when events stop */
+			}
 			else if (he.win == 0) { wh_window_close(0); main_open = 0; printf("editor closed\n"); }
 			fflush(stdout);
 			if (!main_open && pad < 0) break;
@@ -450,6 +453,7 @@ int main(int argc, char **argv)
 				y0 = 0; y1 = h;
 			} else if (t->kind == WSK_NOTE_KEY && !choosing && t->value == ('n' | WSK_MOD_CTRL)) {
 				pad_open(&s);                       /* a second window (§5af) */
+				y0 = 0; y1 = h;                     /* and what it said, in Output */
 			} else if (t->kind == WSK_NOTE_KEY && !choosing &&
 			           (t->value == ('o' | WSK_MOD_CTRL) || t->value == ('s' | WSK_MOD_CTRL | WSK_MOD_SHIFT))) {
 				/* the chooser (§5ae): open a file, or save as */

@@ -3708,6 +3708,66 @@ of the frame waits on a drag between windows, which no host reports.
 **Used by Matthew, 2026-11-16**: floating and docking again work in the
 SDL window and in the browser.
 
+## A third independent read, 2026-11-16 — grabbing to floating
+
+Matthew agreed to it before tabs. The same two-reader shape, from
+`c736105` (the second read): one on `whisker.h`'s grabbing and
+`whisker_dock.h`, one on several windows in both hosts and the programs
+that use them. **Eight in the headers (seven confirmed by running), six
+in the hosts (three confirmed) and four lesser** — each with a check that
+fails before its fix where one could be had. **1,152 checks** (1,137);
+Linux host 62 (59); web 156 (153). Every earlier output — 45 files —
+byte-identical.
+
+**whisker.h and the dock**:
+
+- **A grab that ended with no drop left the dock mid-drag** — a context
+  menu or a dialog over it, a lifting lost: the drop bar stayed on the
+  screen, and the next grab of *any* tree, the program's own, moved the
+  pane where it was dropped. The toolkit now lets go of a grab on a
+  context menu as it did under a dialog; the dock lets go of its drag
+  whenever the toolkit has, follows only its own caption's DRAG and DROP,
+  and begins afresh on every GRAB.
+- **A finger held on a caption and dragged showed a tooltip mid-drag**:
+  the grab went past the hold's slop check. A grab now ends the hold,
+  and a selection, a divider or a scroll the press began.
+- **A triple-click floated a second pane** — the one moved up under the
+  pointer by the first's leaving. Exactly a double-click now.
+- **Focus stayed in a pane that floated or closed**, so typing in the
+  frame went into a field no longer in it. The dock drops the toolkit's
+  focus when its field has gone with a pane.
+- **The layout line**: a name with `:` or `;` saved a line that would not
+  load (names with those, a space, or longer than the line keeps are
+  refused); a line bad in its second record changed the sizes and the
+  first record (load reads it all first now, all or nothing — and read
+  past the end of a line that stopped inside a name); a line that fitted
+  its buffer exactly was refused as too long.
+
+**The hosts and programs**:
+
+- **SDL made an event for a closed window window 0's** — its close a
+  quit: the dock demo ended, the code editor closed the editor. Events
+  still queued for a closed window are dropped.
+- **A page that missed a window's closing kept its panel**, and the next
+  window given the same number was drawn into it under the old title.
+  A stream (re)opened drops the page's panels before it is sent the
+  open ones; a panel opened again replaces one of the same number.
+- **Window numbers were reused at once** (the browser), so events and
+  documents on their way for a window closed reached its successor; the
+  next number is now the next free after the last given.
+- **A floating pane's window took the keys**, and the demo sent them to a
+  pane with no field: lost. With no field focused there, they go to the
+  frame.
+- **Every SDL window leaked its driver state** (ASan: 96 bytes each);
+  **a `wh_window` that failed** switched the program to WH_CLOSE and
+  leaked what it had made; `wh_on` to a closed window drew into another
+  (now nowhere, both hosts); SDL was not shut down when every window had
+  closed; the code editor's pad left Output unpainted after it spoke.
+
+**Named, not done**: Escape does not cancel a drag; the scratch pad has
+no copy and paste; a programmatic `wsk_dock_float` or `wsk_dock_show`
+leaves focus to the program (the demo moves it).
+
 ## 5af. Several windows (2026-11-16), written before its code
 
 Matthew chose it after the second review. gBASIC's Qt backend measured

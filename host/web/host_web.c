@@ -131,7 +131,11 @@ static const char PAGE[] =
 /* a hidden tab's timers are throttled, so its seat goes quiet and is
    dropped; seated again while hidden it would only be dropped again --
    so it stays away until it is looked at */
-"function connect(){es=new EventSource('/events');es.onmessage=e=>{\n"
+"function connect(){es=new EventSource('/events');\n"
+/* a stream (re)opened is sent every window still open: a panel from
+   before it is one whose closing this page may have missed */
+"es.onopen=()=>{for(const n of Object.keys(V))if(+n)unpanel(+n);};\n"
+"es.onmessage=e=>{\n"
 "  if(e.data.startsWith('S ')){const v=e.data.split(' ');seat=+v[1];gen=+v[2];\n"
 "    if(document.hidden){es.close();es=null;seat=-1;return;}size();return;}\n"
 "  if(e.data.startsWith('C ')){copy(unesc(e.data.slice(2)));return;}\n"
@@ -206,7 +210,7 @@ static const char PAGE[] =
 /* a window as a panel (§5af): dragged by its bar, raised by a press, closed
    by its button -- the program's to obey or not (WH_CLOSE) */
 "function panel(n,w,h,title){\n"
-"  if(V[n])return;\n"
+"  if(V[n])unpanel(n);\n"
 "  const d=document.createElement('div');d.className='win';d.style.left=(40+30*n)+'px';d.style.top=(40+30*n)+'px';d.style.zIndex=++top9;\n"
 "  const bar=document.createElement('div');bar.className='bar';\n"
 "  const t=document.createElement('span');t.textContent=title;const x=document.createElement('b');x.textContent='×';x.title='close';\n"
@@ -250,7 +254,10 @@ static struct {
 	int       qh, qt;
 	int       seats, to;     /* serving seats (§5ab); the seat wh_to named, or -1 */
 	unsigned  gen;           /* joinings so far, to number the next */
-	int       on;            /* the window documents go to (§5af) */
+	int       on;            /* the window documents go to (§5af), or -1: nowhere,
+	                            wh_on having named one that is not open */
+	int       wlast;         /* the window last opened: the next takes the next
+	                            number free after it, not the lowest */
 	struct { int open, w, h; char title[64]; } win[8];   /* 0 is wh_open's */
 	char     *clip;          /* the clipboard: the last copied or pasted */
 	int       clen;
@@ -634,8 +641,16 @@ int wh_window(int w, int h, const char *title)
 {
 	char m[160], t[64];
 	int i, k = 0;
-	for (i = 1; i < 8 && S.win[i].open; i++) ;
-	if (i == 8 || w < 1 || h < 1 || w > 4096 || h > 4096) return -1;
+	/* round from the last number given, so a number just closed is the
+	   last to be given again: a page's events and documents still on
+	   their way for the old window find no window, not a new one */
+	for (k = 1; k <= 7; k++) {
+		i = (S.wlast + k - 1) % 7 + 1;
+		if (!S.win[i].open) break;
+	}
+	if (k > 7 || w < 1 || h < 1 || w > 4096 || h > 4096) return -1;
+	k = 0;
+	S.wlast = i;
 	for (const char *q = title ? title : "whisker"; *q != '\0' && k < (int)sizeof t - 1; q++)
 		t[k++] = (*q == '\n' || *q == '\r') ? ' ' : *q;
 	t[k] = '\0';
@@ -650,11 +665,12 @@ void wh_window_close(int win)
 	char m[32];
 	if (win <= 0 || win >= 8 || !S.win[win].open) return;
 	S.win[win].open = 0;
-	if (S.on == win) S.on = 0;
+	if (S.on == win) S.on = -1;             /* its documents go nowhere now */
 	to_all(m, snprintf(m, sizeof m, "data: Q %d\n\n", win));
 }
 
-void wh_on(int win) { if (win >= 0 && win < 8 && S.win[win].open) S.on = win; }
+/* The documents after this go to window `win` -- or, not open, nowhere. */
+void wh_on(int win) { S.on = (win >= 0 && win < 8 && S.win[win].open) ? win : -1; }
 
 /* Whether a page is one the next message goes to. */
 static int aimed(int i)
@@ -675,6 +691,11 @@ void wh_write(const void *bytes, int n)
 	S.dlen += n;
 	S.doc[S.dlen] = '\0';
 	if (S.dlen < 6 || memcmp(S.doc + S.dlen - 6, "</svg>", 6) != 0) return;
+	if (S.on < 0) {                         /* to a window that is not open */
+		S.dlen = 0;
+		S.y0 = S.y1 = 0;
+		return;
+	}
 
 	{
 		char head[64];

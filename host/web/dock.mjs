@@ -26,7 +26,7 @@ app.stdout.on('data', d => { said += d; });
 const profile = mkdtempSync(join(tmpdir(), 'whisker-chrome-'));
 const chrome = spawn('google-chrome', ['--headless=new', `--remote-debugging-port=${DEBUG}`,
   `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
-  '--window-size=1100,700', 'about:blank'], { stdio: 'ignore' });
+  '--window-size=1200,700', 'about:blank'], { stdio: 'ignore' });
 
 // however this ends -- a failure, ^C, the reader of its output going away --
 // Chrome and the program go with it: a Chrome left running keeps its pages,
@@ -172,6 +172,17 @@ try {
   const capLight = fw > 0 ? await lightPanel(fw, 4, 120, 4, 24) : 0;
   ok(capLight > 40, `drawn in that window: its caption's title (${capLight} light pixels)`);
   await shot('dock_floating.png');
+
+  // a third independent read: the panel took the keys, and typing was lost
+  const top = () => js(`Array.from(whisker.canvas.getContext("2d").getImageData(0,0,400,30).data)`);
+  const t0 = await top();
+  await key('z', 'KeyZ');
+  await sleep(400);
+  await settle();
+  const t1 = await top();
+  let typed = 0;
+  for (let i = 0; i < t0.length; i += 4) if (t0[i] !== t1[i] || t0[i + 1] !== t1[i + 1] || t0[i + 2] !== t1[i + 2]) typed++;
+  ok(typed > 20, `a key typed with Outline floating -- no field in it -- reaches the frame's editor (${typed} pixels changed)`);
   if (fw > 0) {
     const [px2, py2] = await inPanel(fw, 40, 14);
     await clicks(px2, py2, 2);
@@ -186,10 +197,20 @@ try {
   await clicks(qx, qy, 2);
   const two = await js('whisker.panels()');
   ok(said.includes('Output floating') && two.length === 2, `Output double-clicked: floating (windows ${two})`);
+  const fw2 = two.find(n => n !== 0) ?? -1;
+  ok(fw2 > 0 && fw2 !== fw, `its window not the number just closed (${fw2}, Outline's was ${fw}): what was on its way for that one finds nothing`);
+  // the page's stream drops while the window closes: it never hears the close
+  await js('es.close(); true');
   const x = await js(`(()=>{const r=document.querySelector('.bar b').getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2];})()`);
   await clicks(x[0], x[1], 1);
-  ok(said.includes('Output docked again') && (await js('whisker.panels()')).length === 1,
-     'its window\'s close button: Output docked again, the window gone');
+  ok(said.includes('Output docked again'), 'its window\'s close button: Output docked again');
+  const stale = await js('whisker.panels()');
+  await js('connect(); true');
+  await sleep(800);
+  await settle();
+  const after = await js('whisker.panels()');
+  ok(stale.length === 2 && after.length === 1,
+     `a page that missed the close (panels ${stale}) reconnects: the panel gone (panels ${after})`);
 } finally {
   try { ws?.close(); } catch {}
   chrome.kill();

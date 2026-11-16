@@ -6192,6 +6192,85 @@ int main(void)
 			ok(wsk_dock_show(&d, "output", 1) == WSK_OK && (wsk_dock_build(&d), rect_is(rect_of(&root, "output"), 0, 300, 640, 26)),
 			   "shown again: docked at the bottom");
 			ok(wsk_dock_float(&d, "nope", 1) == WSK_E_NOTFOUND, "floating a pane there is not: WSK_E_NOTFOUND");
+
+			/* a third independent read (2026-11-16): each fails before its fix */
+			{
+				int dropped = 0, tipped = 0, len;
+				wsk_rect_t f = rect_of(&root, "files");
+				char before[256], after[256];
+
+				/* a grab the toolkit lets go of with no drop: a context menu mid-drag */
+				DK_EVD(&ui, WSK_EV_DOWN, f.x + 30, 13, 1);
+				DK_EVD(&ui, WSK_EV_MOVE, 600, 150, 0);
+				ok(d.drag == 0 && d.hint == WSK_DOCK_RIGHT, "(Files grabbed, the bar at the right)");
+				ch = DK_EVD(&ui, WSK_EV_MENU, 600, 150, 0);
+				ok(ch == 1 && d.drag == -1 && d.hint == -1, "a context menu mid-drag: the dock lets go, the bar gone");
+				DK_EVD(&ui, WSK_EV_UP, 600, 150, 0);
+				for (int i = 0; i < n; i++) if (nt[i].kind == WSK_NOTE_DROP) dropped = 1;
+				ok(!dropped, "and the lifting after it drops nothing");
+
+				/* another tree's drag is not the dock's: the centre made a grab tree */
+				wsk_dock_save(&d, before, sizeof before);
+				k[0].grab = 1;
+				DK_EVD(&ui, WSK_EV_DOWN, f.x + 30, 13, 1);
+				DK_EVD(&ui, WSK_EV_MOVE, 600, 150, 0);
+				DK_EVD(&ui, WSK_EV_DOWN, 300, 100, 1);        /* the lifting lost: a new press, on the centre */
+				ok(d.drag == -1 && d.hint == -1, "a drag whose lifting was lost, then a new press: the dock lets go");
+				DK_EVD(&ui, WSK_EV_MOVE, 320, 395, 0);
+				DK_EVD(&ui, WSK_EV_UP, 320, 395, 0);
+				wsk_dock_save(&d, after, sizeof after);
+				k[0].grab = 0;
+				ok(strcmp(before, after) == 0, "the program's own grab tree dragged to the bottom: no pane moved");
+
+				/* a third click is not a second double-click */
+				f = rect_of(&root, "outline");
+				DK_EVD(&ui, WSK_EV_DOWN, f.x + 30, f.y + 13, 3);
+				DK_EVD(&ui, WSK_EV_UP, f.x + 30, f.y + 13, 0);
+				ok(wsk_dock_shown(&d, "outline") == 1, "a triple-click's third press on Outline: not floated");
+
+				/* focus in a pane that floats goes with it */
+				wsk_ui_focus(&ui, "pmemo", &y0, &y1);
+				ok(root.focus != 0, "(Output's memo focused in the frame)");
+				f = rect_of(&root, "output");
+				DK_EVD(&ui, WSK_EV_DOWN, f.x + 30, f.y + 13, 2);
+				DK_EVD(&ui, WSK_EV_UP, f.x + 30, f.y + 13, 0);
+				len = bufs[0].len;
+				memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_TEXT; ev.text[0] = 'Q';
+				wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+				ok(wsk_dock_shown(&d, "output") == WSK_DOCK_FLOAT && root.focus == 0 && bufs[0].len == len,
+				   "Output floated: the frame's focus dropped, a key typed in the frame not into the pane");
+				wsk_dock_float(&d, "output", 0);
+				wsk_dock_build(&d);
+
+				/* a finger held on a caption and dragged: no tooltip mid-drag */
+				f = rect_of(&root, "files");
+				memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_DOWN; ev.x = (short)(f.x + 30); ev.y = 13; ev.key = WSK_MOD_TOUCH; ev.d = 1;
+				n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1); wsk_dock_feed(&d, &ui, &ev, nt, n);
+				DK_EVD(&ui, WSK_EV_MOVE, 600, 150, 0);
+				memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_TICK; ev.d = 600;
+				n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+				for (int i = 0; i < n; i++) if (nt[i].kind == WSK_NOTE_TIP) tipped = 1;
+				ok(!tipped && n == 0, "a finger held on Files' caption and dragged, 600 ms: no tooltip");
+				DK_EVD(&ui, WSK_EV_UP, 320, 200, 0);
+
+				/* the layout line */
+				ok(wsk_dock_pane(&d, "a:b", "A", 1, WSK_DOCK_LEFT) == -1 && wsk_dock_pane(&d, "a;b", "A", 1, WSK_DOCK_LEFT) == -1 &&
+				   wsk_dock_pane(&d, "a b", "A", 1, WSK_DOCK_LEFT) == -1 &&
+				   wsk_dock_pane(&d, "a_name_of_twenty_four_ch", "A", 1, WSK_DOCK_LEFT) == -1,
+				   "a name with ':', ';' or a space, or longer than the line keeps: refused");
+				wsk_dock_save(&d, before, sizeof before);
+				ok(wsk_dock_load(&d, "L10 R10 T10 B10;files:L0:1:0;outline:Q0:1:0;") == -1 &&
+				   wsk_dock_save(&d, after, sizeof after) > 0 && strcmp(before, after) == 0,
+				   "a line bad in its second record: -1, and nothing changed -- not the sizes, not the first record");
+				ok(wsk_dock_load(&d, "L10 R10 T10 B10;files") == -1 && wsk_dock_load(&d, "L10 R10 T10 B10;files:L0:1") == -1,
+				   "a line that ends inside a record: -1");
+				ok(wsk_dock_load(&d, "L10 R10 T10 B10;a_name_much_longer_than_any:L0:1:0;") == -1,
+				   "a name longer than any pane's: -1");
+				len = (int)strlen(before);
+				ok(wsk_dock_save(&d, after, len + 1) == len && strcmp(before, after) == 0,
+				   "saved into exactly enough room: the line, not -1");
+				ok(wsk_dock_save(&d, after, len) == -1 && after[0] == '\0', "CONTROL: one byte less: -1");
+			}
 #undef DK_EVD
 		}
 #undef DK_EV

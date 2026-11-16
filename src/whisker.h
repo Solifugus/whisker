@@ -6463,6 +6463,10 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 #ifndef WSK_NO_WORLD
 			ui->witem = -1;
 #endif
+#ifndef WSK_NO_GRAB
+			ui->gin = 0;                   /* nor a drop: a grab ends here, */
+			ui->grabbing = 0;              /* as it ends under a dialog */
+#endif
 			if (r->held != 0) {
 				r->held = 0;
 				wsk__span(&lo, &hi, ui->held.y, ui->held.y + ui->held.h);
@@ -6675,6 +6679,23 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 					wsk__span(&lo, &hi, ui->held.y, ui->held.y + ui->held.h);
 				}
 				n = wsk__note(note, max, n, WSK_NOTE_GRAB, ui->gin, -1, 0);
+				/* and nothing else the press began goes on under it: no
+				   tooltip held, selection, divider or scroll */
+#ifndef WSK_NO_TIP
+				if (ui->tip_hold) {
+					wsk_rect_t z = { 0, 0, 0, 0 };
+					wsk__tip_rest(ui, 0, -1, z, 0, &lo, &hi);
+				}
+#endif
+#ifndef WSK_NO_TEXTSEL
+				ui->selecting = 0;
+#endif
+#ifndef WSK_NO_SPLIT
+				ui->split = 0;
+#endif
+#ifndef WSK_NO_SCROLL
+				ui->drag = 0;
+#endif
 			} else if (ui->grabbing)
 				n = wsk__note(note, max, n, WSK_NOTE_DRAG, ui->gin, -1, 0);
 			if (ui->grabbing) goto rows;

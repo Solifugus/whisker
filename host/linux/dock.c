@@ -144,7 +144,7 @@ static void windows(void)
 				continue;
 			}
 			wsk_ui_init(&fui[p], &froot[p]);
-			wsk_ui_focus(&ui, "editor", &y0, &y1);  /* the keys stay with the frame's editor */
+			wsk_ui_focus(&ui, "editor", &y0, &y1);  /* the frame's editor keeps its caret */
 			snprintf(m, sizeof m, "%s floating: double-click its caption, or close its window, to dock it", pn->caption);
 			say(m);
 		} else if (!want && fwin[p] >= 0) {
@@ -218,6 +218,10 @@ int main(void)
 		if (k == WH_EXPOSE) { draw_all(&s); continue; }
 		for (int p = 0; p < dock.n; p++)
 			if (he.win != 0 && fwin[p] == he.win) { fp = p; u = &fui[p]; }
+		/* a new window takes the keys -- the platform's doing, SDL's and the
+		   page's -- but a floating pane with no field focused has no use for
+		   them: they go on to the frame, its editor and its shortcuts */
+		if ((k == WH_KEY || k == WH_TEXT) && fp >= 0 && froot[fp].focus == 0) u = &ui;
 		if (k == WH_CLOSE) {
 			if (he.win == 0) break;                 /* the frame's window: the program ends */
 			if (fp < 0) continue;
@@ -239,6 +243,7 @@ int main(void)
 		else continue;
 
 		n = wsk_feed(u, &ev, note, 8, &y0, &y1);
+		if (n > 8) n = 8;                       /* wsk_feed counts what did not fit */
 		said = 0;
 		dragged = dock.drag;
 		if (dragged >= 0) { was_area = dock.pane[dragged].area; was_order = dock.pane[dragged].order; }
@@ -289,9 +294,10 @@ int main(void)
 		if (whole) windows();
 		if (said) whole = 1;
 		if (whole) { draw_all(&s); continue; }
-		if (y1 > y0) {
-			wh_on(fp >= 0 ? fwin[fp] : 0);
-			wh_draw_fit(fp >= 0 ? &froot[fp] : &root, &s, y0, y1);
+		if (y1 > y0) {                          /* the rows of the window the toolkit fed was */
+			int in = (u == &ui) ? -1 : fp;
+			wh_on(in >= 0 ? fwin[in] : 0);
+			wh_draw_fit(in >= 0 ? &froot[in] : &root, &s, y0, y1);
 			wh_on(0);
 		}
 	}

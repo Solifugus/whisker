@@ -458,8 +458,37 @@ int main(void)
 		e.window.windowID = SW[1].id;
 		SDL_PushEvent(&e);
 		ok(poll_until(&ev, 20) == WH_CLOSE && ev.win == 1, "its close button: WH_CLOSE from window 1 -- the program's to obey");
-		wh_window_close(1);
-		ok(!SW[1].open && SW[0].open, "closed by the program: window 1 gone, window 0 still open");
+		{
+			Uint32 gone = SW[1].id;
+			int k, stray = 0, painted = 0;
+			wh_window_close(1);
+			ok(!SW[1].open && SW[0].open, "closed by the program: window 1 gone, window 0 still open");
+
+			/* a third independent read: what was still queued for window 1 is
+			   nobody's -- it used to arrive as window 0's, its close a quit */
+			memset(&e, 0, sizeof e);
+			e.type = SDL_WINDOWEVENT; e.window.event = SDL_WINDOWEVENT_CLOSE; e.window.windowID = gone;
+			SDL_PushEvent(&e);
+			memset(&e, 0, sizeof e);
+			e.type = SDL_MOUSEBUTTONDOWN; e.button.button = SDL_BUTTON_LEFT; e.button.x = 10; e.button.y = 10;
+			e.button.windowID = gone;
+			SDL_PushEvent(&e);
+			memset(&e, 0, sizeof e);
+			e.type = SDL_KEYDOWN; e.key.keysym.sym = SDLK_LEFT; e.key.windowID = SW[0].id;
+			SDL_PushEvent(&e);
+			while ((k = poll_until(&ev, 20)) != WH_NOTHING && k != WH_KEY)
+				if (k == WH_CLOSE || k == WH_PRESS || k == WH_QUIT) stray++;
+			ok(stray == 0, "a close and a press still queued for the closed window: dropped, not window 0's");
+			ok(k == WH_KEY && ev.win == 0, "CONTROL: a key in window 0 after them arrives, from window 0");
+
+			memcpy(before0, SW[0].fb, sizeof before0);
+			wh_on(1);                              /* closed: documents go nowhere */
+			wh_clip(0, 0);
+			wh_write(DOC, (int)sizeof DOC - 1);
+			for (int i = 0; i < 64; i++) if (SW[0].fb[i] != before0[i]) painted++;
+			ok(painted == 0, "a document after wh_on to a closed window: not drawn into window 0");
+			wh_on(0);
+		}
 	}
 
 	wh_close();

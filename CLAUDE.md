@@ -338,6 +338,14 @@ floating a pane into its own window, step 2, the same day).
   did. No byte of `whisker.h`; `dock.mjs` floats and docks in Chrome.
   **Matthew used it, 2026-11-16: works in the SDL window and the
   browser.**
+- **A third independent read, 2026-11-16** (design, after §5ag): a grab
+  ended by a menu, a dialog or a lost lifting left the dock mid-drag —
+  and the program's own grab tree moved a pane; a triple-click floated
+  a second pane; focus stayed in a floated pane; the layout line
+  half-loaded a bad line and refused one that fitted exactly. SDL made
+  a closed window's queued events window 0's (its close a quit); a
+  page that missed a window's closing drew the next into its panel;
+  each SDL window leaked its driver state. 15 + 3 + 3 checks.
 - **§5af — several windows** (2026-11-16): the host contract gains
   `wh_window`, `wh_window_close`, `wh_on` (which window documents go to),
   `win` on every event, and **`WH_CLOSE`** — the program decides; a
@@ -410,14 +418,14 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,137 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,152 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 59 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 62 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
-15 for docking and floating (`dock.mjs`) — 153 in all.
+18 for docking and floating (`dock.mjs`) — 156 in all.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

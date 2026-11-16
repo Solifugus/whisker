@@ -139,13 +139,18 @@ static inline int wsk_dock_init(wsk_dock_t *d, wsk_tree_t *root, const char **st
 	return WSK_OK;
 }
 
-/* A pane: its index, or -1 (no room, a name already used, no such tree). */
+/* A pane: its index, or -1 (no room, a name already used, no such tree, or
+   a name the layout line could not carry: longer than 23 bytes, or with a
+   ':', ';' or space in it). */
 static inline int wsk_dock_pane(wsk_dock_t *d, const char *name, const char *caption,
                                 int content, int area)
 {
 	wsk_pane_t *p;
+	int len = 0;
 	if (d->n >= WSK_DOCK_MAX || name == 0 || name[0] == '\0' || area < 0 || area > 3 ||
 	    content < 0 || content >= d->root->nests) return -1;
+	for (; name[len] != '\0'; len++)
+		if (name[len] == ':' || name[len] == ';' || name[len] == ' ' || len >= (int)sizeof p->name - 1) return -1;
 	for (int i = 0; i < d->n; i++) if (wsk__dk_same(d->pane[i].name, name)) return -1;
 	p = &d->pane[d->n];
 	wsk__dk_cpy(p->name, name, (int)sizeof p->name);
@@ -348,6 +353,19 @@ static inline void wsk__dk_keep(wsk_dock_t *d)
 			if (d->apane[a][k] >= 0) d->pane[(int)d->apane[a][k]].size = d->asizes[a][k];
 }
 
+/* Whether widget w is in tree t or a tree beneath it: focus left in a pane
+   that has gone out of a window is dropped. */
+static inline int wsk__dk_reach(const wsk_tree_t *r, const wsk_tree_t *t, const void *w, int depth)
+{
+	for (int i = 0; i < t->n; i++) {
+		const wsk_widget_t *it = &t->item[i];
+		if ((const void *)it == w) return 1;
+		if (it->kind == WSK_STACK && it->sub >= 0 && it->sub < r->nests && depth < WSK_DEPTH_MAX &&
+		    wsk__dk_reach(r, &r->nest[it->sub], w, depth + 1)) return 1;
+	}
+	return 0;
+}
+
 /*
  * What wsk_feed said, as far as it is the dock's: a caption grabbed, dragged
  * (the drop bar following the edge it is near) and dropped (the pane moved
@@ -355,14 +373,18 @@ static inline void wsk__dk_keep(wsk_dock_t *d)
  * button; a divider dragged; a caption double-clicked, which floats a pane
  * or docks it again (step 2). `ui` is the toolkit fed -- the window's, or a
  * floating pane's window's, whose grabs are not the dock's -- and `ev` the
- * event, for its point. 1 if the layout changed: the frame must be drawn
- * again whole, and a pane may have gone into a window or come out of one.
+ * event, for its point; `n` the notes in `note` -- what wsk_feed returned,
+ * no more than the array holds (it counts what did not fit). 1 if the
+ * layout changed: the frame must be drawn again whole, and a pane may have
+ * gone into a window or come out of one -- and the toolkit's focus, if its
+ * field went with it, is dropped. A drag the toolkit let go of with no
+ * drop (a dialog, a context menu, a lifting lost) is let go of here too.
  */
 static inline int wsk_dock_feed(wsk_dock_t *d, wsk_ui_t *ui, const wsk_event_t *ev,
                                 const wsk_note_t *note, int n)
 {
 	int changed = 0, home = (ui->root == d->root);
-	if (ev->kind == WSK_EV_DOWN && ev->d >= 2 && ui->gin != 0) {
+	if (ev->kind == WSK_EV_DOWN && ev->d == 2 && ui->gin != 0) {     /* a third click is not another */
 		for (int q = 0; q < d->n; q++) {          /* a caption's title or padding, not its x */
 			const wsk_tree_t *ct = wsk__dk_tree(d, wsk__dk_cap(q));
 			if (ui->gin != ct || (ui->hit_in == ct && ui->hit == 1) || d->pane[q].shown == 0) continue;
@@ -380,7 +402,14 @@ static inline int wsk_dock_feed(wsk_dock_t *d, wsk_ui_t *ui, const wsk_event_t *
 		for (int q = 0; q < d->n; q++)
 			if (t->in == wsk__dk_tree(d, wsk__dk_cap(q))) p = q;
 		if (!home && (t->kind == WSK_NOTE_GRAB || t->kind == WSK_NOTE_DRAG || t->kind == WSK_NOTE_DROP)) continue;
-		if (t->kind == WSK_NOTE_GRAB && p >= 0 && d->pane[p].shown == 1) d->drag = (short)p;
+		if (t->kind == WSK_NOTE_GRAB) {                /* any grab begins afresh: a caption's is the dock's */
+			if (d->hint != -1) changed = 1;
+			d->hint = -1;
+			d->drag = (short)((p >= 0 && d->pane[p].shown == 1) ? p : -1);
+		}
+		if ((t->kind == WSK_NOTE_DRAG || t->kind == WSK_NOTE_DROP) &&
+		    (d->drag < 0 || t->in != wsk__dk_tree(d, wsk__dk_cap(d->drag))))
+			continue;                              /* another tree's drag: the program's */
 		if ((t->kind == WSK_NOTE_GRAB || t->kind == WSK_NOTE_DRAG) && d->drag >= 0) {
 			int e = wsk__dk_edge(d, ev->x, ev->y);
 			if (e != d->hint) { d->hint = (short)e; changed = 1; }
@@ -404,7 +433,21 @@ static inline int wsk_dock_feed(wsk_dock_t *d, wsk_ui_t *ui, const wsk_event_t *
 			wsk__dk_keep(d);
 		}
 	}
-	if (changed) wsk_dock_build(d);
+	/* a drag the toolkit let go of with no drop -- a dialog opened, a
+	   context menu, a lifting lost: the bar goes, the pane stays */
+	if (home && d->drag >= 0 && !ui->grabbing) {
+		d->drag = -1;
+		d->hint = -1;
+		changed = 1;
+	}
+	if (changed) {
+		wsk_dock_build(d);
+		if (ui->root->focus != 0 && !wsk__dk_reach(ui->root, ui->root, ui->root->focus, 0)) {
+			wsk_rect_t z = { 0, 0, 0, 0 };
+			int lo = 32767, hi = -1;
+			wsk__refocus(ui, 0, -1, z, 0, &lo, &hi);   /* its field went with a pane */
+		}
+	}
 	return changed;
 }
 
@@ -477,9 +520,17 @@ static inline int wsk_dock_shown(const wsk_dock_t *d, const char *name)
 
 /* ---- the layout as one line of text ---- */
 
+/* The line's writers count past cap, storing only what fits, so a line
+   that fits exactly is told from one that does not. */
+static inline int wsk__dk_ch(char *b, int cap, int k, char c)
+{
+	if (k < cap - 1) b[k] = c;
+	return k + 1;
+}
+
 static inline int wsk__dk_put(char *b, int cap, int k, const char *s)
 {
-	while (*s != '\0' && k < cap - 1) b[k++] = *s++;
+	while (*s != '\0') k = wsk__dk_ch(b, cap, k, *s++);
 	return k;
 }
 
@@ -487,9 +538,9 @@ static inline int wsk__dk_num(char *b, int cap, int k, int v)
 {
 	char dg[12];
 	int m = 0;
-	if (v < 0) { if (k < cap - 1) b[k++] = '-'; v = -v; }
+	if (v < 0) { k = wsk__dk_ch(b, cap, k, '-'); v = -v; }
 	do { dg[m++] = (char)('0' + v % 10); v /= 10; } while (v > 0 && m < 11);
-	while (m > 0 && k < cap - 1) b[k++] = dg[--m];
+	while (m > 0) k = wsk__dk_ch(b, cap, k, dg[--m]);
 	return k;
 }
 
@@ -505,24 +556,24 @@ static inline int wsk_dock_save(const wsk_dock_t *d, char *b, int cap)
 	int k = 0;
 	if (cap < 2) return -1;
 	for (int a = 0; a < 4; a++) {
-		if (a > 0 && k < cap - 1) b[k++] = ' ';
-		if (k < cap - 1) b[k++] = AREAS[a];
+		if (a > 0) k = wsk__dk_ch(b, cap, k, ' ');
+		k = wsk__dk_ch(b, cap, k, AREAS[a]);
 		k = wsk__dk_num(b, cap, k, d->asize[a]);
 	}
-	if (k < cap - 1) b[k++] = ';';
+	k = wsk__dk_ch(b, cap, k, ';');
 	for (int i = 0; i < d->n; i++) {
 		const wsk_pane_t *p = &d->pane[i];
 		k = wsk__dk_put(b, cap, k, p->name);
-		if (k < cap - 1) b[k++] = ':';
-		if (k < cap - 1) b[k++] = AREAS[p->area];
+		k = wsk__dk_ch(b, cap, k, ':');
+		k = wsk__dk_ch(b, cap, k, AREAS[p->area]);
 		k = wsk__dk_num(b, cap, k, p->order);
-		if (k < cap - 1) b[k++] = ':';
+		k = wsk__dk_ch(b, cap, k, ':');
 		k = wsk__dk_num(b, cap, k, p->shown);
-		if (k < cap - 1) b[k++] = ':';
+		k = wsk__dk_ch(b, cap, k, ':');
 		k = wsk__dk_num(b, cap, k, p->size);
-		if (k < cap - 1) b[k++] = ';';
+		k = wsk__dk_ch(b, cap, k, ';');
 	}
-	if (k >= cap - 1) { b[0] = '\0'; return -1; }
+	if (k > cap - 1) { b[0] = '\0'; return -1; }
 	b[k] = '\0';
 	return k;
 }
@@ -542,48 +593,65 @@ static inline int wsk__dk_int(const char **s, int *v)
 	return any;
 }
 
-/*
- * A layout saved, put back: the panes it names that this dock has get its
- * area, order, shown and size; names it does not know are passed over, as
- * a layout from an older program will hold. The number of panes put back,
- * or -1 for a line that is not a layout (nothing is changed then). Build
- * after.
- */
-static inline int wsk_dock_load(wsk_dock_t *d, const char *s)
+/* A layout line read once to check it (apply 0) and once to put it back:
+   the panes put back, or -1, having changed nothing, for a line that is not
+   a layout -- any record malformed, not only the first. */
+static inline int wsk__dk_parse(wsk_dock_t *d, const char *s, int apply)
 {
 	short asz[4];
 	int got = 0;
 	const char *q = s;
 	for (int a = 0; a < 4; a++) {
-		int v, ar;
+		int v;
 		while (*q == ' ') q++;
-		ar = wsk__dk_area_of(*q);
-		if (ar != a) return -1;
+		if (wsk__dk_area_of(*q) != a) return -1;
 		q++;
 		if (!wsk__dk_int(&q, &v) || v < 0) return -1;
 		asz[a] = (short)v;
 	}
 	if (*q != ';') return -1;
 	q++;
-	for (int a = 0; a < 4; a++) d->asize[a] = asz[a];
+	if (apply) for (int a = 0; a < 4; a++) d->asize[a] = asz[a];
 	while (*q != '\0') {
 		char nm[24];
 		int k = 0, ar, order, shown, size, i;
-		while (*q != '\0' && *q != ':' && k < (int)sizeof nm - 1) nm[k++] = *q++;
+		while (*q != '\0' && *q != ':') {
+			if (k >= (int)sizeof nm - 1) return -1;   /* longer than any name */
+			nm[k++] = *q++;
+		}
 		nm[k] = '\0';
-		if (*q++ != ':') return got;
-		ar = wsk__dk_area_of(*q++);
-		if (ar < 0 || !wsk__dk_int(&q, &order) || *q++ != ':' || !wsk__dk_int(&q, &shown) ||
-		    *q++ != ':' || !wsk__dk_int(&q, &size) || *q++ != ';')
-			return got;
+		if (k == 0 || *q != ':') return -1;
+		q++;
+		if ((ar = wsk__dk_area_of(*q)) < 0) return -1;
+		q++;
+		if (!wsk__dk_int(&q, &order) || *q != ':') return -1;
+		q++;
+		if (!wsk__dk_int(&q, &shown) || *q != ':') return -1;
+		q++;
+		if (!wsk__dk_int(&q, &size) || *q != ';') return -1;
+		q++;
 		if ((i = wsk__dk_find(d, nm)) < 0) continue;
+		got++;
+		if (!apply) continue;
 		d->pane[i].area = (unsigned char)ar;
 		d->pane[i].order = (short)order;
 		d->pane[i].shown = (unsigned char)((shown == WSK_DOCK_FLOAT) ? WSK_DOCK_FLOAT : (shown != 0));
 		d->pane[i].size = (short)((size < 0) ? 0 : size);
-		got++;
 	}
 	return got;
+}
+
+/*
+ * A layout saved, put back: the panes it names that this dock has get its
+ * area, order, shown and size; names it does not know are passed over, as
+ * a layout from an older program will hold. The number of panes put back,
+ * or -1 for a line that is not a layout -- all of it read first, so a bad
+ * record anywhere changes nothing. Build after.
+ */
+static inline int wsk_dock_load(wsk_dock_t *d, const char *s)
+{
+	if (wsk__dk_parse(d, s, 0) < 0) return -1;
+	return wsk__dk_parse(d, s, 1);
 }
 
 #endif /* WHISKER_DOCK_H */

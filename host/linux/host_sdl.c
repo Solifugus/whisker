@@ -65,6 +65,8 @@ static struct swin {
 	Uint32      id;          /* SDL's number for it, to tell events apart */
 } SW[WH_WINDOWS];
 static int S_cur, S_ev, S_many;  /* drawn to; an event's; windows asked for */
+static int S_off;                /* the window drawn to was closed: documents go nowhere */
+static int S_sdl;                /* SDL started, so wh_close ends it */
 #define S (SW[S_cur])
 
 /* ---- the panel RV-9's driver expects to be talking to ---- */
@@ -118,23 +120,23 @@ static int mkwin(int i, int w, int h, int scale, const char *title)
 	S.w = w; S.h = h; S.scale = scale;
 
 	S.fb = (uint16_t *)calloc((size_t)w * (size_t)h, sizeof(uint16_t));
-	if (S.fb == NULL) { fprintf(stderr, "whisker-host: no memory\n"); S_cur = was; return -1; }
+	if (S.fb == NULL) { fprintf(stderr, "whisker-host: no memory\n"); goto fail; }
 	S.win = SDL_CreateWindow(title ? title : "whisker",
 	                         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
 	                         w * scale, h * scale, 0);
-	if (S.win == NULL) { fprintf(stderr, "whisker-host: %s\n", SDL_GetError()); S_cur = was; return -1; }
+	if (S.win == NULL) { fprintf(stderr, "whisker-host: %s\n", SDL_GetError()); goto fail; }
 	S.id = SDL_GetWindowID(S.win);
 
 	S.ren = SDL_CreateRenderer(S.win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if (S.ren == NULL) S.ren = SDL_CreateRenderer(S.win, -1, 0);
-	if (S.ren == NULL) { fprintf(stderr, "whisker-host: %s\n", SDL_GetError()); return -1; }
+	if (S.ren == NULL) { fprintf(stderr, "whisker-host: %s\n", SDL_GetError()); goto fail; }
 
 	/* Nearest, not smooth: a device pixel magnified should look like a device
 	   pixel, or the host flatters the picture the board will actually draw. */
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
 	S.tex = SDL_CreateTexture(S.ren, SDL_PIXELFORMAT_RGB565,
 	                          SDL_TEXTUREACCESS_STREAMING, w, h);
-	if (S.tex == NULL) { fprintf(stderr, "whisker-host: %s\n", SDL_GetError()); return -1; }
+	if (S.tex == NULL) { fprintf(stderr, "whisker-host: %s\n", SDL_GetError()); goto fail; }
 
 	/* The device descriptor: landscape, and a black background, which is what
 	   /w0's descriptor sets and is why a clipped document must carry its own
@@ -144,23 +146,33 @@ static int mkwin(int i, int w, int h, int scale, const char *title)
 	S.dev.opt[OPT_BG] = 0x0000;
 	if (svgwin_init(&S.dev) != RV9_IO_OK || svgwin_open(&S.dev, 3) != RV9_IO_OK) {
 		fprintf(stderr, "whisker-host: the window device would not open\n");
-		S_cur = was;
-		return -1;
+		goto fail;
 	}
 	S.open = 1;
 	S_cur = was;
 	return 0;
+fail:
+	/* whatever was made, unmade: a window that did not open leaves nothing */
+	free(S.dev.drv_state);
+	if (S.tex) SDL_DestroyTexture(S.tex);
+	if (S.ren) SDL_DestroyRenderer(S.ren);
+	if (S.win) SDL_DestroyWindow(S.win);
+	free(S.fb);
+	memset(&S, 0, sizeof S);
+	S_cur = was;
+	return -1;
 }
 
 int wh_open(int w, int h, int scale, const char *title)
 {
 	if (scale < 1) scale = 1;
 	memset(SW, 0, sizeof SW);
-	S_cur = S_ev = S_many = 0;
+	S_cur = S_ev = S_many = S_off = 0;
 	if (SDL_Init(SDL_INIT_VIDEO) != 0) {
 		fprintf(stderr, "whisker-host: SDL: %s\n", SDL_GetError());
 		return -1;
 	}
+	S_sdl = 1;
 	if (mkwin(0, w, h, scale, title) != 0) return -1;
 	/* Typed characters arrive as text, already through the keyboard's
 	   layout, which is the host's business (§5j) -- not as keys to map. */
@@ -175,9 +187,9 @@ int wh_window(int w, int h, const char *title)
 	int i;
 	for (i = 1; i < WH_WINDOWS && SW[i].open; i++) ;
 	if (i == WH_WINDOWS || !SW[0].open) return -1;
+	if (mkwin(i, w, h, SW[0].scale, title) != 0) return -1;   /* and the close rules unchanged */
 	S_many = 1;
 	SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");
-	if (mkwin(i, w, h, SW[0].scale, title) != 0) return -1;
 	return i;
 }
 
@@ -188,6 +200,7 @@ static void unwin(int i)
 	if (!v->open) return;
 	S_cur = i;
 	svgwin_close(&v->dev);
+	free(v->dev.drv_state);          /* svgwin_init's, which RV-9 has no hook to free */
 	S_cur = was;
 	if (v->tex) SDL_DestroyTexture(v->tex);
 	if (v->ren) SDL_DestroyRenderer(v->ren);
@@ -199,20 +212,23 @@ static void unwin(int i)
 void wh_window_close(int win)
 {
 	if (win < 0 || win >= WH_WINDOWS) return;
-	unwin(win);
+	if (S_cur == win && SW[win].open) S_off = 1;   /* its documents go nowhere now, */
+	unwin(win);                                      /* not to another window */
 	if (S_cur == win) S_cur = 0;
 }
 
-/* The documents after this go to window `win` (§5af), if it is open. */
+/* The documents after this go to window `win` (§5af) -- or, if it is not
+   open, nowhere: drawn into another window they would be wrong there. */
 void wh_on(int win)
 {
-	if (win >= 0 && win < WH_WINDOWS && SW[win].open) S_cur = win;
+	if (win >= 0 && win < WH_WINDOWS && SW[win].open) { S_cur = win; S_off = 0; }
+	else S_off = 1;
 }
 
 void wh_clip(int y0, int y1)
 {
 	uint32_t v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
-	if (!S.open) return;
+	if (!S.open || S_off) return;
 	svgwin_setstat(&S.dev, RV9_SVG_SS_ROWS, &v);
 }
 
@@ -231,7 +247,7 @@ static void present(void) { present_win(&S); }
 void wh_write(const void *bytes, int n)
 {
 	size_t done;
-	if (!S.open) return;
+	if (!S.open || S_off) return;
 	svgwin_write(&S.dev, bytes, (size_t)n, &done);
 	if (S.dirty) present();
 }
@@ -251,7 +267,9 @@ static int point_of(int wx, int wy, wh_event_t *out)
 	return (out->x >= 0 && out->x < v->w && out->y >= 0 && out->y < v->h);
 }
 
-/* Which of our windows an SDL event names, by SDL's id: 0 if none does. */
+/* Which of our windows an SDL event names, by SDL's id: 0 for an event of
+   no window, or -1 for one of a window closed -- still queued when it went,
+   it is nobody's, and never window 0's. */
 static int win_of(const SDL_Event *e)
 {
 	Uint32 id = 0;
@@ -265,8 +283,9 @@ static int win_of(const SDL_Event *e)
 	case SDL_FINGERDOWN: case SDL_FINGERUP: case SDL_FINGERMOTION: id = e->tfinger.windowID; break;
 	default: return 0;
 	}
+	if (id == 0) return 0;
 	for (int i = 0; i < WH_WINDOWS; i++) if (SW[i].open && SW[i].id == id) return i;
-	return 0;
+	return -1;
 }
 
 int wh_poll(wh_event_t *out)
@@ -283,7 +302,9 @@ int wh_poll(wh_event_t *out)
 		return WH_JOIN;
 	}
 	while (SDL_PollEvent(&e)) {
-		S_ev = out->win = win_of(&e);
+		int w = win_of(&e);
+		if (w < 0) continue;
+		S_ev = out->win = w;
 		switch (e.type) {
 		case SDL_QUIT:
 			out->kind = WH_QUIT;
@@ -464,8 +485,8 @@ int wh_caps(void) { return WH_CAP_ENTITY; }
 
 void wh_close(void)
 {
-	int any = 0;
-	for (int i = 0; i < WH_WINDOWS; i++) if (SW[i].open) { any = 1; unwin(i); }
+	for (int i = 0; i < WH_WINDOWS; i++) if (SW[i].open) unwin(i);
 	S_cur = 0;
-	if (any) SDL_Quit();
+	if (S_sdl) SDL_Quit();           /* every window closed already, SDL is still started */
+	S_sdl = 0;
 }
