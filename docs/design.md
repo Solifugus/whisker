@@ -5534,6 +5534,18 @@ backend); whisker's part is a backend over the parts it has.
    are hardest to match: whisker grows it, or gBASIC decides in writing that
    its GUI programs can do without it.
 
+**Recounted 2026-11-16** (`docs/ui-backend-gap.md`, after §5ah): item 3
+is **met** — file dialogs (§5ae), several windows (§5af), the divider
+(§5x), and docking and tabs besides. Item 2 has undo and UTF-8 editing
+(§5v); left are proportional fonts, Unicode on the desktop host, input
+methods, and **tab characters, which a memo refuses** (measured). Item 1
+has every window word; left are the `highlighting` and `notebook`
+groups. Item 4 is undecided. **Bar 1** is now one piece of code and its
+measure: gBASIC built the rename, one vocabulary, the 148-member backend
+table and `ui.can` (its `ui_design.md`), and a `ui_whisker.c` — a
+retained model over whisker, gBASIC's code — waits on gBASIC's step 6,
+the contract suites.
+
 When all four hold, switching the default backend is a small change, and a
 gBASIC GUI program is **one static binary** — whisker is C with no
 dependencies, and its desktop host needs SDL, which links statically; or no

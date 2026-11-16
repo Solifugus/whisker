@@ -48,7 +48,14 @@ place. `docs/design.md` §6 records what would have to be true first. **Every
 whisker document written before 2026-10-22 that measures gBASIC measured its
 GTK tree** (last GTK commit `d997c94`): `gbasic-gap.md` and `studio-gap.md`
 are history. **`docs/window-gap.md` (2026-10-24) is the current distance**:
-Studio's window is a pure record. **Recounted 2026-11-15 (`window-gap.md`
+Studio's window is a pure record. **Superseded 2026-11-16 by
+`docs/ui-backend-gap.md`**: gBASIC has since renamed `qt.` to `ui.`, ruled
+one vocabulary, split a 148-member backend table and added `ui.can`'s
+eight capability groups (gBASIC `docs/ui_design.md`); the question is now
+what a `ui_whisker.c` needs — a **retained model** (gBASIC's code: the
+table is an object API, whisker keeps nothing) and a list of named word
+gaps, the first any program meets being **a tab character, which a memo
+refuses**. Read it before choosing what to build. **Recounted 2026-11-15 (`window-gap.md`
 §8): whisker answers all 25 of its words** — 19 directly, 6 by
 composition (21 of 25 on 2026-11-12). What was left was three
 interactions and a widget: ~~a draggable divider (`split`)~~ (§5x,
