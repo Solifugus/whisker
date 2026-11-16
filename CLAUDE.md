@@ -303,7 +303,7 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   ids (SDL, numbered from 1), RV-9's `id` (wnest). **A browser's tap is
   followed by mouse events of its own** — with fingers told apart they were
   a second finger, so the page drops mouse events within 800 ms of a touch.
-  704 bytes; none in `WSK_PANEL`.
+  704 bytes; none in `WSK_PANEL`. **Pinched on Matthew's phone, 2026-11-16.**
 - **A second independent read, 2026-11-16** (design, before §5ad): eleven
   defects, each with a check that fails before its fix — the world walkers
   that choose and scroll ignored the z-order; a poster laid out from its

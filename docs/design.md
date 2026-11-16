@@ -3459,6 +3459,9 @@ hold a window for ever.
 **§7's question**: 704 bytes to a toolkit program (wnest 31,764 → 32,468
 at the default); nothing to `WSK_PANEL`, which has no worlds.
 
+**On a phone, 2026-11-16**: Matthew opened the floor on his phone over the
+LAN and pinched it — it works.
+
 ## 5ac. Tooltips — on a mouse, a finger and a key (2026-11-15), written before its code
 
 Matthew: *"With a mouse hover, this is obvious but what about for touch
