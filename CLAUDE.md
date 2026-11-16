@@ -313,6 +313,12 @@ not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
   only through a lister the program gives (POSIX: `host/linux/lister.h`).
   Cancel answers *cancelled*, never an empty path. The code editor opens by
   Ctrl-O and saves as by Ctrl-Shift-S, in both hosts.
+- **A desktop program's frames must fit 4 KB too**: RV-9's window — the
+  SDL host compiles it — drops a document over 4,096 bytes, so a program
+  whose picture can grow (an editor scrolled to busy lines, a floor zoomed
+  out) draws through `host/linux/fit.h` (halves on 8-row bands when one
+  document is refused, `WSK_E_BUDGET`). The browser host has no limit, so
+  only `host/web/docsize.py` would notice: it is in the web suite.
 - **§5ad — pinch** (2026-11-16): events carry `finger` (the platform's
   number; a mouse 0); a second finger down on the world the first pressed
   starts a pinch — the first's press let go, the zoom the distance's ratio,

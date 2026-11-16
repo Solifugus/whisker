@@ -3546,6 +3546,23 @@ the selection's fill (and fails on the header without the fix), and in
 Chrome, Down twelve times past the bottom leaves the chosen row drawn and
 in view. 1,054 checks; web 127; 44 earlier outputs byte-identical.
 
+**And then, the editor itself** (Matthew, in the SDL window: the arrows
+move the caret *"until I move past the bottom of the source code then
+locks up"*, and a drag's selection *"follows the mouse cursor a bit
+slowly"*). Not a lock: **every frame was over 4 KB and dropped**. The
+editor drew whatever rows changed as one document, and scrolled into
+`sample.bas`'s busier lines — more colour runs — its documents passed
+4,096 bytes (5,718 by the 40th line, measured over the browser host,
+which has no limit and so had never shown it), and RV-9's window, which
+the SDL host compiles, dropped each one. The floor met the same wall
+zoomed out (§5q step 2b) and fixed it in its own program; the answer is
+the host's now, `host/linux/fit.h`: one document if it fits, else halves
+on 8-row bands. And the editor draws when its events have run out rather
+than for each: a drag sends a move for every pixel, and drawing each had
+left the window behind the pointer. `host/web/docsize.py` walks the caret
+80 lines down: 114 documents, the largest 4,082 bytes — and run against
+the editor before the fix, it fails.
+
 **Named, not done**: no keyboard path into a row from the name field but
 Tab; the list has no type-to-find; a chooser's strings are one-line
 (a long path is cut at the window's edge); gBASIC's `qt.dialog()` oracle

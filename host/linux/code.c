@@ -28,6 +28,7 @@
 #include "whisker.h"
 #include "whisker_chooser.h"
 #include "lister.h"
+#include "fit.h"
 
 #include <ctype.h>
 #include <limits.h>
@@ -211,7 +212,7 @@ static void folder_of(const char *p, char *out, int cap)
 
 int main(int argc, char **argv)
 {
-	int w = 1024, h = 600, y0, y1, which = -1, e;
+	int w = 1024, h = 600, y0, y1, which = -1, e, dirty0 = 32767, dirty1 = 0;
 	const wsk_tree_t *in = 0;
 	wsk_sink_t s;
 	FILE *f;
@@ -267,8 +268,7 @@ int main(int argc, char **argv)
 	if (wsk_chooser_init(&chooser, &win, chstrs, 0, 0, 2, posix_lister, 0) != WSK_OK) return 1;
 	buf[0].caret = 0;
 	wsk_ui_focus(&ui, "code", &y0, &y1);
-	wh_clip(0, 0);
-	wsk_render(&win, &s, 0);
+	wh_draw_fit(&win, &s, 0, h);
 
 	for (;;) {
 		wh_event_t he;
@@ -276,9 +276,16 @@ int main(int argc, char **argv)
 		wsk_note_t note[4];
 		int k = wh_poll(&he), n, text_changed = 0;
 
+		/* the rows to draw are gathered while events wait, and drawn when
+		   none does: a drag sends a move for every pixel, and drawing each
+		   left the window behind the pointer */
 		if (k == WH_QUIT) break;
-		if (k == WH_NOTHING) { wh_wait(20); continue; }
-		if (k == WH_EXPOSE) { wh_clip(0, 0); wsk_render(&win, &s, 0); continue; }
+		if (k == WH_NOTHING) {
+			if (dirty1 > dirty0) { wh_draw_fit(&win, &s, dirty0, dirty1); dirty0 = 32767; dirty1 = 0; }
+			wh_wait(20);
+			continue;
+		}
+		if (k == WH_EXPOSE) { dirty0 = 0; dirty1 = h; continue; }
 		memset(&ev, 0, sizeof ev);
 		ev.x = (short)he.x; ev.y = (short)he.y;
 		if (k == WH_PRESS) { ev.kind = WSK_EV_DOWN; ev.key = (unsigned short)he.key; ev.d = (short)he.d; }
@@ -356,7 +363,10 @@ int main(int argc, char **argv)
 		y0 = 0;                             /* the status line moves with every key */
 		if (y1 <= 32) y1 = 32;
 		fflush(stdout);
-		if (y1 > y0) { wh_clip(y0, y1); wsk_render_rows(&win, y0, y1, &s, 0); }
+		if (y1 > y0) {
+			if (y0 < dirty0) dirty0 = y0;
+			if (y1 > dirty1) dirty1 = y1;
+		}
 	}
 	wh_close();
 	return 0;
