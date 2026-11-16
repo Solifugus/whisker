@@ -3605,6 +3605,106 @@ on the canvas on the way and the caption at the top right after (none
 there before), and drops Outline in the middle as the control (web
 146). Every earlier output — 34 files of the main suite — byte-identical.
 
+### Step 2, written before its code (2026-11-16): floating
+
+Matthew: "go ahead". A pane taken out of the frame into **a window of its
+own** (§5af), and put back. Qt's gestures, because they are what a
+person who has used a docked IDE will try: **a double-click on a caption
+floats the pane; a double-click on the floating pane's caption docks it
+again**, where it was.
+
+1. **The window is the program's, not the dock's.** whisker opens no
+   window and knows no host (D5, and §5af put windows in the host
+   contract). The dock says a pane is floating; the program opens a
+   window for it, and closes it when the pane is no longer floating. So
+   the program's loop keeps the two in step after anything that may have
+   changed the layout — one comparison per pane.
+2. **A pane floats as its own pane tree** — the caption row and its
+   content, the same trees it had docked — in **a second root the program
+   owns**, which `wsk_dock_window(d, name, &froot, w, h)` makes: the
+   window's size, its one item that pane, and the main root's `nest`,
+   `str`, `buf` and `state` shared, so a memo in it edits the same buffer
+   and a list keeps its selection. Its own `held`, `focus` and overlay,
+   because those are a window's (§5af named one focus per window as not
+   done; this gives the floating window its own). A tree may be in only
+   one of the two places at once, and is: a floating pane is left out of
+   its area, as a closed one is. `wsk_check` holds it — a pane in both
+   would be refused as shared.
+3. **`shown` gains a third value**, `WSK_DOCK_FLOAT` (2): 0 closed, 1
+   docked, 2 floating. Its area and order are kept while it floats, so
+   docking it again puts it back where it was. The saved line carries it
+   in the same place (`files:L0:2:0;`) — **a layout saved before this
+   loads as it did**, and every line step 1 wrote is still a layout.
+   `wsk_dock_float(d, name, on)` is the program's way to do it without a
+   person; `wsk_dock_shown` answers 2.
+4. **`wsk_dock_feed` hears the floating window's toolkit too** — the
+   program passes it that window's `ui` and notes: the double-click there
+   docks, the × there closes (the pane, so its window goes). A grab there
+   is ignored: dragging a floating window across the desktop is the
+   platform's (its title bar), and dropping one onto the frame needs a
+   drag across two windows, which no host reports.
+5. **The demo**: a floating pane's window is the size it had docked (a
+   side's width by half the window, an edge's height by the window's
+   width); the window's own close button docks it back — a person who
+   closes it has lost nothing; the caption's × closes it as it does
+   docked. Ctrl-1/2/3 still show and hide; Ctrl-S keeps a layout with a
+   pane floating and Ctrl-L opens its window again.
+
+**Not done, named**: dropping a caption dragged out past the window's
+edge (the SDL host reports the pointer there only while it captures it,
+the browser not at all); where a floating window opens (the host
+contract places no window); a floating pane's window size in the saved
+line.
+
+Done when: a double-click on a caption floats its pane — the frame
+without it, its slot freed, and the second root checking and drawing the
+caption and content at the window's size; the same in reverse; the
+control that a single click on a caption does nothing and a double-click
+on its × does not float; a memo in a floating pane edits the main root's
+buffer; the × in the floating window closes the pane; a layout with a
+pane floating saved, loaded, and a step-1 line still loading; the
+floating window's picture through RV-9's rasteriser; in both hosts the
+demo floats, docks and closes a pane — in Chrome by a double-click.
+
+**What step 2 came to** (2026-11-16): as written, and **not a byte of
+`whisker.h`** — the double-click is read from what the toolkit already
+keeps (`ui->gin`, the grab tree a press is in; `hit_in`, `hit`, so the ×
+is told apart), and a second root sharing the first's arrays is D5
+again. One thing the code found: **a double-click's press would go on
+to drag a tree that had just left the window**, so floating or docking
+lets go of the grab it was pressed in.
+
+**25 checks** (1,112 → 1,137): a single click on a caption and a
+double-click's press on its × floating nothing (the controls); a
+double-click floating Files — its edge kept, the frame closing up and
+checking, its window's root checking and drawing the caption, × and
+content at 300 × 200 and nothing of the frame; **the pane put back in
+its area while its window still holds it, refused as a tree in two
+places** (the control on the sharing); a grab in the window GRAB from
+the toolkit and nothing from the dock; a double-click there docking it
+where it was; a memo floated and typed into, the program's buffer
+holding the text; a line with a pane floating saved, loaded, and a
+step-1 line still docking; the × in the window closing the pane. The
+picture (`dockfloat.ppm`, RV-9's rasteriser): Outline's window at the
+C5's size, under 4 KB, its caption's trough across the top and **none
+of the frame's dividers or captions under it** — 10,544 such pixels in
+the frame, 0 in the window. Every earlier output — 45 files of the main
+suite, `dock.ppm` among them — byte-identical.
+
+The demo opens each floating pane's window at the size it had docked
+(at least 240 × 150), keeps the keys with the frame's editor, and docks
+a pane whose window is closed by its own button. In Chrome (`dock.mjs`,
+15; web 153): one click on Outline's caption and no window (the
+control); a double-click and a second panel, its caption drawn in it; a
+double-click there and the panel gone, the title back on the left;
+Output floated and its panel's close button docking it. Looked at: the
+panel over the editor, the left area gone and the editor wider.
+
+**Seen and left**: a floating window shows its title twice — the
+host's bar and the pane's own caption, which is what is double-clicked
+to dock it and holds its ×. Dragging a floating pane back onto an edge
+of the frame waits on a drag between windows, which no host reports.
+
 ## 5af. Several windows (2026-11-16), written before its code
 
 Matthew chose it after the second review. gBASIC's Qt backend measured

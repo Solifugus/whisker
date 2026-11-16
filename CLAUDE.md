@@ -53,7 +53,7 @@ Studio's window is a pure record. **Recounted 2026-11-15 (`window-gap.md`
 composition (21 of 25 on 2026-11-12). What is left is three interactions,
 not a widget: ~~a draggable divider (`split`)~~ (§5x, 2026-11-15), the
 ~~keyboard in a menu (`choice`)~~ (§5y), ~~docking (`docks`)~~ (§5ag;
-floating a pane into its own window is its step 2).
+floating a pane into its own window, step 2, the same day).
 
 ## Status
 
@@ -328,7 +328,14 @@ floating a pane into its own window is its step 2).
   readable line** (`wsk_dock_save`/`_load`). A pane's content must
   scroll or fit — whisker's rule, not the dock's. Demo
   `host/linux/dock.c` (`run.sh --dock`, both hosts); `dock.mjs` drags a
-  pane left to right in Chrome. Floating is step 2.
+  pane left to right in Chrome. **Step 2, floating** (2026-11-16):
+  a caption double-clicked takes its pane into a window of its own
+  and back (Qt's gesture); the window is **the program's** —
+  `shown` is 2 (`WSK_DOCK_FLOAT`), the program opens a window for it
+  with a root from `wsk_dock_window` (the main root's trees, strings,
+  buffers and state shared; its own focus) and feeds that window's
+  toolkit to `wsk_dock_feed` too. A step-1 layout line loads as it
+  did. No byte of `whisker.h`; `dock.mjs` floats and docks in Chrome.
 - **§5af — several windows** (2026-11-16): the host contract gains
   `wh_window`, `wh_window_close`, `wh_on` (which window documents go to),
   `win` on every event, and **`WH_CLOSE`** — the program decides; a
@@ -401,14 +408,14 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,112 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,137 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 59 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
-8 for docking (`dock.mjs`) — 146 in all.
+15 for docking and floating (`dock.mjs`) — 153 in all.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

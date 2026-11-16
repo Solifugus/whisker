@@ -1,7 +1,10 @@
 // Docking in a real browser (design.md §5ag): host/linux/dock.c through the
 // web host. A pane dragged by its caption from the left to the right edge,
 // the drop bar seen on the canvas on the way, the program told; and the
-// control, a pane dropped in the middle, left where it was.
+// control, a pane dropped in the middle, left where it was. Step 2: a pane
+// floated into a window of its own by a double-click on its caption -- a
+// panel on the page -- and docked again by a double-click there, or by the
+// panel's close button; a single click the control.
 //
 //   node dock.mjs <whisker-dock-web binary> <dir for pictures>
 //
@@ -137,6 +140,56 @@ try {
   const line = (said.match(/layout kept: (.*)/) || [])[1] || '';
   console.log(`      ${line}`);
   ok(/files:R/.test(line) && /outline:L/.test(line) && /output:B/.test(line), 'Ctrl-S: the layout line has Files right, Outline left, Output at the bottom');
+
+  // step 2: floating. A click at a point of a canvas -- the window's, or a panel's
+  const press = async (cx, cy, count) => {
+    await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: cx, y: cy, button: 'left', buttons: 1, clickCount: count });
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: cx, y: cy, button: 'left', buttons: 0, clickCount: count });
+  };
+  const clicks = async (cx, cy, count) => {
+    for (let k = 1; k <= count; k++) await press(cx, cy, k);
+    await sleep(500);
+    await settle();
+  };
+  const inPanel = (n, x, y) => js(`(()=>{const v=whisker.panel(${n}),r=v.getBoundingClientRect();
+    return [r.left+(${x}+0.5)*r.width/v.width, r.top+(${y}+0.5)*r.height/v.height];})()`);
+  const lightPanel = (n, x0, x1, y0, y1) => js(`(()=>{const d=whisker.panel(${n}).getContext("2d").getImageData(${x0},${y0},${x1 - x0},${y1 - y0}).data;
+    let n=0;for(let i=0;i<d.length;i+=4)if(d[i]+d[i+1]+d[i+2]>500)n++;return n;})()`);
+  const shot = async name => {
+    const r = await cdp('Page.captureScreenshot', { format: 'png' });
+    writeFileSync(join(outDir, name), Buffer.from(r.data, 'base64'));
+    console.log(`      wrote ${join(outDir, name)}`);
+  };
+
+  const [ox, oy] = await at(40, 14);
+  await clicks(ox, oy, 1);
+  ok(!said.includes('Outline floating') && (await js('whisker.panels()')).length === 1,
+     'CONTROL: a single click on Outline\'s caption -- no window');
+  await clicks(ox, oy, 2);
+  const floated = await js('whisker.panels()');
+  ok(said.includes('Outline floating') && floated.length === 2, `a double-click on it: Outline floating, a window of its own (windows ${floated})`);
+  const fw = floated.find(n => n !== 0) ?? -1;
+  const capLight = fw > 0 ? await lightPanel(fw, 4, 120, 4, 24) : 0;
+  ok(capLight > 40, `drawn in that window: its caption's title (${capLight} light pixels)`);
+  await shot('dock_floating.png');
+  if (fw > 0) {
+    const [px2, py2] = await inPanel(fw, 40, 14);
+    await clicks(px2, py2, 2);
+  }
+  ok(said.includes('Outline docked again') && (await js('whisker.panels()')).length === 1,
+     'a double-click on its caption in the window: docked again, the window gone');
+  const back = await lightIn(4, 120, 4, 24);
+  ok(back > 40, `back on the left of the frame: its title there (${back} light pixels)`);
+
+  // Output floated, then its window's own close button: docked again, nothing lost
+  const [qx, qy] = await at(300, 600 - 150 + 14);
+  await clicks(qx, qy, 2);
+  const two = await js('whisker.panels()');
+  ok(said.includes('Output floating') && two.length === 2, `Output double-clicked: floating (windows ${two})`);
+  const x = await js(`(()=>{const r=document.querySelector('.bar b').getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2];})()`);
+  await clicks(x[0], x[1], 1);
+  ok(said.includes('Output docked again') && (await js('whisker.panels()')).length === 1,
+     'its window\'s close button: Output docked again, the window gone');
 } finally {
   try { ws?.close(); } catch {}
   chrome.kill();

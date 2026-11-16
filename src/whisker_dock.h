@@ -21,6 +21,11 @@
  *     ... each event: n = wsk_feed(&ui, &ev, notes, ...);
  *         if (wsk_dock_feed(&d, &ui, &ev, notes, n)) draw it all again;
  *
+ * A pane double-clicked by its caption floats (step 2): the program opens a
+ * window for each pane whose wsk_dock_shown is WSK_DOCK_FLOAT, with a root
+ * from wsk_dock_window, feeds that window's toolkit to wsk_dock_feed too,
+ * and closes the window when the pane stops floating. The dock opens none.
+ *
  * Same rules as whisker.h: no libc, no .data or .bss of its own, no tables
  * of pointers.
  */
@@ -40,6 +45,7 @@
 #define WSK_DOCK_TREES (6 + 2 * WSK_DOCK_MAX)   /* the tree slots a dock sets aside */
 
 enum { WSK_DOCK_LEFT = 0, WSK_DOCK_RIGHT, WSK_DOCK_TOP, WSK_DOCK_BOTTOM };
+#define WSK_DOCK_FLOAT 2           /* `shown`: 0 closed, 1 docked, 2 in a window of its own */
 
 typedef struct {
 	char          name[24];     /* what a program and a saved layout call it */
@@ -47,7 +53,7 @@ typedef struct {
 	short         content;      /* its content: a tree in the root's `nest` */
 	short         order;        /* where in its area: lower first */
 	short         size;         /* its extent along its area, or 0 to share */
-	unsigned char area, shown;
+	unsigned char area, shown;  /* its edge -- kept while it floats -- and 0, 1 or WSK_DOCK_FLOAT */
 } wsk_pane_t;
 
 typedef struct {
@@ -66,6 +72,7 @@ typedef struct {
 	short         rsizes[7], msizes[7], asizes[4][2 * WSK_DOCK_MAX];
 	signed char   rarea[7], marea[7];          /* which item of root or middle is which area */
 	signed char   apane[4][2 * WSK_DOCK_MAX];  /* which item of an area is which pane */
+	wsk_widget_t  floatw[WSK_DOCK_MAX];        /* a floating window's one item: its pane */
 } wsk_dock_t;
 
 /* ------------------------------------------------------------------ */
@@ -177,7 +184,7 @@ static inline int wsk__dk_need(const wsk_dock_t *d, int a)
 	for (int i = 0; i < d->n; i++) {
 		const char *c = d->pane[i].caption;
 		int w;
-		if (!d->pane[i].shown || d->pane[i].area != a) continue;
+		if (d->pane[i].shown != 1 || d->pane[i].area != a) continue;
 		w = wsk_text_w(r->font, wsk__chars(c, wsk__len(c))) + 4 * WSK__DK_CPAD + WSK__DK_CGAP + r->font + 6;
 		if (w > need) need = w;
 	}
@@ -207,7 +214,7 @@ static inline void wsk_dock_build(wsk_dock_t *d)
 	unsigned int dfill = r->trough, hfill = r->accent;
 	int has[4] = { 0, 0, 0, 0 }, k, maxside = (r->w - 80) / 2, maxedge = (r->h - 80) / 2;
 
-	for (int i = 0; i < d->n; i++) if (d->pane[i].shown) has[d->pane[i].area] = 1;
+	for (int i = 0; i < d->n; i++) if (d->pane[i].shown == 1) has[d->pane[i].area] = 1;
 	if (maxside < 40) maxside = 40;
 	if (maxedge < 40) maxedge = 40;
 
@@ -220,7 +227,7 @@ static inline void wsk_dock_build(wsk_dock_t *d)
 		for (;;) {                                 /* the next shown pane by order */
 			int best = -1;
 			for (int i = 0; i < d->n; i++)
-				if (!used[i] && d->pane[i].shown && d->pane[i].area == a &&
+				if (!used[i] && d->pane[i].shown == 1 && d->pane[i].area == a &&
 				    (best < 0 || d->pane[i].order < d->pane[best].order)) best = i;
 			if (best < 0) break;
 			used[best] = 1;
@@ -345,20 +352,35 @@ static inline void wsk__dk_keep(wsk_dock_t *d)
  * What wsk_feed said, as far as it is the dock's: a caption grabbed, dragged
  * (the drop bar following the edge it is near) and dropped (the pane moved
  * to that edge's end -- or, nearer no edge, left where it was); a close
- * button; a divider dragged. `ev` is the event fed, for its point. 1 if the
- * frame changed and must be drawn again whole; 0 if not.
+ * button; a divider dragged; a caption double-clicked, which floats a pane
+ * or docks it again (step 2). `ui` is the toolkit fed -- the window's, or a
+ * floating pane's window's, whose grabs are not the dock's -- and `ev` the
+ * event, for its point. 1 if the layout changed: the frame must be drawn
+ * again whole, and a pane may have gone into a window or come out of one.
  */
 static inline int wsk_dock_feed(wsk_dock_t *d, wsk_ui_t *ui, const wsk_event_t *ev,
                                 const wsk_note_t *note, int n)
 {
-	int changed = 0;
-	(void)ui;
+	int changed = 0, home = (ui->root == d->root);
+	if (ev->kind == WSK_EV_DOWN && ev->d >= 2 && ui->gin != 0) {
+		for (int q = 0; q < d->n; q++) {          /* a caption's title or padding, not its x */
+			const wsk_tree_t *ct = wsk__dk_tree(d, wsk__dk_cap(q));
+			if (ui->gin != ct || (ui->hit_in == ct && ui->hit == 1) || d->pane[q].shown == 0) continue;
+			d->pane[q].shown = (unsigned char)((d->pane[q].shown == 1) ? WSK_DOCK_FLOAT : 1);
+			ui->gin = 0;                           /* the press is not a drag now: its tree has gone */
+			ui->grabbing = 0;
+			d->drag = -1;
+			d->hint = -1;
+			changed = 1;
+		}
+	}
 	for (int i = 0; i < n; i++) {
 		const wsk_note_t *t = &note[i];
 		int p = -1;
 		for (int q = 0; q < d->n; q++)
 			if (t->in == wsk__dk_tree(d, wsk__dk_cap(q))) p = q;
-		if (t->kind == WSK_NOTE_GRAB && p >= 0) d->drag = (short)p;
+		if (!home && (t->kind == WSK_NOTE_GRAB || t->kind == WSK_NOTE_DRAG || t->kind == WSK_NOTE_DROP)) continue;
+		if (t->kind == WSK_NOTE_GRAB && p >= 0 && d->pane[p].shown == 1) d->drag = (short)p;
 		if ((t->kind == WSK_NOTE_GRAB || t->kind == WSK_NOTE_DRAG) && d->drag >= 0) {
 			int e = wsk__dk_edge(d, ev->x, ev->y);
 			if (e != d->hint) { d->hint = (short)e; changed = 1; }
@@ -386,12 +408,56 @@ static inline int wsk_dock_feed(wsk_dock_t *d, wsk_ui_t *ui, const wsk_event_t *
 	return changed;
 }
 
-/* Show a pane closed, or close one: 0, or WSK_E_NOTFOUND. Build after. */
+/* Show a pane closed, or close one: 0, or WSK_E_NOTFOUND. A floating pane
+   shown stays floating. Build after. */
 static inline int wsk_dock_show(wsk_dock_t *d, const char *name, int shown)
 {
 	int i = wsk__dk_find(d, name);
 	if (i < 0) return WSK_E_NOTFOUND;
-	d->pane[i].shown = (unsigned char)(shown != 0);
+	if (!shown) d->pane[i].shown = 0;
+	else if (d->pane[i].shown == 0) d->pane[i].shown = 1;
+	return WSK_OK;
+}
+
+/* Float a pane -- shown, in a window of its own -- or dock a floating one
+   again where it was: 0, or WSK_E_NOTFOUND. Build after. */
+static inline int wsk_dock_float(wsk_dock_t *d, const char *name, int on)
+{
+	int i = wsk__dk_find(d, name);
+	if (i < 0) return WSK_E_NOTFOUND;
+	if (on) d->pane[i].shown = WSK_DOCK_FLOAT;
+	else if (d->pane[i].shown == WSK_DOCK_FLOAT) d->pane[i].shown = 1;
+	return WSK_OK;
+}
+
+/*
+ * The root of a floating pane's window, in the program's memory: w x h, its
+ * one item the pane -- its caption over its content, the trees it had
+ * docked -- and the window's root's trees, strings, buffers and state
+ * shared, so what is in the pane is the same data in either place. Its own
+ * press, focus and overlay, as a window's are. Build first; 0, or
+ * WSK_E_NOTFOUND, or WSK_E_KIND for a pane that is not floating.
+ */
+static inline int wsk_dock_window(wsk_dock_t *d, const char *name, wsk_tree_t *w,
+                                  int width, int height)
+{
+	const wsk_tree_t *r = d->root;
+	int i = wsk__dk_find(d, name);
+	if (i < 0) return WSK_E_NOTFOUND;
+	if (d->pane[i].shown != WSK_DOCK_FLOAT) return WSK_E_KIND;
+	wsk_init(w, WSK_COL, width, height);
+	w->font = r->font; w->bg = r->bg; w->ink = r->ink; w->accent = r->accent;
+	w->trough = r->trough; w->selfill = r->selfill; w->ids = r->ids;
+	w->talign = r->talign; w->caps = r->caps;
+	w->nest = r->nest; w->nests = r->nests; w->str = r->str; w->strs = r->strs;
+	w->buf = r->buf; w->bufs = r->bufs; w->state = r->state; w->states = r->states;
+	w->pad = 0; w->gap = 0;
+	wsk__dk_zero(&d->floatw[i], (int)sizeof d->floatw[i]);
+	d->floatw[i].kind = WSK_STACK;
+	d->floatw[i].sub = (short)(d->nb + wsk__dk_pane(i));
+	d->floatw[i].weight = 1;
+	w->item = &d->floatw[i];
+	w->n = 1;
 	return WSK_OK;
 }
 
@@ -429,8 +495,8 @@ static inline int wsk__dk_num(char *b, int cap, int k, int v)
 
 /*
  * The layout as one line: "L240 R200 T150 B160;files:L0:1:0;out:B0:1:120;"
- * -- each area's size, then each pane's name, area and order, shown, and
- * size. What gBASIC keeps Qt's saveState blob for, but readable. The
+ * -- each area's size, then each pane's name, area and order, shown (0, 1,
+ * or 2 floating), and size. What gBASIC keeps Qt's saveState blob for, but readable. The
  * length, or -1 if it did not fit in cap.
  */
 static inline int wsk_dock_save(const wsk_dock_t *d, char *b, int cap)
@@ -513,7 +579,7 @@ static inline int wsk_dock_load(wsk_dock_t *d, const char *s)
 		if ((i = wsk__dk_find(d, nm)) < 0) continue;
 		d->pane[i].area = (unsigned char)ar;
 		d->pane[i].order = (short)order;
-		d->pane[i].shown = (unsigned char)(shown != 0);
+		d->pane[i].shown = (unsigned char)((shown == WSK_DOCK_FLOAT) ? WSK_DOCK_FLOAT : (shown != 0));
 		d->pane[i].size = (short)((size < 0) ? 0 : size);
 		got++;
 	}

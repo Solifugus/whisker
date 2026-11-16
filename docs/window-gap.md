@@ -292,8 +292,9 @@ what each lacks is an interaction a person expects for free:
    2026-11-16 (design §5ag)**: `whisker_dock.h` — panes dragged by their
    captions to any edge, closed, shown, resized, the layout saved as a
    line — so `docks` and `dock` are answered directly: **twenty-three
-   directly, two by composition** (`tabs`, `tab`). Floating a pane into
-   a window of its own (§5af gave the windows) is §5ag's step 2.
+   directly, two by composition** (`tabs`, `tab`). **Floating built the
+   same day** (§5ag step 2): a caption double-clicked takes its pane into
+   a window of its own (§5af's), and back.
 4. `tabs` / `tab`: nothing missing that a person would name; the program
    swaps the body, as `wkeys` does.
 

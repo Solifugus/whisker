@@ -11,6 +11,12 @@
  * resize the areas. Ctrl-S keeps the layout (one line of text, printed and
  * written to Output); Ctrl-L puts the kept one back.
  *
+ * Double-click a caption and the pane floats in a window of its own (step
+ * 2); double-click it there, or close that window, and it docks where it
+ * was. The windows are this program's: after anything that may have changed
+ * the layout, `windows()` opens one for each floating pane and closes the
+ * rest.
+ *
  * The frame is whisker_dock.h's, built in tree slots this program sets
  * aside; the panes' contents and the centre are this program's own trees.
  * Nothing about the layout lives anywhere but in `dock` and the line.
@@ -51,6 +57,7 @@ static char text[8192] =
 	"\n"
 	"' drag a pane by its caption to another edge of the window;\n"
 	"' its x closes it, Ctrl-1 2 3 bring them back.\n"
+	"' double-click a caption: the pane floats in a window of its own.\n"
 	"' Ctrl-S keeps the layout, Ctrl-L puts it back.\n"
 	"\n"
 	"function draw()\n"
@@ -64,6 +71,11 @@ static const char *strs[WSK_DOCK_MAX];
 static wsk_dock_t dock;
 static wsk_ui_t ui;
 static int said;                        /* Output changed: draw it all again */
+
+/* a floating pane's window: the host's number (or -1), its root, its toolkit */
+static int fwin[WSK_DOCK_MAX];
+static wsk_tree_t froot[WSK_DOCK_MAX];
+static wsk_ui_t fui[WSK_DOCK_MAX];
 
 static void to_window(wsk_sink_t *s, const char *b, int n)
 {
@@ -99,12 +111,61 @@ static const char *area_name(int a)
 	     : a == WSK_DOCK_TOP ? "the top" : "the bottom";
 }
 
+/* Every window drawn again whole: the frame, and each floating pane's. */
+static void draw_all(wsk_sink_t *s)
+{
+	wh_on(0);
+	wh_draw_fit(&root, s, 0, H);
+	for (int p = 0; p < dock.n; p++)
+		if (fwin[p] >= 0) { wh_on(fwin[p]); wh_draw_fit(&froot[p], s, 0, froot[p].h); }
+	wh_on(0);
+}
+
+/* A window for each floating pane and none for the rest -- the size it had
+   docked: a side's width by half the window, an edge's height by all of it. */
+static void windows(void)
+{
+	int y0, y1;
+	for (int p = 0; p < dock.n; p++) {
+		const wsk_pane_t *pn = &dock.pane[p];
+		int want = (pn->shown == WSK_DOCK_FLOAT);
+		if (want && fwin[p] < 0) {
+			int side = (pn->area == WSK_DOCK_LEFT || pn->area == WSK_DOCK_RIGHT);
+			int w = side ? dock.asize[pn->area] : W, h = side ? H / 2 : dock.asize[pn->area];
+			char m[120];
+			if (w < 240) w = 240;
+			if (h < 150) h = 150;
+			if ((fwin[p] = wh_window(w, h, pn->caption)) < 0 ||
+			    wsk_dock_window(&dock, pn->name, &froot[p], w, h) != WSK_OK) {
+				if (fwin[p] >= 0) wh_window_close(fwin[p]);
+				fwin[p] = -1;
+				wsk_dock_float(&dock, pn->name, 0);   /* no window: it stays docked */
+				wsk_dock_build(&dock);
+				continue;
+			}
+			wsk_ui_init(&fui[p], &froot[p]);
+			wsk_ui_focus(&ui, "editor", &y0, &y1);  /* the keys stay with the frame's editor */
+			snprintf(m, sizeof m, "%s floating: double-click its caption, or close its window, to dock it", pn->caption);
+			say(m);
+		} else if (!want && fwin[p] >= 0) {
+			wh_window_close(fwin[p]);
+			fwin[p] = -1;
+			if (pn->shown == 1) {
+				char m[120];
+				snprintf(m, sizeof m, "%s docked again", pn->caption);
+				say(m);
+			}
+		}
+	}
+}
+
 int main(void)
 {
 	wsk_sink_t s;
 	int y0, y1, e, which = -1;
 
 	memset(buf, 0, sizeof buf);
+	for (int p = 0; p < WSK_DOCK_MAX; p++) fwin[p] = -1;
 	buf[0].b = text; buf[0].cap = sizeof text; buf[0].len = (int)strlen(text);
 	buf[1].b = out; buf[1].cap = sizeof out;
 
@@ -149,11 +210,24 @@ int main(void)
 		wh_event_t he;
 		wsk_event_t ev;
 		wsk_note_t note[8];
-		int k = wh_poll(&he), n, whole = 0, dragged, was_area = -1, was_order = -1, dropped = 0;
+		int k = wh_poll(&he), n, whole = 0, dragged, was_area = -1, was_order = -1, dropped = 0, fp = -1;
+		wsk_ui_t *u = &ui;
 
 		if (k == WH_QUIT) break;
 		if (k == WH_NOTHING) { fflush(stdout); wh_wait(20); continue; }
-		if (k == WH_EXPOSE) { wh_draw_fit(&root, &s, 0, H); continue; }
+		if (k == WH_EXPOSE) { draw_all(&s); continue; }
+		for (int p = 0; p < dock.n; p++)
+			if (he.win != 0 && fwin[p] == he.win) { fp = p; u = &fui[p]; }
+		if (k == WH_CLOSE) {
+			if (he.win == 0) break;                 /* the frame's window: the program ends */
+			if (fp < 0) continue;
+			wsk_dock_float(&dock, dock.pane[fp].name, 0);   /* a floating window closed docks its pane */
+			wsk_dock_build(&dock);
+			windows();
+			draw_all(&s);
+			continue;
+		}
+		if (he.win != 0 && fp < 0) continue;      /* a window closed a moment ago */
 		memset(&ev, 0, sizeof ev);
 		ev.x = (short)he.x; ev.y = (short)he.y; ev.finger = (unsigned char)he.finger;
 		if (k == WH_PRESS) { ev.kind = WSK_EV_DOWN; ev.key = (unsigned short)he.key; ev.d = (short)he.d; }
@@ -164,7 +238,7 @@ int main(void)
 		else if (k == WH_TEXT) { ev.kind = WSK_EV_TEXT; memcpy(ev.text, he.text, sizeof ev.text); }
 		else continue;
 
-		n = wsk_feed(&ui, &ev, note, 8, &y0, &y1);
+		n = wsk_feed(u, &ev, note, 8, &y0, &y1);
 		said = 0;
 		dragged = dock.drag;
 		if (dragged >= 0) { was_area = dock.pane[dragged].area; was_order = dock.pane[dragged].order; }
@@ -203,7 +277,7 @@ int main(void)
 					}
 			}
 		}
-		if (wsk_dock_feed(&dock, &ui, &ev, note, n)) whole = 1;
+		if (wsk_dock_feed(&dock, u, &ev, note, n)) whole = 1;
 		if (dropped && dragged >= 0) {
 			char m[120];
 			const wsk_pane_t *p = &dock.pane[dragged];
@@ -212,9 +286,14 @@ int main(void)
 			else snprintf(m, sizeof m, "%s let go in the middle: left where it was", p->caption);
 			say(m);
 		}
+		if (whole) windows();
 		if (said) whole = 1;
-		if (whole) { wh_draw_fit(&root, &s, 0, H); continue; }
-		if (y1 > y0) wh_draw_fit(&root, &s, y0, y1);
+		if (whole) { draw_all(&s); continue; }
+		if (y1 > y0) {
+			wh_on(fp >= 0 ? fwin[fp] : 0);
+			wh_draw_fit(fp >= 0 ? &froot[fp] : &root, &s, y0, y1);
+			wh_on(0);
+		}
 	}
 	if (wsk_dock_save(&dock, kept, sizeof kept) > 0) printf("layout at the end: %s\n", kept);
 	wh_close();

@@ -6098,6 +6098,102 @@ int main(void)
 			ok(wsk_dock_load(&d, "L200 R128 T100 B100;gone:R0:1:0;files:R0:1:0;") == 1 && wsk_dock_area(&d, "files") == WSK_DOCK_RIGHT &&
 			   d.asize[WSK_DOCK_LEFT] == 200, "a layout naming a pane this program has not: passed over, the rest put back");
 		}
+
+		/* step 2: floating -- a double-click on a caption, a window of the program's */
+		{
+			static const wsk_widget_t MW[] = { { .kind = WSK_MEMO, .id = "pmemo", .sub = 0, .weight = 1 } };
+			char mb[64] = "";
+			wsk_buf_t bufs[1];
+			wsk_tree_t fr;
+			wsk_ui_t fui;
+			wsk_rect_t c;
+			int ch;
+
+			memset(bufs, 0, sizeof bufs);
+			bufs[0].b = mb; bufs[0].cap = sizeof mb;
+			root.buf = bufs; root.bufs = 1;
+			k[3].item = MW; k[3].n = 1; k[3].overflow = 0;
+			wsk_dock_build(&d);
+			c = rect_of(&root, "files");
+			ok(c.x == 512 && wsk_dock_shown(&d, "files") == 1, "Files docked on the right, to begin");
+#define DK_EVD(U, K, X, Y, D) (memset(&ev, 0, sizeof ev), ev.kind = (K), ev.x = (X), ev.y = (Y), ev.d = (D), \
+		n = wsk_feed((U), &ev, nt, 8, &y0, &y1), wsk_dock_feed(&d, (U), &ev, nt, n))
+			ch = DK_EVD(&ui, WSK_EV_DOWN, c.x + 30, 13, 1);
+			ch |= DK_EVD(&ui, WSK_EV_UP, c.x + 30, 13, 0);
+			ok(ch == 0 && wsk_dock_shown(&d, "files") == 1, "CONTROL: a single click on its caption -- nothing");
+			ch = DK_EVD(&ui, WSK_EV_DOWN, c.x + c.w - 10, 13, 2);
+			ok(ch == 0 && wsk_dock_shown(&d, "files") == 1, "CONTROL: a double-click's press on its x -- not floated");
+			DK_EVD(&ui, WSK_EV_UP, c.x + c.w - 10, 13, 0);
+			ok(wsk_dock_shown(&d, "files") == 0, "(and its release a click: closed, as a click on x is)");
+			wsk_dock_show(&d, "files", 1);
+			wsk_dock_build(&d);
+
+			ok(DK_EVD(&ui, WSK_EV_DOWN, c.x + 30, 13, 2) == 1 && wsk_dock_shown(&d, "files") == WSK_DOCK_FLOAT &&
+			   wsk_dock_area(&d, "files") == WSK_DOCK_RIGHT, "a double-click on Files' caption: floating, its edge kept");
+			DK_EVD(&ui, WSK_EV_UP, c.x + 30, 13, 0);
+			which = 0;
+			ok(wsk_check(&root, &which) == WSK_OK && rect_of(&root, "files").x == -1 && rect_of(&root, "centre").x == 214 && rect_of(&root, "centre").w == 418,
+			   "the frame without it: the right area gone, the centre to the window's right edge, checking");
+			ok(wsk_dock_window(&d, "outline", &fr, 300, 200) == WSK_E_KIND && wsk_dock_window(&d, "nope", &fr, 300, 200) == WSK_E_NOTFOUND,
+			   "a window for a docked pane, or no pane: refused");
+			ok(wsk_dock_window(&d, "files", &fr, 300, 200) == WSK_OK && (which = 0, wsk_check(&fr, &which) == WSK_OK),
+			   "its window's root, 300 x 200: checks");
+			ok(rect_is(rect_of(&fr, "files"), 0, 0, 300, 26) && rect_is(rect_of(&fr, "fbody"), 2, 28, 296, 170),
+			   "laid out at the window's size: the caption across the top, the content under it");
+			render_into(&fr, doc, sizeof doc, 8192);
+			ok(has(doc, ">Files</text>") && has(doc, ">main.bas</text>") && !has(doc, ">Outline</text>") && count(doc, ">x</text>") == 1,
+			   "drawn: Files' caption, its x and its content, and nothing of the frame");
+
+			/* the control: a pane in both places is refused as shared */
+			d.pane[0].shown = 1;
+			wsk_dock_build(&d);
+			which = 0;
+			ok(wsk_check(&fr, &which) == WSK_E_KIND, "CONTROL: docked and in the window at once -- refused, a tree in two places");
+			d.pane[0].shown = WSK_DOCK_FLOAT;
+			wsk_dock_build(&d);
+
+			/* the window's own toolkit: a grab there is not the dock's */
+			wsk_ui_init(&fui, &fr);
+			DK_EVD(&fui, WSK_EV_DOWN, 40, 13, 1);
+			ch = DK_EVD(&fui, WSK_EV_MOVE, 200, 150, 0);
+			ok(n == 1 && nt[0].kind == WSK_NOTE_GRAB && ch == 0 && d.drag == -1 && d.hint == -1,
+			   "its caption dragged in its window: GRAB from the toolkit, nothing from the dock");
+			ok(DK_EVD(&fui, WSK_EV_UP, 200, 150, 0) == 0 && wsk_dock_shown(&d, "files") == WSK_DOCK_FLOAT, "let go there: still floating");
+			ok(DK_EVD(&fui, WSK_EV_DOWN, 40, 13, 2) == 1 && wsk_dock_shown(&d, "files") == 1 && rect_of(&root, "files").x == 512,
+			   "a double-click on the window's caption: docked again, on the right where it was");
+			DK_EVD(&fui, WSK_EV_UP, 40, 13, 0);
+
+			/* a memo in a floating pane edits the program's buffer */
+			wsk_dock_float(&d, "output", 1);
+			wsk_dock_build(&d);
+			ok(wsk_dock_window(&d, "output", &fr, 400, 150) == WSK_OK && (which = 0, wsk_check(&fr, &which) == WSK_OK) &&
+			   (which = 0, wsk_check(&root, &which) == WSK_OK) && rect_of(&root, "output").x == -1,
+			   "Output floated by the program: its window checks, the frame without it");
+			wsk_ui_init(&fui, &fr);
+			wsk_ui_focus(&fui, "pmemo", &y0, &y1);
+			memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_TEXT; ev.text[0] = 'h'; ev.text[1] = 'i';
+			wsk_feed(&fui, &ev, nt, 8, &y0, &y1);
+			ok(bufs[0].len == 2 && memcmp(mb, "hi", 2) == 0, "typed in its window: the program's buffer holds it");
+			{
+				int len = wsk_dock_save(&d, lay, sizeof lay);
+				ok(len > 0 && has(lay, "output:B0:2:0;"), "saved with it floating: shown 2");
+				wsk_dock_float(&d, "output", 0);
+				ok(wsk_dock_shown(&d, "output") == 1 && wsk_dock_load(&d, lay) == 3 && wsk_dock_shown(&d, "output") == WSK_DOCK_FLOAT,
+				   "docked, then the line loaded: floating again");
+				ok(wsk_dock_load(&d, "L200 R128 T100 B100;output:B0:1:0;") == 1 && wsk_dock_shown(&d, "output") == 1,
+				   "a step-1 line: docked, as it always loaded");
+				wsk_dock_float(&d, "output", 1);
+				wsk_dock_build(&d);
+			}
+			c = rect_of(&fr, "output");
+			DK_EVD(&fui, WSK_EV_DOWN, c.x + c.w - 10, 13, 1);
+			ok(DK_EVD(&fui, WSK_EV_UP, c.x + c.w - 10, 13, 0) == 1 && wsk_dock_shown(&d, "output") == 0,
+			   "the x in its window: Output closed, and its window the program's to close");
+			ok(wsk_dock_show(&d, "output", 1) == WSK_OK && (wsk_dock_build(&d), rect_is(rect_of(&root, "output"), 0, 300, 640, 26)),
+			   "shown again: docked at the bottom");
+			ok(wsk_dock_float(&d, "nope", 1) == WSK_E_NOTFOUND, "floating a pane there is not: WSK_E_NOTFOUND");
+#undef DK_EVD
+		}
 #undef DK_EV
 	}
 

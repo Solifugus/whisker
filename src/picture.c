@@ -2066,6 +2066,27 @@ int main(void)
 		printf("    the accent along the right edge: %d pixels before, %d during\n", accent0, accent);
 		ok(accent0 == 0 && accent == 6 * 100, "the drop bar: the right edge in the accent, 6 wide -- and not before");
 		shot("dock.ppm");
+
+		/* step 2: Outline floated, its window's root drawn on the panel alone */
+		{
+			wsk_tree_t fr;
+			wsk_rect_t cap = { 0, 0, PW, 22 }, below = { 0, 22, PW, PH - 22 };
+			int below0, below1, trough;
+			below0 = span(below, pix565(root.trough), &lo, &hi);   /* the frame's dividers and captions */
+			d.hint = -1;
+			wsk_dock_float(&d, "outline", 1);
+			wsk_dock_build(&d);
+			ok(wsk_dock_window(&d, "outline", &fr, PW, PH) == WSK_OK, "Outline floated: its window's root");
+			s.len = 0;
+			ok(wsk_render(&fr, &s, 4096) > 0, "drawn at the panel's size, under 4 KB");
+			below1 = span(below, pix565(root.trough), &lo, &hi);
+			trough = span(cap, pix565(root.trough), &lo, &hi);
+			printf("    the trough under row 22: %d pixels in the frame, %d in the window; in its caption row: %d\n",
+			       below0, below1, trough);
+			ok(below0 > 1000 && below1 == 0 && trough > PW * 22 / 2,
+			   "the window holds the pane alone: its caption across the top, none of the frame's dividers or captions under it");
+			shot("dockfloat.ppm");
+		}
 	}
 
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
