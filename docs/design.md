@@ -3513,6 +3513,88 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5aj. What a file holds that a memo cannot draw (2026-11-16)
+
+Matthew, after §5ai: *"The web and local window both load files...
+nicely except where unsupported characters are involved."* Measured
+(a memo holding one of each, checked with each host's capabilities):
+**both** hosts refused CRLF line endings, a lone CR, Latin-1 bytes, and
+control characters — form feed, Escape, NUL, DEL; **the SDL window**
+refused every character beyond ASCII as well (é, box drawing, a BOM,
+emoji, CJK, combining accents), which the browser drew. And one such
+character refused the whole file. Matthew chose: the line endings first,
+then markers.
+
+### Step 1 — line endings and encoding are the program's (built)
+
+whisker reads no files; a program that opens one into a memo says what
+it was and writes it back the way it came. `host/linux/textfile.h`,
+used by the code editor:
+
+- **Line endings** converted only when **consistent** — every one
+  `\r\n`, or every one a lone `\r`; the memo edits `\n`, the save writes
+  the file's own. **Mixed endings are left exactly as they are**:
+  converting would lose which line had which.
+- **Encoding**: valid UTF-8 kept; **anything else read as Latin-1**,
+  where every byte is a character, decoded to UTF-8 to edit and encoded
+  back on save — and **a save refused, never written lossily**, if text
+  typed since has a character Latin-1 cannot hold.
+- The status line names what is not UTF-8 with `\n`: `CRLF`, `CR`,
+  `Latin-1`.
+
+Qt converts on load as well; what it does not do is remember. A gBASIC
+backend will do the same at its own seam.
+
+**What step 1 came to**: 13 checks of `textfile.h` (`textfiletest.c`,
+in the Linux suite): each kind in and back out byte for byte — CRLF, CR,
+LF, none, a last line without one, UTF-8, Latin-1 (`\xa9` and `\xb0`,
+which UTF-8 would take for continuation bytes, kept), Latin-1 with CRLF
+— and the controls: two mixed files left alone, a Latin-1 file given a
+euro sign refused with nothing written, a Latin-1 file too large once
+decoded refused untouched. The code editor opens the tab-indented file
+**with Windows line endings in both hosts** (the Linux suite; in the
+browser `tabfile.py`, its pieces at their columns), and **a Latin-1 file
+with CRLF in the browser**, "café" decoded; built as it was before, it
+refuses the CRLF file — the control, run. The SDL window still refuses
+the decoded é: that is step 2.
+
+### Step 2 — markers, written before its code
+
+D8 refuses what cannot be drawn, never substituting; right for a label,
+too strict for an editor showing someone's file. So **in a memo and a
+source only**:
+
+1. **A character the host cannot draw is drawn as a marker** — a small
+   filled box in its one column, in the widget's ink faded toward the
+   field's well. What can be drawn is whisker's existing rule: printable
+   ASCII; beyond it with `WSK_CAP_UTF8`; `<` `>` `&` with
+   `WSK_CAP_ENTITY`. A marker stands for: a control character (other
+   than `\n` and `\t`, and not NUL), and on a host without UTF-8 every
+   character beyond ASCII — **one marker per character**, not per byte.
+2. **The buffer is exact.** Nothing is replaced: a save writes what was
+   read, the caret steps over a marked character as one, a selection
+   holds its bytes, a copy copies them.
+3. **Still refused**: malformed UTF-8 (the program decodes, step 1); a
+   NUL, which ends a C string; and everything undrawable in a label, a
+   button or a one-line field, as before — D8 unchanged for them.
+4. Typing and pasting into a memo take what a file may hold, markers
+   and all, so a copy pasted back is not refused.
+5. **Byte for byte as before** for a row with nothing to mark.
+6. A switch, `WSK_NO_UNDRAWN`: refused as before.
+
+Not this step: **characters two columns wide** (CJK, emoji) and
+**combining marks** (zero) are drawn by the browser but counted one
+column each, so a caret after one drifts — a width table, step 3; and
+**a desktop font beyond ASCII**, with D23's rasteriser.
+
+Done when: each of the measured characters checks and draws in a memo
+on a host without UTF-8 — a marker at its column, the text around it
+where it was; one marker for a two-byte character; the caret stepping
+over it; its bytes kept through a save's round trip; malformed UTF-8 and
+NUL still refused; a label with a control character still refused (the
+control); the picture through RV-9's rasteriser; the code editor opening
+a file with é in the SDL window.
+
 ## 5ai. Tab characters (2026-11-16), written before its code
 
 Matthew chose it from `ui-backend-gap.md` §8, where it was measured: a

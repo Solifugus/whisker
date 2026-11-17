@@ -29,6 +29,7 @@
 #include "host.h"
 #include "whisker.h"
 #include "whisker_chooser.h"
+#include "textfile.h"
 #include "lister.h"
 #include "fit.h"
 
@@ -52,6 +53,7 @@ static const wsk_widget_t WIN[] = {
 };
 
 static char text[CAP], clip[CAP], undo_b[256 * 1024], out[8192];
+static textfile_t tf;                   /* the open file's line endings and encoding, kept for its save (§5aj) */
 static wsk_ink_t inks[INKS];
 static unsigned char breaks[65536];        /* breakpoints, by line */
 static wsk_gmark_t marks[4096];         /* ...as whisker draws them, in order */
@@ -200,8 +202,10 @@ static void status(void)
 		else if (((unsigned char)text[i] & 0xC0) != 0x80) col++;   /* characters, not bytes */
 	}
 	const char *base = strrchr(path, '/');
-	char t[64];
-	snprintf(t, sizeof t, "%.16s  %d:%d", base ? base + 1 : path, line, col);
+	char t[96];
+	char kind[24];
+	tf_name(&tf, kind, sizeof kind);
+	snprintf(t, sizeof t, "%.16s  %d:%d%s%s", base ? base + 1 : path, line, col, kind[0] ? "  " : "", kind);
 	snprintf(win_items[0].text, WSK_TEXT_MAX, "%.31s", t);
 }
 
@@ -215,6 +219,7 @@ static int load(const char *p)
 	FILE *f = fopen(p, "rb");
 	struct stat st;
 	int len, was = buf[0].len, bad;
+	textfile_t was_tf = tf;
 	char m[PATH_MAX + 64];
 	if (f == NULL) { snprintf(m, sizeof m, "cannot open %s", p); say(m); return -1; }
 	/* a folder, a device, a file bigger than the editor holds: refused,
@@ -238,11 +243,20 @@ static int load(const char *p)
 		return -1;
 	}
 	text[len] = '\0';
+	len = tf_in(text, len, CAP, &tf);       /* CRLF or CR, Latin-1: edited as \n and UTF-8 */
+	if (len < 0) {
+		memcpy(text, keep, (size_t)was + 1);
+		tf = was_tf;
+		snprintf(m, sizeof m, "%s is larger than this editor holds once decoded: not opened", p);
+		say(m);
+		return -1;
+	}
 	buf[0].len = len;
 	buf[0].caret = 0; buf[0].span = 0;
 	buf[0].ninks = 0;
 	if (wsk_check(&win, 0) != WSK_OK) {
 		memcpy(text, keep, (size_t)was + 1);
+		tf = was_tf;
 		buf[0].len = was;
 		buf[0].caret = 0;
 		colour();
@@ -289,6 +303,8 @@ int main(int argc, char **argv)
 	if (fgetc(f) != EOF) { fprintf(stderr, "code: %s is larger than this editor holds\n", path); return 1; }
 	fclose(f);
 	text[buf[0].len] = '\0';
+	buf[0].len = tf_in(text, buf[0].len, CAP, &tf);   /* written back as it came (§5aj) */
+	if (buf[0].len < 0) { fprintf(stderr, "code: %s is larger than this editor holds once decoded\n", path); return 1; }
 	buf[0].b = text;
 	buf[0].cap = CAP;
 	undo.b = undo_b; undo.cap = sizeof undo_b;
@@ -416,7 +432,7 @@ int main(int argc, char **argv)
 				snprintf(tmp, sizeof tmp, "%s.saving", chooser.path);
 				f = fopen(tmp, "wb");
 				if (f != NULL) {
-					okw = (int)fwrite(text, 1, (size_t)buf[0].len, f) == buf[0].len;
+					okw = tf_out(f, text, buf[0].len, &tf) == 0;   /* its own line endings and encoding */
 					okw = (fflush(f) == 0) && okw;
 					okw = (fsync(fileno(f)) == 0 || errno == EINVAL) && okw;
 					okw = (fclose(f) == 0) && okw;
@@ -427,7 +443,9 @@ int main(int argc, char **argv)
 					snprintf(pathbuf, sizeof pathbuf, "%s", chooser.path);
 					path = pathbuf;
 					snprintf(m, sizeof m, "saved %s", chooser.path);
-				} else snprintf(m, sizeof m, "could not write %s: nothing changed", chooser.path);
+				} else if (tf.enc == ENC_LATIN1 && !tf_latin1_ok(text, buf[0].len))
+					snprintf(m, sizeof m, "%s is Latin-1, and the text has a character it cannot hold: not saved", chooser.path);
+				else snprintf(m, sizeof m, "could not write %s: nothing changed", chooser.path);
 				say(m);
 			} else if (r == WSK_CANCELLED) say("nothing chosen");
 			if (r != 0) choosing = 0;

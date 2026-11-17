@@ -58,8 +58,18 @@ if [[ "${1:-}" == "--test" ]]; then
 	set -e
 	if [[ $rc == 124 ]]; then echo "ok    code.c opens a file indented with tabs and keeps running"
 	else echo "FAIL  code.c refused a file with tabs ($rc): $(head -1 "$OUT/tabs.err")"; exit 1; fi
+	# the same file written on Windows, its lines ended \r\n (§5aj step 1)
+	sed 's/$/\r/' "$OUT/tabs.bas" > "$OUT/tabs-crlf.bas"
+	set +e
+	SDL_VIDEODRIVER=dummy timeout 1 "$OUT/whisker-code" "$OUT/tabs-crlf.bas" >/dev/null 2>"$OUT/crlf.err"
+	rc=$?
+	set -e
+	if [[ $rc == 124 ]]; then echo "ok    code.c opens a file with Windows line endings and keeps running"
+	else echo "FAIL  code.c refused a CRLF file ($rc): $(head -1 "$OUT/crlf.err")"; exit 1; fi
 	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/listertest" "$HERE/listertest.c" "${INC[@]}"
 	"$OUT/listertest" || exit 1
+	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/textfiletest" "$HERE/textfiletest.c" "${INC[@]}"
+	"$OUT/textfiletest" || exit 1
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/selftest" \
 		"$HERE/selftest.c" "$OUT/raster.c" "$OUT/font.c" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)

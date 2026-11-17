@@ -370,6 +370,16 @@ directly**.
   Ctrl-W, Ctrl-N** (Matthew's Ctrl-W closed the browser tab): a program
   binding one gives an Alt chord too; Chrome checks cannot see this.
   **Matthew, after: works well in both hosts.**
+- **§5aj — what a file holds that a memo cannot draw** (2026-11-16,
+  Matthew: files load "nicely except where unsupported characters are
+  involved"). Measured: CRLF, a lone CR, Latin-1 and control characters
+  refused in both hosts, everything beyond ASCII in the SDL window — and
+  one refused the whole file. **Step 1, the program's**
+  (`host/linux/textfile.h`): line endings converted only when consistent
+  and written back as they came, mixed left alone; not-UTF-8 read as
+  Latin-1, written back as Latin-1 or refused, never lossily; the code
+  editor opens Windows and Latin-1 files. **Step 2, markers** in a memo
+  for what the host cannot draw, the buffer exact — designed, next.
 - **§5ai — tab characters** (2026-11-16, the first gap `ui-backend-gap.md`
   measured): a tab in a memo or source buffer **stays a byte** and draws
   to the next stop (`wsk_buf_t.tab`, 0 = 8), counted from the row's
@@ -464,11 +474,11 @@ twice; it needs over 11.7 KB). Design §9.4.
 `src/run.sh --module` is the whole of it: **1,218 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 64 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 78 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
-18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`), 4 for a file indented with tabs (`tabfile.py`) — 173 in all.
+18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`), 13 for files indented with tabs, with Windows line endings, in Latin-1 (`tabfile.py`) — 182 in all.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

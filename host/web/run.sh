@@ -51,6 +51,10 @@ if [[ "${1:-}" == "--test" ]]; then
 		"$HERE/../linux/code.c" "$HERE/host_web.c" -I"$HERE/../linux" -I"$HERE/../../src"
 	printf 'program tabs\n\tprint "indented by a tab"\n\tif 1 then\n\t\tprint "two"\n\tend if\nend program\n' > "$OUT/tabs.bas"
 	python3 "$HERE/tabfile.py" "$OUT/whisker-code-web" "$OUT/tabs.bas"
+	sed 's/$/\r/' "$OUT/tabs.bas" > "$OUT/tabs-crlf.bas"      # §5aj: and with Windows line endings
+	python3 "$HERE/tabfile.py" "$OUT/whisker-code-web" "$OUT/tabs-crlf.bas"
+	printf 'program tabs\r\n\tprint "caf\351"\r\n\tif 1 then\r\n\t\tprint "two"\r\n\tend if\r\nend program\r\n' > "$OUT/tabs-latin1.bas"
+	python3 "$HERE/tabfile.py" "$OUT/whisker-code-web" "$OUT/tabs-latin1.bas" $'caf\303\251'     # Latin-1 and CRLF, \351 is e-acute
 	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-floor-web" \
 		"$HERE/../linux/floor.c" "$HERE/host_web.c" -I"$HERE/../linux" -I"$HERE/../../src"
 	python3 "$HERE/seathost.py" "$OUT/whisker-floor-web"

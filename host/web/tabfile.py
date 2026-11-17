@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The code editor opens a file indented with tabs, in the browser host (§5ai).
 
-    python3 tabfile.py <whisker-code-web binary> <a file indented with tabs>
+    python3 tabfile.py <whisker-code-web binary> <a file indented with tabs> [text it must show]
 
 Subscribes to /events and reads the first document: each line's first word
 must start 8 columns in per tab from where an unindented line starts. Before
@@ -10,6 +10,7 @@ must start 8 columns in per tab from where an unindented line starts. Before
 import os, re, socket, subprocess, sys, time
 
 BIN, FILE = sys.argv[1], sys.argv[2]
+SHOWS = sys.argv[3] if len(sys.argv) > 3 else None   # e.g. what a Latin-1 file decodes to (§5aj)
 PORT = 18096
 fails = 0
 
@@ -49,6 +50,8 @@ try:
     ok(start is not None and p1 == start + 8 * adv, "one tab in: the line's first word at column 8")
     ok(start is not None and p2 == start + 16 * adv, "two tabs in: at column 16")
     ok("\t" not in first, "and no tab byte in the document: a tab draws nothing")
+    if SHOWS is not None:
+        ok(any(SHOWS in t for _, _, t in texts), f"and it shows {SHOWS!r}, decoded")
 finally:
     p.kill()
     p.wait()
