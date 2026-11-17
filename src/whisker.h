@@ -109,6 +109,7 @@
  *     -DWSK_NO_SOURCE   the code editor: a gutter, colour runs (§5v)
  *     -DWSK_NO_ENTITY   < > & in text, for a host that decodes entities (§5v)
  *     -DWSK_NO_WORDS    Ctrl's word moves, double- and triple-click (§5w)
+ *     -DWSK_NO_TABCHAR  tab characters in a memo: refused, as before §5ai
  *     -DWSK_NO_SPLIT    dividers a person drags, and the sizes they set (§5x)
  *     -DWSK_NO_MENUKEYS Up, Down, Enter in an open menu (§5y)
  *     -DWSK_NO_WORLD    a world: placed items, a view and a zoom (§5q)
@@ -479,6 +480,10 @@ typedef struct {
 	                                writes the text sets it back to 0. */
 	unsigned char wrap;          /* a memo: 1 wraps long lines at its width,
 	                                0 slides sideways to the caret (§5u) */
+	unsigned char tab;           /* a tab character's stops: every `tab`
+	                                columns; 0 is 8 (§5ai) */
+	unsigned char tabkey;        /* 1: the Tab key types a tab here, and
+	                                Shift-Tab still walks focus (§5ai) */
 #ifndef WSK_NO_UNDO
 	wsk_undo_t   *undo;          /* what Ctrl-Z undoes, or 0 for none (§5v) */
 #endif
@@ -864,6 +869,98 @@ static inline int wsk__byte_of(const char *s, int n, int k)
 #endif
 }
 
+/*
+ * Tab characters (§5ai): columns along a row that starts at s -- a character
+ * one, a tab to the next stop of every tw. With no tab in it, each answers
+ * what wsk__chars and wsk__byte_of do, so a row without one draws as it
+ * always did.
+ */
+static inline int wsk__cw(unsigned char ch, int c, int tw)
+{
+#ifndef WSK_NO_TABCHAR
+	if (ch == '\t') return tw - c % tw;
+#else
+	(void)ch; (void)c; (void)tw;
+#endif
+	return 1;
+}
+
+/* Whether byte ch begins a character, which is what has a width. */
+static inline int wsk__chstart(unsigned char ch)
+{
+#ifndef WSK_NO_UTF8
+	return (ch & 0xC0) != 0x80;
+#else
+	(void)ch;
+	return 1;
+#endif
+}
+
+#ifndef WSK_NO_TABCHAR
+/* The column after n bytes of the row. */
+static inline int wsk__vcol(const char *s, int n, int tw)
+{
+	int c = 0;
+	for (int i = 0; i < n; i++)
+		if (wsk__chstart((unsigned char)s[i])) c += wsk__cw((unsigned char)s[i], c, tw);
+	return c;
+}
+
+/* The byte of the character column `col` is in -- a tab's, for a column
+   inside its width -- or n past the row's end. */
+static inline int wsk__vat(const char *s, int n, int col, int tw)
+{
+	int c = 0;
+	for (int i = 0; i < n; i++) {
+		if (!wsk__chstart((unsigned char)s[i])) continue;
+		c += wsk__cw((unsigned char)s[i], c, tw);
+		if (col < c) return i;
+	}
+	return n;
+}
+
+/* The boundary nearest column `col`: inside a tab's width, its nearer edge. */
+static inline int wsk__vnear(const char *s, int n, int col, int tw)
+{
+	int c = 0;
+	for (int i = 0; i < n; i++) {
+		int w;
+		if (!wsk__chstart((unsigned char)s[i])) continue;
+		if (col <= c) return i;
+		w = wsk__cw((unsigned char)s[i], c, tw);
+		if (col < c + w) return (col - c <= c + w - col) ? i : i + 1;
+		c += w;
+	}
+	return n;
+}
+
+/* The bytes of the row's longest start that ends at column `limit` or before. */
+static inline int wsk__vfit(const char *s, int n, int limit, int tw)
+{
+	int c = 0;
+	for (int i = 0; i < n; i++) {
+		if (!wsk__chstart((unsigned char)s[i])) continue;
+		c += wsk__cw((unsigned char)s[i], c, tw);
+		if (c > limit) return i;
+	}
+	return n;
+}
+
+#else
+/* Without tab characters a column is a character: the helpers are the
+   ones they generalise, and cost what they did. */
+static inline int wsk__vcol(const char *s, int n, int tw) { (void)tw; return wsk__chars(s, n); }
+static inline int wsk__vat(const char *s, int n, int col, int tw) { (void)tw; return wsk__byte_of(s, n, col); }
+static inline int wsk__vnear(const char *s, int n, int col, int tw) { (void)tw; return wsk__byte_of(s, n, col); }
+static inline int wsk__vfit(const char *s, int n, int limit, int tw) { (void)tw; return wsk__byte_of(s, n, limit); }
+#endif
+
+/* A buffer's tab stops: its own, or every 8 columns. */
+static inline int wsk__tabw(const wsk_buf_t *b)
+{
+	return (b != 0 && b->tab > 0) ? b->tab : 8;
+}
+
 static inline int wsk_text_ok(const char *t);
 
 #ifndef WSK_NO_IMAGE
@@ -935,6 +1032,9 @@ static inline int wsk__ok_n(const char *t, int n, int caps, int nl)
 		unsigned char c = (unsigned char)t[i];
 		int more = 0;
 		if (c == '\n' && nl) { i++; continue; }
+#ifndef WSK_NO_TABCHAR
+		if (c == '\t' && nl) { i++; continue; }      /* where lines are, columns are (§5ai) */
+#endif
 		if (c < 0x80) {
 			if (c < 32 || c == 127 || wsk__markup(c, caps)) return 0;
 			i++;
@@ -3574,7 +3674,8 @@ static inline int wsk__selr(const wsk_buf_t *b, int *s0, int *s1)
  * is never drawn wrong anywhere else.
  */
 static inline void wsk__selbox(wsk_sink_t *s, const wsk_tree_t *t, const wsk_widget_t *w,
-                               const wsk_buf_t *b, int from, int n, int x, int top)
+                               const wsk_buf_t *b, int from, int n, int x, int top,
+                               int row, int tw)
 {
 	int s0, s1, adv = wsk_advance(t->font);
 	wsk_rect_t r;
@@ -3582,10 +3683,11 @@ static inline void wsk__selbox(wsk_sink_t *s, const wsk_tree_t *t, const wsk_wid
 	if (s0 < from) s0 = from;
 	if (s1 > from + n) s1 = from + n;
 	if (s1 <= s0) return;
-	/* bytes to columns: characters, for a host that draws UTF-8 */
-	r.x = (short)(x + wsk__chars(b->b + from, s0 - from) * adv);
+	/* bytes to columns: characters, for a host that draws UTF-8, and a tab
+	   its width -- counted from the row's start, where its stops are */
+	r.x = (short)(x + (wsk__vcol(b->b + row, s0 - row, tw) - wsk__vcol(b->b + row, from - row, tw)) * adv);
 	r.y = (short)top;
-	r.w = (short)(wsk__chars(b->b + s0, s1 - s0) * adv);
+	r.w = (short)((wsk__vcol(b->b + row, s1 - row, tw) - wsk__vcol(b->b + row, s0 - row, tw)) * adv);
 	r.h = t->font;
 	wsk__box(s, 0, r, t->selfill);
 }
@@ -3628,7 +3730,7 @@ static inline void wsk__field(wsk_sink_t *s, const wsk_tree_t *t,
 	from = wsk__byte_of(txt, len, from);
 	n = wsk__byte_of(txt + from, len - from, n);
 #ifndef WSK_NO_TEXTSEL
-	wsk__selbox(s, t, w, b, from, n, x, top);
+	wsk__selbox(s, t, w, b, from, n, x, top, from, 8);
 #endif
 	if (n > 0)
 		wsk__textel(s, 1, x, wsk_baseline_of(top, t->font), w->ink, txt + from, n);
@@ -3683,15 +3785,16 @@ static inline int wsk__mroom(const wsk_tree_t *t, const wsk_widget_t *w, wsk_rec
  * the last. A line longer than `room` breaks after its last space that
  * fits, or, with none, at the room itself (§5u rule 2).
  */
-static inline int wsk__vrow(const char *b, int len, int at, int room, int *end)
+static inline int wsk__vrow(const char *b, int len, int at, int room, int *end, int tw)
 {
 	int e = at;
 	while (e < len && b[e] != '\n') e++;
-	/* room is characters; a line is never more of them than its bytes */
-	if (e - at > room && wsk__chars(b + at, e - at) > room) {
-		int cut = at + wsk__byte_of(b + at, e - at, room);
-		int sp = cut;                    /* a space here may still break */
-		while (sp > at && b[sp] != ' ') sp--;
+	/* room is columns; a line is never more of them than its bytes, each
+	   no wider than a tab (§5ai) */
+	if (e - at > room / tw && wsk__vcol(b + at, e - at, tw) > room) {
+		int cut = at + wsk__vfit(b + at, e - at, room, tw);
+		int sp = cut;                    /* a space here may still break, */
+		while (sp > at && b[sp] != ' ' && b[sp] != '\t') sp--;   /* or a tab */
 		if (sp > at) { *end = sp; return sp + 1; }
 		*end = cut;
 		return cut;
@@ -3702,13 +3805,13 @@ static inline int wsk__vrow(const char *b, int len, int at, int room, int *end)
 
 /* The row and column at offset `at`, and how many rows there are. */
 static inline void wsk__where(const char *b, int len, int at, int room,
-                              int *line, int *col, int *lines)
+                              int *line, int *col, int *lines, int tw)
 {
 	int k = 0, st = 0, end, next, found = 0;
 	for (;;) {
-		next = wsk__vrow(b, len, st, room, &end);
+		next = wsk__vrow(b, len, st, room, &end, tw);
 		if (!found && (at < next || next > len)) {
-			*line = k; *col = wsk__chars(b + st, at - st); found = 1;   /* in characters */
+			*line = k; *col = wsk__vcol(b + st, at - st, tw); found = 1;   /* in columns */
 		}
 		if (next > len) break;
 		st = next;
@@ -3718,11 +3821,11 @@ static inline void wsk__where(const char *b, int len, int at, int room,
 }
 
 /* Where row `k` starts, and (in *end) where it stops. */
-static inline int wsk__line(const char *b, int len, int k, int room, int *end)
+static inline int wsk__line(const char *b, int len, int k, int room, int *end, int tw)
 {
 	int st = 0, next;
 	for (int i = 0; ; i++) {
-		next = wsk__vrow(b, len, st, room, end);
+		next = wsk__vrow(b, len, st, room, end, tw);
 		if (i == k || next > len) return st;
 		st = next;
 	}
@@ -3806,9 +3909,12 @@ static inline void wsk__lineno(wsk_sink_t *s, const wsk_tree_t *t, int num, int 
  * runs are the widget's ink; spaces that open a piece are not sent, since
  * its x already says where it starts.
  */
+static inline void wsk__tabtext(wsk_sink_t *s, int x, int base, unsigned int ink,
+                                const char *txt, int row, int from, int n, int tw, int adv);
+
 static inline void wsk__inked(wsk_sink_t *s, const wsk_tree_t *t, const wsk_widget_t *w,
                               const wsk_buf_t *b, const char *txt, int from, int n,
-                              int x, int y)
+                              int x, int y, int row, int tw)
 {
 	const wsk_ink_t *ik = (b != 0) ? b->inks : 0;
 	int ni = (b != 0 && ik != 0) ? b->ninks : 0;
@@ -3827,12 +3933,38 @@ static inline void wsk__inked(wsk_sink_t *s, const wsk_tree_t *t, const wsk_widg
 		else e = (lo < ni) ? ik[lo].at : stop;
 		if (e > stop) e = stop;
 		for (p = pos; p < e && txt[p] == ' '; p++) ;
-		if (p < e) wsk__textel(s, 1, x + wsk__chars(txt + from, p - from) * adv, base, ink,
-		                       txt + p, e - p);
+		if (p < e) wsk__tabtext(s, x + (wsk__vcol(txt + row, p - row, tw) -
+		                                wsk__vcol(txt + row, from - row, tw)) * adv,
+		                        base, ink, txt, row, p, e - p, tw, adv);
 		if (e > pos) pos = e;
 	}
 }
 #endif
+
+/*
+ * txt[from .. from+n) of a row that starts at `row`, byte `from` drawn at x:
+ * a <text> for each piece between its tabs, at the piece's column, and
+ * nothing for a tab (§5ai) -- no substrate is asked to draw one or to keep
+ * spaces. With no tab, the one <text> it always was.
+ */
+static inline void wsk__tabtext(wsk_sink_t *s, int x, int base, unsigned int ink,
+                                const char *txt, int row, int from, int n, int tw, int adv)
+{
+	int c0 = -1, p = from, stop = from + n;
+	while (p < stop) {
+		int q = p;
+		while (q < stop && txt[q] != '\t') q++;
+		if (q > p) {
+			int dx = 0;
+			if (q < stop || p > from) {       /* a tab in the run: columns count */
+				if (c0 < 0) c0 = wsk__vcol(txt + row, from - row, tw);
+				dx = (wsk__vcol(txt + row, p - row, tw) - c0) * adv;
+			}
+			wsk__textel(s, 1, x + dx, base, ink, txt + p, q - p);
+		}
+		p = q + 1;
+	}
+}
 
 /*
  * A memo's lines, each from the same column, and its caret. Every line is
@@ -3854,7 +3986,7 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 	int adv = wsk_advance(t->font), pitch = wsk__pitch(t), vis = wsk__vis(t, r);
 	int room, line = 0, col = 0, lines = 1, top, left, at, end;
 	int show = (w->mark == WSK_MARK_CARET);
-	int wr = wsk__mroom(t, w, r, b), gut = 0, mk = 0;
+	int wr = wsk__mroom(t, w, r, b), gut = 0, mk = 0, tw = wsk__tabw(b);
 	wsk_rect_t tr = r;               /* where the text goes: past a gutter */
 	wsk_buf_t none;
 
@@ -3871,13 +4003,13 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 	(void)gut; (void)mk;
 	room = (tr.w - 2 * WSK_FIELD_PAD - WSK_CARET_W) / adv;
 	if (room < 1) room = 1;
-	wsk__where(txt, len, caret, wr, &line, &col, &lines);
+	wsk__where(txt, len, caret, wr, &line, &col, &lines, tw);
 	none.top = 0;
 	top = wsk__top((b != 0) ? b : &none, vis, line, lines);
 	left = wsk__left(t, tr, col);
 	/* the first row shown, found once; each after it from the one before --
 	   a 300 KB buffer is walked once a picture, not once a row (§5v) */
-	at = wsk__line(txt, len, top, wr, &end);
+	at = wsk__line(txt, len, top, wr, &end, tw);
 #ifndef WSK_NO_SOURCE
 	/* the first mark at or after the first line shown */
 	if (gut > 0 && b != 0 && b->marks != 0) {
@@ -3889,11 +4021,16 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 	}
 #endif
 	for (int k = top; k < top + vis && k < lines; k++) {
-		int y = r.y + WSK_FIELD_PAD + (k - top) * pitch, next = wsk__vrow(txt, len, at, wr, &end);
-		/* columns are characters: `left` and `room` count them (§5v step 3) */
-		int from = at + wsk__byte_of(txt + at, end - at, left), n = end - from;
+		int y = r.y + WSK_FIELD_PAD + (k - top) * pitch, next = wsk__vrow(txt, len, at, wr, &end, tw);
+		/* columns are characters -- and a tab its width (§5ai): `left` and
+		   `room` count them. The first shown is the first that STARTS at or
+		   after `left`, so a tab across the sideways edge is passed over */
+		int from = at + wsk__vat(txt + at, end - at, left, tw), n = end - from, xf;
+		if (from < end && wsk__vcol(txt + at, from - at, tw) < left) from++;
+		xf = tr.x + WSK_FIELD_PAD + (wsk__vcol(txt + at, from - at, tw) - left) * adv;
 		if (y + pitch > ry0 && y < ry1 && wsk__shows(t, r.x, r.x + r.w, y)) {
-			n = wsk__byte_of(txt + from, n, room);
+			n = at + wsk__vfit(txt + at, end - at, left + room, tw) - from;
+			if (n < 0) n = 0;
 #ifndef WSK_NO_SOURCE
 			const wsk_gmark_t *m = 0;
 			if (gut > 0 && b != 0 && b->marks != 0) {
@@ -3905,16 +4042,15 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 			if (m != 0 && m->shape != WSK_GM_BAR) wsk__gmark(s, t, m, r.x, y, gut);
 #endif
 #ifndef WSK_NO_TEXTSEL
-			if (n > 0) wsk__selbox(s, t, w, b, from, n, tr.x + WSK_FIELD_PAD, y);
+			if (n > 0) wsk__selbox(s, t, w, b, from, n, xf, y, at, tw);
 #endif
 #ifndef WSK_NO_SOURCE
 			if (n > 0 && gut > 0)
-				wsk__inked(s, t, w, b, txt, from, n, tr.x + WSK_FIELD_PAD, y);
+				wsk__inked(s, t, w, b, txt, from, n, xf, y, at, tw);
 			else
 #endif
 			if (n > 0)
-				wsk__textel(s, 1, tr.x + WSK_FIELD_PAD, wsk_baseline_of(y, t->font),
-				            w->ink, txt + from, n);
+				wsk__tabtext(s, xf, wsk_baseline_of(y, t->font), w->ink, txt, at, from, n, tw, adv);
 		}
 		if (next > len) break;
 		at = next;
@@ -5520,17 +5656,18 @@ static inline int wsk__char_at(const wsk_tree_t *lay, int k, wsk_buf_t *b,
 		whole.w = (short)(whole.w - gut);
 #endif
 		int line = 0, col = 0, lines = 1, top, left, at, end, vis = wsk__vis(lay, whole);
-		int wr = wsk__mroom(lay, &lay->item[k], whole, b);
-		wsk__where(b->b, b->len, b->caret, wr, &line, &col, &lines);
+		int wr = wsk__mroom(lay, &lay->item[k], whole, b), tw = wsk__tabw(b);
+		wsk__where(b->b, b->len, b->caret, wr, &line, &col, &lines, tw);
 		top = wsk__top(b, vis, line, lines);
 		left = wsk__left(lay, whole, col);
 		line = top + (y - (whole.y + WSK_FIELD_PAD)) / wsk__pitch(lay);
 		if (line >= lines) line = lines - 1;
 		if (line < 0) line = 0;
-		at = wsk__line(b->b, b->len, line, wr, &end);
+		at = wsk__line(b->b, b->len, line, wr, &end, tw);
 		c = left + (x - (whole.x + WSK_FIELD_PAD) + adv / 2) / adv;
 		if (c < 0) c = 0;
-		c = at + wsk__byte_of(b->b + at, end - at, c);     /* a column to its byte */
+		c = at + wsk__vnear(b->b + at, end - at, c, tw);   /* a column to its byte: in a
+		                                                      tab, its nearer edge (§5ai) */
 		b->top = top;
 		return c;
 	}
@@ -5582,7 +5719,7 @@ static inline void wsk__follow(wsk_ui_t *ui)
 	if (!wsk__lined(ui->focus_in->item[ui->focus_item].kind)) return;
 	wsk__where(b->b, b->len, b->caret,
 	           wsk__mroom(ui->focus_in, &ui->focus_in->item[ui->focus_item], ui->focus_r, b),
-	           &line, &col, &lines);
+	           &line, &col, &lines, wsk__tabw(b));
 	b->top = wsk__top(b, wsk__vis(ui->focus_in, ui->focus_r), line, lines);
 }
 #endif
@@ -5622,7 +5759,7 @@ static inline int wsk__wc(char ch)
 {
 	unsigned char c = (unsigned char)ch;
 	if (c == '\n') return 3;
-	if (c == ' ') return 0;
+	if (c == ' ' || c == '\t') return 0;
 	if (c >= 0x80 || c == '_' || (c >= '0' && c <= '9') || ((c | 32) >= 'a' && (c | 32) <= 'z'))
 		return 1;
 	return 2;
@@ -6349,6 +6486,19 @@ static inline int wsk__pinch(wsk_ui_t *ui, const wsk_event_t *ev, wsk_note_t *no
 }
 #endif
 
+/* Whether Tab types a tab: the focused field a memo or source whose buffer
+   says so (§5ai). Never, in a build without the memo or without tabs. */
+static inline int wsk__types_tab(const wsk_ui_t *ui)
+{
+#if !defined(WSK_NO_TABCHAR) && !defined(WSK_NO_MEMO)
+	return ui->root->focus != 0 && ui->focus_b != 0 && ui->focus_b->tabkey && ui->focus_in != 0 &&
+	       wsk__lined(ui->focus_in->item[ui->focus_item].kind);
+#else
+	(void)ui;
+	return 0;
+#endif
+}
+
 static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
                            wsk_note_t *note, int max, int *y0, int *y1)
 {
@@ -6607,7 +6757,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			wsk_buf_t *gb = wsk__fbuf(lay, &lay->item[k]);
 			if (x < wsk_rect(lay, k).x + wsk__gutter(lay, gb, gb->b, gb->len)) {
 				int line = 0, col = 0, lines = 1;
-				wsk__where(gb->b, gb->len, gb->caret, WSK_NOWRAP, &line, &col, &lines);
+				wsk__where(gb->b, gb->len, gb->caret, WSK_NOWRAP, &line, &col, &lines, wsk__tabw(gb));
 				ui->gline = line;
 			}
 		}
@@ -6917,8 +7067,10 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	}
 #ifndef WSK_NO_FIELD
 	/* Tab and Shift-Tab: the next or previous focusable widget -- field,
-	   button, check -- in declaration order, depth first (§5m rule 4). */
-	else if (ev->kind == WSK_EV_KEY && (ev->key == WSK_KEY_TAB || ev->key == WSK_KEY_BACKTAB)) {
+	   button, check -- in declaration order, depth first (§5m rule 4); but
+	   Tab in a memo whose buffer says `tabkey` types a tab (§5ai) */
+	else if (ev->kind == WSK_EV_KEY && (ev->key == WSK_KEY_TAB || ev->key == WSK_KEY_BACKTAB) &&
+	         !(ev->key == WSK_KEY_TAB && wsk__types_tab(ui))) {
 		const wsk_tree_t *in = 0;
 		short item = -1;
 		wsk_rect_t fr = { 0, 0, 0, 0 };
@@ -7063,6 +7215,17 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 #ifndef WSK_NO_MEMO
 		/* In a memo, a line is a line: Enter breaks one, Up and Down move
 		   between them keeping the column, Home and End are its ends. */
+#ifndef WSK_NO_TABCHAR
+		else if (memo && key == WSK_KEY_TAB && b->tabkey) {
+			if (b->len - sel + 1 < b->cap) {           /* a tab typed (§5ai), as Enter's line */
+				int at = sel ? s0 : b->caret;
+				wsk__put(b, at, sel, "\t", 1, sel == 0);
+				b->caret = at + 1;
+				b->span = 0;
+				edit = 1;
+			}
+		}
+#endif
 		else if (memo && key == WSK_KEY_ENTER) {
 			if (b->len - sel + 1 < b->cap) {
 				int at = sel ? s0 : b->caret;
@@ -7075,13 +7238,14 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		                    key == WSK_KEY_HOME || key == WSK_KEY_END)) {
 			int line = 0, col = 0, lines = 1, at, end, to = b->caret;
 			int wr = wsk__mroom(ui->focus_in, &ui->focus_in->item[ui->focus_item], ui->focus_r, b);
-			wsk__where(b->b, b->len, b->caret, wr, &line, &col, &lines);
+			wsk__where(b->b, b->len, b->caret, wr, &line, &col, &lines, wsk__tabw(b));
 			if (key == WSK_KEY_UP && line > 0) line--;
 			else if (key == WSK_KEY_DOWN && line < lines - 1) line++;
-			at = wsk__line(b->b, b->len, line, wr, &end);
+			at = wsk__line(b->b, b->len, line, wr, &end, wsk__tabw(b));
 			if (key == WSK_KEY_HOME) to = at;
 			else if (key == WSK_KEY_END) to = end;
-			else to = at + wsk__byte_of(b->b + at, end - at, col);   /* the column kept */
+			else to = at + wsk__vat(b->b + at, end - at, col, wsk__tabw(b));   /* the column kept:
+			                                                   inside a tab, before it (§5ai) */
 			if (to != b->caret) { b->caret = to; moved = 1; }
 		}
 #endif

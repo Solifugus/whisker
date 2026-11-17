@@ -11,6 +11,7 @@
 #include "whisker_tabs.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int fails;
@@ -53,6 +54,20 @@ static int clip_into(const wsk_tree_t *t, const char *const *ids, int n,
 }
 
 static int has(const char *hay, const char *needle) { return strstr(hay, needle) != 0; }
+
+/* A <text> at x with the given content, at any y: the pattern's %d is the y. */
+static int has_x(const char *hay, const char *pat)
+{
+	const char *ypos = strstr(pat, "%d");
+	size_t lead = (size_t)(ypos - pat);
+	for (const char *p = hay; (p = strstr(p, "x=\"")) != 0; p++) {
+		if (strncmp(p, pat, lead) != 0) continue;
+		const char *q = p + lead;
+		while (*q >= '0' && *q <= '9') q++;
+		if (strncmp(q, ypos + 2, strlen(ypos + 2)) == 0) return 1;
+	}
+	return 0;
+}
 
 static int count(const char *hay, const char *needle)
 {
@@ -2671,13 +2686,16 @@ int main(void)
 		ev.kind = WSK_EV_UP;
 		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
 
-		/* What the window cannot draw. */
+		/* What the window cannot draw. A tab was refused here until §5ai
+		   (2026-11-16); a memo has columns for it now, a field does not. */
 		SET("tab\there", 0);
-		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 0, "a memo holding a tab is refused");
+		ok(wsk_check(&w, &which) == WSK_OK, "a memo holding a tab checks (refused before §5ai: a deliberate rebaseline)");
 		SET("ok\nfine", 0);
 		ok(wsk_check(&w, 0) == WSK_OK, "CONTROL: lines are fine in a memo");
 		snprintf(fb, sizeof fb, "a\nb"); buf[1].len = 3;
 		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 1, "and a line break in a one-line field is not");
+		snprintf(fb, sizeof fb, "a\tb"); buf[1].len = 3;
+		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 1, "nor a tab: a field has no columns to stop at");
 		fb[0] = '\0'; buf[1].len = 0;
 #undef TYPE
 #undef KEY
@@ -6422,6 +6440,177 @@ int main(void)
 			tb = keep;
 		}
 #undef TB_EV
+	}
+
+	printf("\n-- §5ai  tab characters\n");
+	{
+		static const wsk_widget_t MW[] = {
+			{ .kind = WSK_MEMO,  .id = "m", .sub = 0, .weight = 1 },
+			{ .kind = WSK_FIELD, .id = "f", .sub = 1, .size = 40 },
+		};
+		char mt[256], ft[64] = "", doc[8192], want[96];
+		wsk_buf_t bufs[2];
+		wsk_tree_t r;
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		wsk_rect_t mr;
+		int y0, y1, n, which = 0, adv, x0, end;
+
+#define TB_SET(T) (snprintf(mt, sizeof mt, "%s", (T)), bufs[0].len = (int)strlen(mt), bufs[0].caret = 0, bufs[0].span = 0, bufs[0].top = 0)
+#define TB_AT(X, TXT) (snprintf(want, sizeof want, "x=\"%d\" y=\"%%d\">%s</text>", (X), (TXT)), has_x(doc, want))
+		memset(bufs, 0, sizeof bufs);
+		bufs[0].b = mt; bufs[0].cap = sizeof mt;
+		bufs[1].b = ft; bufs[1].cap = sizeof ft;
+		wsk_init(&r, WSK_COL, 300, 160);
+		r.item = MW; r.n = 2; r.buf = bufs; r.bufs = 2;
+		adv = wsk_advance(r.font);
+		mr = rect_of(&r, "m");
+		x0 = mr.x + WSK_FIELD_PAD;
+
+		TB_SET("a\tbc\n\tx\nabcdefgh\tz");
+		ok(wsk_check(&r, &which) == WSK_OK, "a memo holding tabs checks");
+		render_into(&r, doc, sizeof doc, 8192);
+		ok(TB_AT(x0, "a") && TB_AT(x0 + 8 * adv, "bc") && TB_AT(x0 + 8 * adv, "x") &&
+		   TB_AT(x0, "abcdefgh") && TB_AT(x0 + 16 * adv, "z"),
+		   "drawn: each piece at its column -- after \"a\" to 8, at a line's start to 8, after eight columns to 16");
+		ok(strchr(doc, '\t') == 0 && count(doc, "<text") == 5, "the tab itself draws nothing: no tab byte in the document, five pieces");
+		bufs[0].tab = 4;
+		render_into(&r, doc, sizeof doc, 8192);
+		ok(TB_AT(x0 + 4 * adv, "bc") && TB_AT(x0 + 4 * adv, "x") && TB_AT(x0 + 12 * adv, "z"), "tab 4: stops every four columns");
+		bufs[0].tab = 0;
+
+		/* the caret's column, through a tab */
+		wsk_ui_init(&ui, &r);
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		bufs[0].caret = 2;                                  /* after "a\t" */
+		render_into(&r, doc, sizeof doc, 8192);
+		snprintf(want, sizeof want, "<rect x=\"%d\" y=\"", x0 + 8 * adv);
+		ok(has(doc, want), "the caret after a tab: at column 8");
+
+		/* a click inside a tab's width: its nearer edge */
+		{
+			int got[8];
+			for (int c = 2; c <= 7; c++) {
+				memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_DOWN; ev.x = (short)(x0 + c * adv); ev.y = (short)(mr.y + WSK_FIELD_PAD + 4); ev.d = 1;
+				wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+				ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+				got[c] = bufs[0].caret;
+			}
+			printf("   a click at columns 2..7 of the tab spanning 1..8: bytes %d %d %d %d %d %d\n", got[2], got[3], got[4], got[5], got[6], got[7]);
+			ok(got[2] == 1 && got[3] == 1 && got[4] == 1 && got[5] == 2 && got[6] == 2 && got[7] == 2,
+			   "a click in the tab spanning columns 1..8: 2, 3, 4 before it, 5, 6, 7 after it -- the nearer edge");
+		}
+
+		/* Up and Down keep a column: inside a tab, before it */
+		TB_SET("\tx\nabc\nabcdefghij");
+		bufs[0].caret = 6;                                  /* line 1, after "abc": column 3 */
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_UP;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].caret == 0, "Up from column 3 to a line whose tab spans 0..8: before the tab");
+		TB_SET("\tx\nabcdefghij");
+		bufs[0].caret = (int)strlen(mt);                    /* the last line's end: column 10 */
+		ev.key = WSK_KEY_UP; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].caret == 2, "Up from column 10 to \"\\tx\", 9 columns wide: its end");
+		ev.key = WSK_KEY_DOWN; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].caret == 3 + 9, "Down from there, column 9: column 9 of \"abcdefghij\", after the i");
+
+		/* a selected tab: its whole width */
+		TB_SET("a\tbc");
+		bufs[0].caret = 1; bufs[0].span = 1;
+		render_into(&r, doc, sizeof doc, 8192);
+		snprintf(want, sizeof want, "x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#%06x\"", x0 + adv,
+		         mr.y + WSK_FIELD_PAD, 7 * adv, r.font, r.selfill);
+		ok(has(doc, want), "the tab selected: a box from column 1 to 8, seven columns wide");
+		bufs[0].span = 0;
+
+		/* wrapping: a tab never splits; a row breaks before one that would cross */
+		{
+			const char *w1 = "abcdefghi\tz", *w2 = "abcdef\tgh", *w3 = "abcdefgh yz";
+			int nx = wsk__vrow(w1, 11, 0, 10, &end, 8);
+			ok(end == 9 && nx == 10, "\"abcdefghi\\tz\" in 10 columns: the row ends before the tab, which is the break -- \"z\" starts the next");
+			nx = wsk__vrow(w2, 9, 0, 10, &end, 8);
+			ok(end == 9 && nx == 10, "\"abcdef\\tgh\" in 10: fits whole -- the tab to 8, \"gh\" to 10");
+			nx = wsk__vrow(w3, 11, 0, 10, &end, 8);
+			ok(end == 8 && nx == 9, "CONTROL: \"abcdefgh yz\" in 10 breaks at its space, as before");
+		}
+
+		/* the sideways view: a tab across its edge is passed over */
+		{
+			int room = (mr.w - 2 * WSK_FIELD_PAD - WSK_CARET_W) / adv, firstx = 9999;
+			char *p;
+			snprintf(mt, sizeof mt, "x\t");
+			for (int i = 0; i < room - 3; i++) strcat(mt, "y");
+			bufs[0].len = (int)strlen(mt); bufs[0].caret = bufs[0].len; bufs[0].span = 0;
+			render_into(&r, doc, sizeof doc, 8192);
+			static const char TX[] = "<text text-anchor=\"start\" x=\"";
+			for (p = doc; (p = strstr(p, TX)) != 0; p++) {
+				int xv = atoi(p + sizeof TX - 1);
+				if (xv < firstx) firstx = xv;
+			}
+			printf("   the caret at column %d, %d columns of room: the view starts at column 5; the first text at %d\n",
+			       bufs[0].len - 2 + 8, room, firstx);
+			ok(firstx == x0 + 3 * adv, "the view starting at column 5, inside the tab: the y's at column 8, three in -- nothing left of the field");
+		}
+
+		/* where a tab may be */
+		snprintf(ft, sizeof ft, "a\tb"); bufs[1].len = 3;
+		ok(wsk_check(&r, &which) == WSK_E_TEXT && which == 1, "a tab in a one-line field: refused");
+		ft[0] = '\0'; bufs[1].len = 0;
+		TB_SET("");
+		wsk_ui_focus(&ui, "f", &y0, &y1);
+		ok(wsk_ui_paste(&ui, "a\tb", 3, nt, 8, &y0, &y1) == WSK_E_TEXT && bufs[1].len == 0, "pasted into the field: refused whole");
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		ok(wsk_ui_paste(&ui, "a\tb", 3, nt, 8, &y0, &y1) > 0 && bufs[0].len == 3 && mt[1] == '\t', "pasted into the memo: taken");
+
+		/* the Tab key */
+		TB_SET("ab");
+		bufs[0].caret = 1;
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_TAB;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n >= 1 && nt[0].kind == WSK_NOTE_FOCUS && bufs[0].len == 2, "CONTROL: without tabkey, Tab walks focus on -- nothing typed");
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		bufs[0].tabkey = 1; bufs[0].caret = 1;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].len == 3 && mt[1] == '\t' && bufs[0].caret == 2 && n >= 1 && nt[0].kind == WSK_NOTE_TEXT,
+		   "with tabkey: Tab types a tab at the caret, TEXT said");
+		ev.key = WSK_KEY_BACKTAB;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].len == 3 && n >= 1 && nt[0].kind == WSK_NOTE_FOCUS, "and Shift-Tab still walks focus");
+		bufs[0].tabkey = 0;
+
+		/* colour runs in a source, across a tab */
+		{
+			static const wsk_widget_t SW[] = { { .kind = WSK_SOURCE, .id = "s", .sub = 0, .weight = 1 } };
+			static const wsk_ink_t ik[] = { { 0, 1, 0x40c040 }, { 2, 2, 0xff8000 } };
+			wsk_tree_t sr;
+			char sd[4096];
+			const char *xy;
+			int xs;
+			TB_SET("a\tbc d\nxy");
+			bufs[0].inks = ik; bufs[0].ninks = 2;
+			wsk_init(&sr, WSK_COL, 300, 120);
+			sr.item = SW; sr.n = 1; sr.buf = bufs; sr.bufs = 1;
+			render_into(&sr, sd, sizeof sd, 4096);
+			xy = strstr(sd, ">xy</text>");
+			while (xy != 0 && xy > sd && strncmp(xy, " x=\"", 4) != 0) xy--;
+			xs = (xy != 0) ? atoi(xy + 4) : -1;          /* where the text starts, past the gutter */
+			snprintf(want, sizeof want, "x=\"%d\" y=\"26\" fill=\"#ff8000\">bc</text>", xs + 8 * adv);
+			ok(has(sd, want), "a colour run after a tab: at column 8 of the source's text, in its colour");
+			snprintf(want, sizeof want, "x=\"%d\" y=\"26\">d</text>", xs + 11 * adv);
+			ok(has(sd, want), "and the uncoloured \"d\" after it at column 11");
+			bufs[0].inks = 0; bufs[0].ninks = 0;
+		}
+
+		/* word moves treat a tab as a space */
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		TB_SET("ab\tcd");
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_RIGHT | WSK_MOD_CTRL;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].caret == 5, "Ctrl-Right twice over \"ab\\tcd\": the end of \"cd\" -- the tab passed as a space, not stopped at");
+#undef TB_SET
+#undef TB_AT
 	}
 
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);

@@ -370,6 +370,17 @@ directly**.
   Ctrl-W, Ctrl-N** (Matthew's Ctrl-W closed the browser tab): a program
   binding one gives an Alt chord too; Chrome checks cannot see this.
   **Matthew, after: works well in both hosts.**
+- **§5ai — tab characters** (2026-11-16, the first gap `ui-backend-gap.md`
+  measured): a tab in a memo or source buffer **stays a byte** and draws
+  to the next stop (`wsk_buf_t.tab`, 0 = 8), counted from the row's
+  start; each piece between tabs its own `<text>`. Four helpers turn
+  bytes into columns and every memo path uses them — a click inside a
+  tab goes to its **nearer edge**, Up/Down to **before** it, a soft
+  break **at** it. A field still refuses one, as it refuses a line break.
+  `tabkey` makes Tab type one (Shift-Tab still walks); the code editor
+  sets it and **opens tab-indented files in both hosts**. +882 bytes
+  default, +746 panel; `WSK_NO_TABCHAR`. One check rebaselined on
+  purpose ("a memo holding a tab is refused").
 - **A third independent read, 2026-11-16** (design, after §5ag): a grab
   ended by a menu, a dialog or a lost lifting left the dock mid-drag —
   and the program's own grab tree moved a pane; a triple-click floated
@@ -450,14 +461,14 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,191 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,218 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 63 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 64 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
-18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`) — 169 in all.
+18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`), 4 for a file indented with tabs (`tabfile.py`) — 173 in all.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

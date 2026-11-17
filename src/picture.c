@@ -78,6 +78,21 @@ static int span(wsk_rect_t r, uint16_t want, int *lo, int *hi)
 	return found;
 }
 
+/* Pixels in a rectangle bright enough to be light text on a dark ground:
+   every channel past half. Exact ink is rare on a thin anti-aliased glyph
+   (see hue, below); brightness is what the eye reads as the text. */
+static int bright(wsk_rect_t r)
+{
+	int n = 0;
+	for (int y = r.y; y < r.y + r.h && y < PH; y++)
+		for (int x = r.x; x < r.x + r.w && x < PW; x++) {
+			uint16_t v = screen[y * PW + x];
+			v = (uint16_t)((v >> 8) | (v << 8));
+			if (((v >> 11) & 31) > 15 && ((v >> 5) & 63) > 31 && (v & 31) > 15) n++;
+		}
+	return n;
+}
+
 static uint16_t pix565(unsigned int c)
 {
 	return (uint16_t)(((c >> 8) & 0xF800) | ((c >> 5) & 0x07E0) | ((c >> 3) & 0x001F));
@@ -2134,6 +2149,46 @@ int main(void)
 		ok(onb > rb.w * rb.h / 2 && offa > ra.w * ra.h / 2 && span(ra, pix565(root.selfill), &lo, &hi) == 0,
 		   "the chosen tab in the selection's colour; the first not -- none of it in it");
 		shot("tabs.ppm");
+	}
+
+	/*
+	 * Tab characters (§5ai) at the pixels: a memo indented with tabs. Nothing
+	 * is drawn across a tab's width, and what follows starts on its column.
+	 */
+	{
+		static const wsk_widget_t MW[] = { { .kind = WSK_MEMO, .id = "m", .sub = 0, .weight = 1 } };
+		static char mt[] = "if ready then\n\tprint \"go\"\n\t\tdone\nend if";
+		wsk_buf_t mb[1];
+		wsk_tree_t root, at;
+		wsk_sink_t s;
+		wsk_rect_t mr, tab1, after1, tab2, after2;
+		int lo, hi, adv, x0, pitch, top, which = 0, i1, a1, i2, a2;
+
+		memset(mb, 0, sizeof mb);
+		mb[0].b = mt; mb[0].cap = sizeof mt; mb[0].len = (int)strlen(mt);
+		wsk_init(&root, WSK_COL, PW, PH);
+		root.bg = 0x10203au; root.font = 12; root.item = MW; root.n = 1; root.buf = mb; root.bufs = 1;
+		printf("\n  tab characters (§5ai)\n");
+		ok(wsk_check(&root, &which) == WSK_OK, "a memo indented with tabs checks");
+		mr = wsk_rect(&at, wsk__lookup(&root, "m", &at, 0));
+		adv = wsk_advance(root.font); pitch = root.font + root.font / 4;
+		x0 = mr.x + WSK_FIELD_PAD; top = mr.y + WSK_FIELD_PAD;
+		/* line 1: one tab, columns 0..8 empty, then "print"; line 2: two, 0..16 */
+		tab1.x = (short)x0; tab1.y = (short)(top + pitch); tab1.w = (short)(8 * adv); tab1.h = (short)root.font;
+		after1 = tab1; after1.x = (short)(x0 + 8 * adv); after1.w = (short)(5 * adv);
+		tab2 = tab1; tab2.y = (short)(top + 2 * pitch); tab2.w = (short)(16 * adv);
+		after2 = tab2; after2.x = (short)(x0 + 16 * adv); after2.w = (short)(4 * adv);
+		s.put = to_window; s.ctx = &dev;
+		{ uint32_t v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); }
+		s.len = 0;
+		ok(wsk_render(&root, &s, 4096) > 0, "drawn, in one document under 4 KB");
+		(void)lo; (void)hi;
+		i1 = bright(tab1); a1 = bright(after1); i2 = bright(tab2); a2 = bright(after2);
+		printf("    bright pixels across one tab's width: %d, in the 5 columns after it: %d; across two tabs: %d, after them: %d\n",
+		       i1, a1, i2, a2);
+		ok(i1 == 0 && i2 == 0 && a1 >= 10 && a2 >= 10,
+		   "nothing across a tab's width, one or two; the text after each on its column -- 8, then 16");
+		shot("tabchars.ppm");
 	}
 
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);

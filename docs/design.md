@@ -3513,6 +3513,102 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5ai. Tab characters (2026-11-16), written before its code
+
+Matthew chose it from `ui-backend-gap.md` §8, where it was measured: a
+memo holding `"a\tb"` is refused (`WSK_E_TEXT`) and the whole window
+will not draw — so no file with a tab in it can be opened in a `source`
+or a `memo`, and gBASIC's `tab_width` has nothing to set. The first gap
+a real program meets.
+
+1. **A tab is a byte in the buffer and stays one.** What a file had, it
+   has when it is saved; whisker never rewrites it as spaces.
+2. **Drawn, it reaches the next tab stop**: a stop every `tab` columns
+   (`wsk_buf_t.tab`; 0, the zeroed default, means 8), counted from the
+   start of the row as drawn. Nothing is drawn for the tab itself — the
+   text after it is a `<text>` of its own at its column, as a colour run
+   already is (§5v), so no substrate is asked to draw a tab or to keep
+   spaces.
+3. **Everything that turns bytes into columns turns a tab the same
+   way** — two helpers, used by all of them: the caret's column; **a
+   click inside a tab's width lands on its nearer edge**; Up and Down
+   keep a column, and **a column inside a tab lands before it**; a
+   selected tab's box is its whole width; colour runs; the sideways
+   view; and wrapping (§5u), where **a tab never splits** — a row breaks
+   before a tab that would cross the width, as before a word. Ctrl-arrow
+   word moves (§5w) treat a tab as a space.
+4. **Where a tab may be: a memo's and a source's buffer**, as `\n` may.
+   A one-line field, a label, a button refuse one as before
+   (`WSK_E_TEXT`), as they refuse a line break: nothing in them has
+   columns to stop at. A paste into a field with a tab in it is refused
+   whole (D8), as a line break is.
+5. **Typing one**: `wsk_buf_t.tabkey` set, **Tab inserts a tab** in that
+   field — a code editor's habit and Qt's default for a text edit — and
+   Shift-Tab still walks focus back; unset (the zeroed default), Tab
+   walks focus as it always has. The code editor sets it.
+6. **A buffer with no tab draws byte for byte what it drew** — the
+   helpers count a character one column, as `wsk__chars` did, and a row
+   with no tab is one `<text>` as before. Every earlier output is the
+   control.
+7. **Profile (§7)**: in the default and in `WSK_PANEL`, which keeps the
+   memo — a note typed on the P4 may hold a tab pasted from elsewhere —
+   unless its bytes say otherwise when measured; `WSK_MINIMAL` has no
+   memo. Measured below.
+
+Done when: a memo with tabs checks and draws, each piece at its column,
+the tab drawing nothing; columns through a tab for the caret, a click
+(each edge of a tab's width), Up and Down, a selection, colour runs and
+the sideways view; a wrapped memo breaking before a tab, never in one;
+`tab` 4 against 8; a tab refused in a field and in a paste into one, and
+allowed in a paste into a memo; Tab inserting with `tabkey`, walking
+without (the control); word moves over a tab; the picture through RV-9's
+rasteriser; the code editor opening a file with tabs, in both hosts.
+
+**What it came to** (2026-11-16): as written. Four helpers turn bytes into
+columns along a row — the column after n bytes; the byte a column is in;
+the boundary nearest a column; the bytes that fit a width — and every
+memo path uses them: drawing, the caret, a click, Up and Down, a
+selection's box, colour runs, the sideways view and wrapping. A row is
+drawn as pieces between its tabs, each its own `<text>` at its column;
+with no tab, the one `<text>` it was.
+
+- **The first character drawn in a scrolled row is the first that
+  starts at or after the view's left edge**, so a tab across that edge
+  is passed over and nothing lands left of the memo. (A first try placed
+  the row from where the tab began, which put text outside the field.)
+- **A tab at a soft break is the break**, as a space is (§5u): the row
+  ends before it and it is not drawn.
+- **Bytes**: a memo module at `-Os` for RISC-V (draw and feed): **+882
+  at the default, +746 at `WSK_PANEL`**. `WSK_NO_TABCHAR` gives back
+  378 and 472 — with it the four helpers are the ones they generalise,
+  and the rest is the row-relative arithmetic at the call sites, kept.
+  The panel keeps tabs: a note on the P4 may hold one pasted from
+  elsewhere. No libc, no `.data`, no absolute relocation.
+
+**27 checks** (1,191 → 1,218), and one **deliberately rebaselined**:
+"a memo holding a tab is refused" now checks, beside it a tab in a
+one-line field still refused. The rest: drawn — each piece at its
+column, after "a" to 8, a line's start to 8, after eight columns to 16,
+no tab byte in the document; `tab` 4; the caret after a tab at column
+8; **a click at columns 2..7 of a tab spanning 1..8 — 2, 3, 4 before
+it, 5, 6, 7 after**; Up from column 3 into a tab, before it; Up from
+column 10 to a 9-column line, its end, and Down keeping 9; a selected
+tab seven columns wide; wrapping — a row breaking before a tab that
+crosses, a tab that fits kept, and the control breaking at a space; the
+sideways view starting inside a tab, the text after it three columns in
+and nothing left of the field; colour runs at their columns across a
+tab; a paste with a tab refused by a field and taken by a memo; Tab
+walking without `tabkey` (the control), typing a tab with it, Shift-Tab
+still walking; Ctrl-Right passing a tab as a space. In the picture
+(`tabchars.ppm`, RV-9's rasteriser): no bright pixel across one tab's
+width or two, text after each (25 and 18) — counted by brightness,
+since a thin glyph rarely reaches its exact ink. The code editor sets
+`tabkey`. **It opens a file indented with tabs** in the SDL window (the
+Linux suite, 64) and in the browser (`host/web/tabfile.py`, 4; web
+173); built against the header before this, it refuses the file and
+exits — the control, run. Every earlier output — 47 files —
+byte-identical.
+
 ## 5ah. Tabs (2026-11-16), written before its code
 
 Matthew chose it after the third read: `tabs` and `tab` are the last two

@@ -128,7 +128,10 @@ SELECT**: read from `wsk__stackkeys`, so gBASIC's rule that the two
 are apart already holds) `entered` (ENTER) `context` (MENU) `closed`
 (WH_CLOSE) `wheel` `gutter` **has**; `block` `link` **gap** (notebook).
 
-**Measured on the way: a tab character in a memo is refused.** A
+**Closed the same day (§5ai): a tab character draws in a memo and a
+source, to stops every `tab_width` columns; the code editor opens files
+indented with tabs.** It was measured on the way: **a tab character in
+a memo was refused.** A
 memo holding `"a\tb"` fails `wsk_check` and `wsk_render` with
 `WSK_E_TEXT` — the whole window will not draw. So no file with a tab in
 it can be opened in a whisker `source` or `memo` today, and `tab_width`

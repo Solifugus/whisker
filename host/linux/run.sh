@@ -49,6 +49,15 @@ if [[ "${1:-}" == "--test" ]]; then
 		if [[ $rc == 124 ]]; then echo "ok    $P.c opens its window and keeps running"
 		else echo "FAIL  $P.c exited ($rc): $(head -1 "$OUT/$P.err")"; exit 1; fi
 	done
+	# a file with tab characters in it (§5ai): refused, and the editor gone,
+	# until a memo had columns for one
+	printf 'program tabs\n\tprint "indented by a tab"\n\tif 1 then\n\t\tprint "two"\n\tend if\nend program\n' > "$OUT/tabs.bas"
+	set +e
+	SDL_VIDEODRIVER=dummy timeout 1 "$OUT/whisker-code" "$OUT/tabs.bas" >/dev/null 2>"$OUT/tabs.err"
+	rc=$?
+	set -e
+	if [[ $rc == 124 ]]; then echo "ok    code.c opens a file indented with tabs and keeps running"
+	else echo "FAIL  code.c refused a file with tabs ($rc): $(head -1 "$OUT/tabs.err")"; exit 1; fi
 	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/listertest" "$HERE/listertest.c" "${INC[@]}"
 	"$OUT/listertest" || exit 1
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/selftest" \

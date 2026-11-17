@@ -46,6 +46,11 @@ if [[ "${1:-}" == "--tabs" ]]; then
 fi
 if [[ "${1:-}" == "--test" ]]; then
 	python3 "$HERE/test.py" "$OUT/whisker-edit-web"
+	# §5ai: the code editor opens a file indented with tabs
+	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-code-web" \
+		"$HERE/../linux/code.c" "$HERE/host_web.c" -I"$HERE/../linux" -I"$HERE/../../src"
+	printf 'program tabs\n\tprint "indented by a tab"\n\tif 1 then\n\t\tprint "two"\n\tend if\nend program\n' > "$OUT/tabs.bas"
+	python3 "$HERE/tabfile.py" "$OUT/whisker-code-web" "$OUT/tabs.bas"
 	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-floor-web" \
 		"$HERE/../linux/floor.c" "$HERE/host_web.c" -I"$HERE/../linux" -I"$HERE/../../src"
 	python3 "$HERE/seathost.py" "$OUT/whisker-floor-web"

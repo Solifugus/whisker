@@ -293,6 +293,7 @@ int main(int argc, char **argv)
 	buf[0].cap = CAP;
 	undo.b = undo_b; undo.cap = sizeof undo_b;
 	buf[0].undo = &undo;
+	buf[0].tabkey = 1;                  /* Tab types a tab here; Shift-Tab still walks (§5ai) */
 	colour();
 	remark();
 
@@ -310,15 +311,15 @@ int main(int argc, char **argv)
 	win.caps = (unsigned char)wh_caps();
 	win.talign = WSK_ALIGN_START;
 	status();
-	/* whisker refuses what its host cannot draw, and says so: a tab, a
-	   character beyond ASCII on a host that draws none (the SDL window --
+	/* whisker refuses what its host cannot draw, and says so: a control
+	   character, a character beyond ASCII on a host that draws none (the SDL window --
 	   /w0's font is ASCII), or < > & on a host that does not decode
 	   entities (the boards, until they are flashed with RV-9 8e0ef96) */
 	if ((e = wsk_check_in(&win, &which, &in)) != WSK_OK) {
 		fprintf(stderr, "code: %s was refused (%d): %s\n", path, e,
 		        e != WSK_E_TEXT ? "see design.md"
-		        : (win.caps & WH_CAP_ENTITY) ? "it holds a tab, a control character or malformed UTF-8"
-		        : "it holds a tab, a character beyond ASCII, or < > & -- which this host "
+		        : (win.caps & WH_CAP_ENTITY) ? "it holds a control character or malformed UTF-8"
+		        : "it holds a control character, a character beyond ASCII, or < > & -- which this host "
 		          "cannot draw");
 		return 1;
 	}
