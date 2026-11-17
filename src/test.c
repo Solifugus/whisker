@@ -3522,7 +3522,17 @@ int main(void)
 		ok(wsk_check(&w, &which) == WSK_E_TEXT && which == 0,
 		   "without WSK_CAP_ENTITY, a label holding < & > is refused, as on /w0 it must be");
 		w.n = 1; w.item = &FE[1];
-		ok(wsk_check(&w, &which) == WSK_E_TEXT, "and so is code holding them, in a source widget");
+		/* Until §5aj (2026-11-16) a source holding them was refused too; a
+		   memo or source now draws a marker for each -- a deliberate
+		   rebaseline -- and the document still carries none of them raw */
+		ok(wsk_check(&w, &which) == WSK_OK, "but code holding them, in a source widget, checks -- a marker each (refused before §5aj)");
+		{
+			char md[4096], hpat[32];
+			render_into(&w, md, sizeof md, 4096);
+			snprintf(hpat, sizeof hpat, "height=\"%d\"", w.font / 2);
+			ok(count(md, hpat) == 2 && !has(md, "&lt;") && !has(md, "&amp;") && !has(md, " < ") && !has(md, " & "),
+			   "drawn: two markers, for the < and the & -- and neither in the document, raw or escaped");
+		}
 		w.caps = WSK_CAP_ENTITY; w.item = FE; w.n = 2;
 		ok(wsk_check(&w, 0) == WSK_OK, "with it, both are accepted");
 		render_into(&w, ed, sizeof ed, 4096);
@@ -3549,7 +3559,8 @@ int main(void)
 		   "and typed: < goes into the text as itself");
 		w.caps = 0;
 		snprintf(ev.text, sizeof ev.text, ">");
-		ok(wsk_feed(&ui, &ev, nt, 4, &y0, &y1) == 0, "CONTROL: for a host without the bit, typing > is refused");
+		ok(wsk_feed(&ui, &ev, nt, 4, &y0, &y1) == 1 && sb[buf[0].caret - 1] == '>',
+		   "for a host without the bit, typing > into the source: taken, a marker (refused before §5aj)");
 	}
 
 	/* ---- §5v step 3. UTF-8 in fields, memos and source ---- */
@@ -6611,6 +6622,139 @@ int main(void)
 		ok(bufs[0].caret == 5, "Ctrl-Right twice over \"ab\\tcd\": the end of \"cd\" -- the tab passed as a space, not stopped at");
 #undef TB_SET
 #undef TB_AT
+	}
+
+	printf("\n-- §5aj  markers for what a host cannot draw\n");
+	{
+		static const wsk_widget_t MW[] = {
+			{ .kind = WSK_MEMO,  .id = "m", .sub = 0, .weight = 1 },
+			{ .kind = WSK_FIELD, .id = "f", .sub = 1, .size = 40 },
+		};
+		char mt[128], ft[32] = "", doc[8192], want[128];
+		wsk_buf_t bufs[2];
+		wsk_tree_t r;
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		wsk_rect_t mr;
+		int y0, y1, which = 0, adv, x0, y, mh;
+		unsigned int faint;
+
+#define MK_SET(T, N) (memcpy(mt, (T), (size_t)(N)), mt[(N)] = '\0', bufs[0].len = (N), bufs[0].caret = 0, bufs[0].span = 0, bufs[0].top = 0)
+		memset(bufs, 0, sizeof bufs);
+		bufs[0].b = mt; bufs[0].cap = sizeof mt;
+		bufs[1].b = ft; bufs[1].cap = sizeof ft;
+		wsk_init(&r, WSK_COL, 300, 160);
+		r.item = MW; r.n = 2; r.buf = bufs; r.bufs = 2;
+		r.caps = WSK_CAP_ENTITY;                           /* the SDL window's: no UTF-8 */
+		adv = wsk_advance(r.font);
+		mr = rect_of(&r, "m");
+		x0 = mr.x + WSK_FIELD_PAD; y = mr.y + WSK_FIELD_PAD; mh = r.font / 2;
+		faint = 0;
+		for (int sh = 0; sh < 24; sh += 8) faint |= ((((r.ink >> sh) & 0xffu) + ((r.trough >> sh) & 0xffu)) / 2u) << sh;
+#define MK_AT(COL) (snprintf(want, sizeof want, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#%06x\"/>", \
+		x0 + (COL) * adv + 1, y + r.font / 4, adv - 2, mh, faint), has(doc, want))
+#define TX_AT(COL, T) (snprintf(want, sizeof want, "x=\"%d\" y=\"%d\">%s</text>", x0 + (COL) * adv, wsk_baseline_of(y, r.font), (T)), has(doc, want))
+
+		/* the characters measured refused, each now a marker */
+		{
+			static const struct { const char *what, *s; int n, mk; } C[] = {
+				{ "a lone CR", "ab\rcd", 5, 1 },
+				{ "Escape", "ab\x1b" "cd", 5, 1 },
+				{ "a form feed", "ab\fcd", 5, 1 },
+				{ "DEL", "ab\x7f" "cd", 5, 1 },
+				{ "e-acute, two bytes", "ab\xc3\xa9" "cd", 6, 1 },
+				{ "a byte-order mark, three", "ab\xef\xbb\xbf" "cd", 7, 1 },
+				{ "box drawing", "ab\xe2\x94\x80" "cd", 7, 1 },
+				{ "an emoji, four", "ab\xf0\x9f\x98\x80" "cd", 8, 1 },
+				{ "a CJK character", "ab\xe4\xb8\xad" "cd", 7, 1 },
+				{ "a combining accent", "ab\xcc\x81" "cd", 6, 1 },
+			};
+			int good = 1, ck = 1;
+			char hpat[32];
+			snprintf(hpat, sizeof hpat, "height=\"%d\" fill=\"#%06x\"", mh, faint);
+			for (unsigned k = 0; k < sizeof C / sizeof C[0]; k++) {
+				MK_SET(C[k].s, C[k].n);
+				which = 0;
+				if (wsk_check(&r, &which) != WSK_OK) { ck = 0; printf("   refused: %s\n", C[k].what); continue; }
+				render_into(&r, doc, sizeof doc, 8192);
+				if (!(TX_AT(0, "ab") && MK_AT(2) && TX_AT(3, "cd") && count(doc, hpat) == 1)) {
+					good = 0; printf("   wrong: %s\n", C[k].what);
+				}
+			}
+			ok(ck, "on a host without UTF-8, a memo holding each of ten characters it cannot draw checks -- each was refused before");
+			ok(good, "and each is drawn as ONE marker in its column -- \"ab\" at 0, the marker at 2, \"cd\" at 3 -- however many bytes it is");
+		}
+		MK_SET("ab\x1b" "cd", 5);
+		render_into(&r, doc, sizeof doc, 8192);
+		ok(!has(doc, "\x1b") && memcmp(mt, "ab\x1b" "cd", 5) == 0, "the character itself not in the document, and still in the buffer");
+
+		/* a host that draws UTF-8 draws it: no marker */
+		r.caps = WSK_CAP_ENTITY | WSK_CAP_UTF8;
+		MK_SET("caf\xc3\xa9!", 6);
+		render_into(&r, doc, sizeof doc, 8192);
+		ok(has(doc, ">caf\xc3\xa9!</text>") && !has(doc, "height=\"8\" fill"), "CONTROL: with WSK_CAP_UTF8, caf\xc3\xa9 drawn as text, no marker");
+		r.caps = WSK_CAP_ENTITY;
+		render_into(&r, doc, sizeof doc, 8192);
+		ok(TX_AT(0, "caf") && MK_AT(3) && TX_AT(4, "!"), "without it: \"caf\", a marker, \"!\" -- the same columns");
+
+		/* the caret steps over a marked character as one */
+		wsk_ui_init(&ui, &r);
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		bufs[0].caret = 3;
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_RIGHT;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].caret == 5, "Right over the marked \xc3\xa9: one step, both bytes");
+		ev.key = WSK_KEY_BACKSPACE;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].len == 4 && memcmp(mt, "caf!", 4) == 0, "Backspace takes it whole");
+
+		/* still refused */
+		MK_SET("caf\xe9", 4);
+		ok(wsk_check(&r, &which) == WSK_E_TEXT, "malformed UTF-8 in a memo: still refused -- the program decodes it (step 1)");
+		MK_SET("a\0b", 3);
+		ok(wsk_check(&r, &which) == WSK_E_TEXT, "a NUL in a memo: still refused");
+		MK_SET("fine", 4);
+		snprintf(ft, sizeof ft, "a\x1b" "b"); bufs[1].len = 3;
+		ok(wsk_check(&r, &which) == WSK_E_TEXT && which == 1, "CONTROL: Escape in a one-line field -- refused, as before");
+		snprintf(ft, sizeof ft, "caf\xc3\xa9"); bufs[1].len = 5;
+		ok(wsk_check(&r, &which) == WSK_E_TEXT && which == 1, "and e-acute in one, on a host without UTF-8");
+		ft[0] = '\0'; bufs[1].len = 0;
+		{
+			static const wsk_widget_t LW[] = { { .kind = WSK_LABEL, .id = "l", .text = "a\x1b" "b", .size = 30 } };
+			wsk_tree_t lt;
+			wsk_init(&lt, WSK_COL, 300, 100);
+			lt.item = LW; lt.n = 1;
+			ok(wsk_check(&lt, &which) == WSK_E_TEXT, "and in a label -- D8 unchanged for them");
+		}
+
+		/* leading spaces are placed past, never sent: /w0 drops them (measured) */
+		MK_SET("    four\ncaf\xc3\xa9 ok\n\t x", 21);
+		render_into(&r, doc, sizeof doc, 8192);
+		ok(TX_AT(4, "four") && !has(doc, ">    four"), "a line indented four spaces: \"four\" sent at column 4, not \"    four\" at 0");
+		snprintf(want, sizeof want, "x=\"%d\" y=\"%d\">ok</text>", x0 + 5 * adv, wsk_baseline_of(y + wsk__pitch(&r), r.font));
+		ok(has(doc, want), "after a marker, \" ok\": \"ok\" at column 5");
+		snprintf(want, sizeof want, "x=\"%d\" y=\"%d\">x</text>", x0 + 9 * adv, wsk_baseline_of(y + 2 * wsk__pitch(&r), r.font));
+		ok(has(doc, want), "after a tab, \" x\": \"x\" at column 9 -- the tab's own test (§5ai) could not see this");
+		snprintf(ft, sizeof ft, "  hi"); bufs[1].len = 4;
+		render_into(&r, doc, sizeof doc, 8192);
+		{
+			wsk_rect_t fr = rect_of(&r, "f");
+			snprintf(want, sizeof want, ">hi</text>");
+			ok(has(doc, want) && !has(doc, ">  hi"), "a one-line field holding \"  hi\": \"hi\" sent, past its spaces");
+			(void)fr;
+		}
+		ft[0] = '\0'; bufs[1].len = 0;
+
+		/* pasting, as a file may */
+		MK_SET("", 0);
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		ok(wsk_ui_paste(&ui, "x\x1by", 3, nt, 8, &y0, &y1) > 0 && bufs[0].len == 3, "Escape pasted into the memo: taken");
+		wsk_ui_focus(&ui, "f", &y0, &y1);
+		ok(wsk_ui_paste(&ui, "x\x1by", 3, nt, 8, &y0, &y1) == WSK_E_TEXT && bufs[1].len == 0, "and into the field: refused whole");
+#undef MK_SET
+#undef MK_AT
+#undef TX_AT
 	}
 
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);

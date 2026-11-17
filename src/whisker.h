@@ -110,6 +110,7 @@
  *     -DWSK_NO_ENTITY   < > & in text, for a host that decodes entities (§5v)
  *     -DWSK_NO_WORDS    Ctrl's word moves, double- and triple-click (§5w)
  *     -DWSK_NO_TABCHAR  tab characters in a memo: refused, as before §5ai
+ *     -DWSK_NO_UNDRAWN  markers in a memo for what the host cannot draw (§5aj)
  *     -DWSK_NO_SPLIT    dividers a person drags, and the sizes they set (§5x)
  *     -DWSK_NO_MENUKEYS Up, Down, Enter in an open menu (§5y)
  *     -DWSK_NO_WORLD    a world: placed items, a view and a zoom (§5q)
@@ -1036,12 +1037,21 @@ static inline int wsk__ok_n(const char *t, int n, int caps, int nl)
 		if (c == '\t' && nl) { i++; continue; }      /* where lines are, columns are (§5ai) */
 #endif
 		if (c < 0x80) {
+#ifndef WSK_NO_UNDRAWN
+			/* a memo holds what its host cannot draw, as a marker -- all
+			   but NUL, which would end the string (§5aj) */
+			if (nl && c != 0) { i++; continue; }
+#endif
 			if (c < 32 || c == 127 || wsk__markup(c, caps)) return 0;
 			i++;
 			continue;
 		}
 #ifndef WSK_NO_UTF8
+#ifndef WSK_NO_UNDRAWN
+		if (!(caps & WSK_CAP_UTF8) && !nl) return 0;    /* a memo: a marker for it (§5aj) */
+#else
 		if (!(caps & WSK_CAP_UTF8)) return 0;
+#endif
 		if (c >= 0xC2 && c <= 0xDF) more = 1;
 		else if (c >= 0xE0 && c <= 0xEF) more = 2;
 		else if (c >= 0xF0 && c <= 0xF4) more = 3;
@@ -3732,8 +3742,14 @@ static inline void wsk__field(wsk_sink_t *s, const wsk_tree_t *t,
 #ifndef WSK_NO_TEXTSEL
 	wsk__selbox(s, t, w, b, from, n, x, top, from, 8);
 #endif
-	if (n > 0)
-		wsk__textel(s, 1, x, wsk_baseline_of(top, t->font), w->ink, txt + from, n);
+	{
+		/* leading spaces placed past, not sent: /w0 drops them (§5aj) */
+		int sp = 0;
+		while (sp < n && txt[from + sp] == ' ') sp++;
+		if (sp < n)
+			wsk__textel(s, 1, x + sp * wsk_advance(t->font), wsk_baseline_of(top, t->font), w->ink,
+			            txt + from + sp, n - sp);
+	}
 
 #ifndef WSK_NO_INPUT
 	if ((const void *)w == t->focus) show = 1;
@@ -3909,8 +3925,8 @@ static inline void wsk__lineno(wsk_sink_t *s, const wsk_tree_t *t, int num, int 
  * runs are the widget's ink; spaces that open a piece are not sent, since
  * its x already says where it starts.
  */
-static inline void wsk__tabtext(wsk_sink_t *s, int x, int base, unsigned int ink,
-                                const char *txt, int row, int from, int n, int tw, int adv);
+static inline void wsk__rowtext(wsk_sink_t *s, const wsk_tree_t *t, int x, int y, unsigned int ink,
+                                const char *txt, int row, int from, int n, int tw);
 
 static inline void wsk__inked(wsk_sink_t *s, const wsk_tree_t *t, const wsk_widget_t *w,
                               const wsk_buf_t *b, const char *txt, int from, int n,
@@ -3918,7 +3934,7 @@ static inline void wsk__inked(wsk_sink_t *s, const wsk_tree_t *t, const wsk_widg
 {
 	const wsk_ink_t *ik = (b != 0) ? b->inks : 0;
 	int ni = (b != 0 && ik != 0) ? b->ninks : 0;
-	int adv = wsk_advance(t->font), base = wsk_baseline_of(y, t->font);
+	int adv = wsk_advance(t->font);
 	int pos = from, stop = from + n, lo = 0, hi = ni;
 
 	/* the first run that ends after `from` */
@@ -3933,36 +3949,79 @@ static inline void wsk__inked(wsk_sink_t *s, const wsk_tree_t *t, const wsk_widg
 		else e = (lo < ni) ? ik[lo].at : stop;
 		if (e > stop) e = stop;
 		for (p = pos; p < e && txt[p] == ' '; p++) ;
-		if (p < e) wsk__tabtext(s, x + (wsk__vcol(txt + row, p - row, tw) -
-		                                wsk__vcol(txt + row, from - row, tw)) * adv,
-		                        base, ink, txt, row, p, e - p, tw, adv);
+		if (p < e) wsk__rowtext(s, t, x + (wsk__vcol(txt + row, p - row, tw) -
+		                                   wsk__vcol(txt + row, from - row, tw)) * adv,
+		                        y, ink, txt, row, p, e - p, tw);
 		if (e > pos) pos = e;
 	}
 }
 #endif
 
 /*
- * txt[from .. from+n) of a row that starts at `row`, byte `from` drawn at x:
- * a <text> for each piece between its tabs, at the piece's column, and
- * nothing for a tab (§5ai) -- no substrate is asked to draw one or to keep
- * spaces. With no tab, the one <text> it always was.
+ * Whether this host draws the character that starts with byte c (§5aj):
+ * printable ASCII; beyond it with WSK_CAP_UTF8; < > & with WSK_CAP_ENTITY --
+ * whisker's rule for text everywhere. A tab is not drawn either; the rest
+ * is a memo's marker.
  */
-static inline void wsk__tabtext(wsk_sink_t *s, int x, int base, unsigned int ink,
-                                const char *txt, int row, int from, int n, int tw, int adv)
+static inline int wsk__drawn(unsigned char c, int caps)
 {
+#ifndef WSK_NO_UNDRAWN
+	if (c < 0x80) return c >= 32 && c != 127 && !wsk__markup(c, caps);
+#ifndef WSK_NO_UTF8
+	return (caps & WSK_CAP_UTF8) != 0;
+#else
+	return 0;
+#endif
+#else
+	(void)c; (void)caps;
+	return 1;                            /* nothing undrawable is let in to mark */
+#endif
+}
+
+/*
+ * txt[from .. from+n) of a row that starts at `row`, byte `from` drawn at x,
+ * the row's top at y: a <text> for each piece between its tabs and its
+ * undrawable characters, at the piece's column; nothing for a tab (§5ai);
+ * and for a character the host cannot draw, a marker -- a small box in its
+ * column, in the ink faded half way to the well (§5aj). The buffer is not
+ * touched. With neither, the one <text> it always was.
+ */
+static inline void wsk__rowtext(wsk_sink_t *s, const wsk_tree_t *t, int x, int y, unsigned int ink,
+                                const char *txt, int row, int from, int n, int tw)
+{
+	int adv = wsk_advance(t->font), base = wsk_baseline_of(y, t->font);
 	int c0 = -1, p = from, stop = from + n;
 	while (p < stop) {
 		int q = p;
-		while (q < stop && txt[q] != '\t') q++;
-		if (q > p) {
-			int dx = 0;
-			if (q < stop || p > from) {       /* a tab in the run: columns count */
-				if (c0 < 0) c0 = wsk__vcol(txt + row, from - row, tw);
-				dx = (wsk__vcol(txt + row, p - row, tw) - c0) * adv;
-			}
-			wsk__textel(s, 1, x + dx, base, ink, txt + p, q - p);
+		while (q < stop && txt[q] != '\t' && wsk__drawn((unsigned char)txt[q], t->caps))
+			q = wsk__next(txt, stop, q);
+		if (q > p || q < stop) {
+			if ((q < stop || p > from) && c0 < 0) c0 = wsk__vcol(txt + row, from - row, tw);
 		}
-		p = q + 1;
+		if (q > p) {
+			/* spaces that open a piece are not sent -- /w0 drops them, so
+			   an indented line drew at column 0 (measured, §5aj) -- the
+			   piece is placed past them instead, as a colour run is */
+			int sp = p;
+			while (sp < q && txt[sp] == ' ') sp++;
+			if (sp > p && c0 < 0) c0 = wsk__vcol(txt + row, from - row, tw);
+			if (sp < q) {
+				int dx = (q < stop || sp > from) ? (wsk__vcol(txt + row, sp - row, tw) - c0) * adv : 0;
+				wsk__textel(s, 1, x + dx, base, ink, txt + sp, q - sp);
+			}
+		}
+		if (q < stop && txt[q] != '\t') {
+			unsigned int k = (ink != WSK_INHERIT) ? ink : t->ink, w = t->trough, m = 0;
+			wsk_rect_t r;
+			for (int sh = 0; sh < 24; sh += 8)       /* half way, channel by channel */
+				m |= ((((k >> sh) & 0xffu) + ((w >> sh) & 0xffu)) / 2u) << sh;
+			r.x = (short)(x + (wsk__vcol(txt + row, q - row, tw) - c0) * adv + 1);
+			r.y = (short)(y + t->font / 4);
+			r.w = (short)((adv > 3) ? adv - 2 : 1);
+			r.h = (short)(t->font / 2);
+			wsk__box(s, 0, r, m);
+		}
+		p = (q < stop) ? wsk__next(txt, stop, q) : q;
 	}
 }
 
@@ -4050,7 +4109,7 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 			else
 #endif
 			if (n > 0)
-				wsk__tabtext(s, xf, wsk_baseline_of(y, t->font), w->ink, txt, at, from, n, tw, adv);
+				wsk__rowtext(s, t, xf, y, w->ink, txt, at, from, n, tw);
 		}
 		if (next > len) break;
 		at = next;
@@ -7134,7 +7193,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			   room for every one (§5j rule 3) -- in place of a selection */
 			int m = 0, ok;
 			while (m < (int)sizeof ev->text && ev->text[m] != '\0') m++;
-			ok = wsk__ok_n(ev->text, m, r->caps, 0);
+			ok = wsk__ok_n(ev->text, m, r->caps, memo);   /* a memo's, markers and all (§5aj) */
 			if (ok && m > 0 && b->len - sel + m < b->cap) {
 				int at = sel ? s0 : b->caret;
 				/* one character, replacing nothing: typing, which undo

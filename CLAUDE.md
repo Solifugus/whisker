@@ -378,8 +378,14 @@ directly**.
   (`host/linux/textfile.h`): line endings converted only when consistent
   and written back as they came, mixed left alone; not-UTF-8 read as
   Latin-1, written back as Latin-1 or refused, never lossily; the code
-  editor opens Windows and Latin-1 files. **Step 2, markers** in a memo
-  for what the host cannot draw, the buffer exact — designed, next.
+  editor opens Windows and Latin-1 files. **Step 2, markers**: in a memo
+  or source, what the host cannot draw (control characters; on SDL,
+  everything beyond ASCII) is **one faint box in its column**, the
+  buffer exact; labels and fields refuse as before (D8 for them).
+  **Found by its picture: `/w0` drops a `<text>`'s leading spaces** — a
+  memo line indented with spaces had always drawn at column 0 on RV-9;
+  now pieces are placed past their spaces, never sent opening with them.
+  `WSK_NO_UNDRAWN`.
 - **§5ai — tab characters** (2026-11-16, the first gap `ui-backend-gap.md`
   measured): a tab in a memo or source buffer **stays a byte** and draws
   to the next stop (`wsk_buf_t.tab`, 0 = 8), counted from the row's
@@ -471,10 +477,10 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,218 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,241 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 78 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 80 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),

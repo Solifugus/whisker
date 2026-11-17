@@ -3595,6 +3595,50 @@ NUL still refused; a label with a control character still refused (the
 control); the picture through RV-9's rasteriser; the code editor opening
 a file with é in the SDL window.
 
+**What step 2 came to** (2026-11-16): as written — and a bug older than
+it, found by looking at its picture.
+
+- **`/w0` drops a `<text>`'s leading spaces.** The markers picture drew
+  "café ok" as "caf■ok": the piece " ok" after the marker lost its
+  space. Measured on purpose next: **a plain memo line indented with
+  spaces has always drawn at column 0 on RV-9** (§5o onward), and a
+  piece after a tab (§5ai) was a column short — §5ai's checks read the
+  x written, which was right, not the pixels. Spaces *inside* a line
+  were kept. The browser keeps all of them (its page sets `white-space:
+  pre`). The code editor never showed it, because a `source`'s colour
+  runs already placed each piece past its spaces. **Now no `<text>` is
+  sent opening with spaces, in a memo or a one-line field**: the piece
+  is placed past them, as a colour run is. Labels are left — they may
+  be centred. No earlier output had such a line, so all 47 stay
+  byte-identical.
+- The marker is a box `adv − 2` wide and half the font high, a quarter
+  down, in the ink halved toward the well (`#818487` for the defaults).
+- **Bytes** (the memo module, RISC-V `-Os`): +368 default, +352
+  `WSK_PANEL` over §5ai; `WSK_NO_UNDRAWN` gives back 46 and 42 — the
+  rest is the space fix and the row drawing every build keeps.
+
+**23 checks** (1,218 → 1,241), and **two rebaselined on purpose**: a
+`source` holding `<` and `&` on a host without entities now checks,
+drawing two markers and neither character raw nor escaped; and typing
+`>` into one there is taken. The rest: ten characters the SDL window
+cannot draw — a lone CR, Escape, form feed, DEL, é, a byte-order mark,
+box drawing, an emoji, CJK, a combining accent — each checks and is
+**one marker in its column**, "ab" at 0 and "cd" at 3 around it,
+whatever its bytes; the character kept in the buffer and absent from the
+document; with `WSK_CAP_UTF8` "café" drawn as text, no marker (the
+control); Right over a marked é one step, Backspace takes it whole;
+still refused — malformed UTF-8, a NUL, Escape or é in a one-line field,
+Escape in a label (the controls: D8 unchanged for them); Escape pasted
+into a memo taken, into a field refused; a line indented four spaces
+sent as "four" at column 4; " ok" after a marker at 5; " x" after a tab
+at 9; a field's "  hi" sent past its spaces. In the picture
+(`markers.ppm`, RV-9's rasteriser): the faint colour in the é's and the
+Escape's columns, none in the space beside; that space kept and "ok"
+after it; the indented line's first four columns empty and its text
+from column 4 — both lost before. The code editor opens a file with é
+and an Escape, and a Latin-1 file, in the SDL window (the Linux suite,
+80); HEAD before this refused both — the control, run.
+
 ## 5ai. Tab characters (2026-11-16), written before its code
 
 Matthew chose it from `ui-backend-gap.md` §8, where it was measured: a

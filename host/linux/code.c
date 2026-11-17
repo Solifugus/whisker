@@ -327,16 +327,11 @@ int main(int argc, char **argv)
 	win.caps = (unsigned char)wh_caps();
 	win.talign = WSK_ALIGN_START;
 	status();
-	/* whisker refuses what its host cannot draw, and says so: a control
-	   character, a character beyond ASCII on a host that draws none (the SDL window --
-	   /w0's font is ASCII), or < > & on a host that does not decode
-	   entities (the boards, until they are flashed with RV-9 8e0ef96) */
+	/* what this host cannot draw, the source shows as markers (§5aj); a
+	   file is refused only for what a memo cannot hold at all -- a NUL */
 	if ((e = wsk_check_in(&win, &which, &in)) != WSK_OK) {
 		fprintf(stderr, "code: %s was refused (%d): %s\n", path, e,
-		        e != WSK_E_TEXT ? "see design.md"
-		        : (win.caps & WH_CAP_ENTITY) ? "it holds a control character or malformed UTF-8"
-		        : "it holds a control character, a character beyond ASCII, or < > & -- which this host "
-		          "cannot draw");
+		        e != WSK_E_TEXT ? "see design.md" : "it holds a NUL byte: not text");
 		return 1;
 	}
 	{

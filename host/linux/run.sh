@@ -66,6 +66,18 @@ if [[ "${1:-}" == "--test" ]]; then
 	set -e
 	if [[ $rc == 124 ]]; then echo "ok    code.c opens a file with Windows line endings and keeps running"
 	else echo "FAIL  code.c refused a CRLF file ($rc): $(head -1 "$OUT/crlf.err")"; exit 1; fi
+	# characters this window cannot draw -- e-acute, an Escape -- shown as
+	# markers, and a Latin-1 file decoded to them (§5aj)
+	printf 'program caf\303\251\n\tprint "\033[1mbold"\nend program\n' > "$OUT/marks.bas"
+	printf 'program caf\351\r\nend program\r\n' > "$OUT/marks-latin1.bas"
+	for F in marks marks-latin1; do
+		set +e
+		SDL_VIDEODRIVER=dummy timeout 1 "$OUT/whisker-code" "$OUT/$F.bas" >/dev/null 2>"$OUT/$F.err"
+		rc=$?
+		set -e
+		if [[ $rc == 124 ]]; then echo "ok    code.c opens $F.bas, what it cannot draw as markers, and keeps running"
+		else echo "FAIL  code.c refused $F.bas ($rc): $(head -1 "$OUT/$F.err")"; exit 1; fi
+	done
 	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/listertest" "$HERE/listertest.c" "${INC[@]}"
 	"$OUT/listertest" || exit 1
 	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/textfiletest" "$HERE/textfiletest.c" "${INC[@]}"

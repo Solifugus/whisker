@@ -2191,6 +2191,61 @@ int main(void)
 		shot("tabchars.ppm");
 	}
 
+	/*
+	 * Markers (§5aj) at the pixels: a memo holding what /w0 cannot draw --
+	 * an e-acute and an Escape -- on this host, which has no UTF-8. A small
+	 * box in each one's column, faint; the text either side where it was.
+	 */
+	{
+		static const wsk_widget_t MW[] = { { .kind = WSK_MEMO, .id = "m", .sub = 0, .weight = 1 } };
+		static char mt[] = "caf\xc3\xa9 ok\nesc \x1b[0m end\n    four in";
+		wsk_buf_t mb[1];
+		wsk_tree_t root, at;
+		wsk_sink_t s;
+		wsk_rect_t mr, m1, m2, gap;
+		int adv, x0, top, pitch, which = 0, f1, f2, g, before, after;
+		unsigned int faint = 0;
+
+		memset(mb, 0, sizeof mb);
+		mb[0].b = mt; mb[0].cap = sizeof mt; mb[0].len = (int)strlen(mt);
+		wsk_init(&root, WSK_COL, PW, PH);
+		root.bg = 0x10203au; root.font = 12; root.item = MW; root.n = 1; root.buf = mb; root.bufs = 1;
+		root.caps = WSK_CAP_ENTITY;
+		printf("\n  markers (§5aj)\n");
+		ok(wsk_check(&root, &which) == WSK_OK, "a memo holding an e-acute and an Escape checks, on a host without UTF-8");
+		mr = wsk_rect(&at, wsk__lookup(&root, "m", &at, 0));
+		adv = wsk_advance(root.font); pitch = root.font + root.font / 4;
+		x0 = mr.x + WSK_FIELD_PAD; top = mr.y + WSK_FIELD_PAD;
+		for (int sh = 0; sh < 24; sh += 8) faint |= ((((root.ink >> sh) & 0xffu) + ((root.trough >> sh) & 0xffu)) / 2u) << sh;
+		m1.x = (short)(x0 + 3 * adv); m1.y = (short)top; m1.w = (short)adv; m1.h = (short)root.font;   /* the e-acute's column */
+		m2 = m1; m2.x = (short)(x0 + 4 * adv); m2.y = (short)(top + pitch);                          /* the Escape's */
+		gap = m1; gap.x = (short)(x0 + 4 * adv);                                                    /* the space after "caf?" */
+		s.put = to_window; s.ctx = &dev;
+		{ uint32_t v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); }
+		s.len = 0;
+		ok(wsk_render(&root, &s, 4096) > 0, "drawn, in one document under 4 KB");
+		f1 = span(m1, pix565(faint), &before, &after);
+		f2 = span(m2, pix565(faint), &before, &after);
+		g = span(gap, pix565(faint), &before, &after);
+		printf("    the faint marker colour: %d pixels in the e-acute's column, %d in the Escape's, %d in the space beside\n", f1, f2, g);
+		ok(f1 > 10 && f2 > 10 && g == 0, "a marker in each one's column, and none in the space beside it (the control)");
+		{
+			/* the space after the marker kept: "ok" from column 5; and a line
+			   indented four spaces drawn from column 4 -- /w0 drops leading
+			   spaces, so they are placed past, not sent */
+			wsk_rect_t c4 = m1, ok5 = m1, in0 = m1, in4 = m1;
+			c4.x = (short)(x0 + 4 * adv); c4.w = (short)adv;                       /* the space */
+			ok5.x = (short)(x0 + 5 * adv); ok5.w = (short)(2 * adv);
+			in0.x = (short)x0; in0.y = (short)(top + 2 * pitch); in0.w = (short)(4 * adv);
+			in4 = in0; in4.x = (short)(x0 + 4 * adv);
+			printf("    bright: the space after the marker %d, \"ok\" %d; the indented line's first four columns %d, from column 4 %d\n",
+			       bright(c4), bright(ok5), bright(in0), bright(in4));
+			ok(bright(c4) == 0 && bright(ok5) >= 10 && bright(in0) == 0 && bright(in4) >= 10,
+			   "the space after a marker kept, and an indented line indented -- both lost before");
+		}
+		shot("markers.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }
