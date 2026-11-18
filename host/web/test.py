@@ -87,6 +87,17 @@ try:
     page = r.read().decode()
     ok(r.status == 200 and "<canvas" in page and "EventSource('/events')" in page,
        "the page is served: a canvas, and a subscription to /events")
+    # §5ak: whisker's icon, an inline SVG that parses
+    import re as _re, urllib.parse as _up, xml.etree.ElementTree as _et
+    _m = _re.search(r'<link rel=icon href="data:image/svg\+xml,([^"]*)"', page)
+    try:
+        _svg = _et.fromstring(_up.unquote(_m.group(1))) if _m else None
+    except _et.ParseError:
+        _svg = None
+    ok(_svg is not None and _svg.tag.endswith("svg") and len(list(_svg.iter())) >= 4,
+       "and whisker's icon as its favicon: an inline SVG that parses -- a square, the whiskers, the nose")
+    ok("PageUp:14,PageDown:15" in page and "14:1,15:1" in page,
+       "and the page passes Page Up and Page Down as whisker's keys 14 and 15, Shift kept with them (§5ak)")
     c.close()
 
     ev = Events()

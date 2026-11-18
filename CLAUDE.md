@@ -370,6 +370,15 @@ directly**.
   Ctrl-W, Ctrl-N** (Matthew's Ctrl-W closed the browser tab): a program
   binding one gives an Alt chord too; Chrome checks cannot see this.
   **Matthew, after: works well in both hosts.**
+- **§5ak — Page Up/Down, and a window that behaves** (2026-11-17,
+  Matthew: no focus on opening, the X default icon, no Page Up/Down):
+  `WSK_KEY_PAGEUP`/`PAGEDOWN` — a memo moves caret and view a page
+  together, column kept, Shift selecting; a list moves its choice by
+  the rows it shows; elsewhere nothing (named keys are never the
+  program's, only chords). The SDL host **raises and asks focus** for
+  each window (untestable under the dummy driver — Matthew's to see),
+  sets **whisker's icon, drawn in code** (blue square, whiskers, orange
+  nose), class `whisker`; the page has it as an SVG favicon.
 - **§5aj — what a file holds that a memo cannot draw** (2026-11-16,
   Matthew: files load "nicely except where unsupported characters are
   involved"). Measured: CRLF, a lone CR, Latin-1 and control characters
@@ -477,14 +486,14 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,241 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,250 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 80 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 82 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
-18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`), 13 for files indented with tabs, with Windows line endings, in Latin-1 (`tabfile.py`) — 182 in all.
+18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`), 13 for files indented with tabs, with Windows line endings, in Latin-1 (`tabfile.py`) — 184 in all.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

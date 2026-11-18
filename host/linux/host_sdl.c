@@ -63,6 +63,7 @@ static struct swin {
 	int         dirty;
 	int         open;
 	Uint32      id;          /* SDL's number for it, to tell events apart */
+	int         iconed;      /* whisker's icon set on it (§5ak) */
 } SW[WH_WINDOWS];
 static int S_cur, S_ev, S_many;  /* drawn to; an event's; windows asked for */
 static int S_off;                /* the window drawn to was closed: documents go nowhere */
@@ -108,6 +109,69 @@ void rv9_panel_blit(int x0, int y0, int x1, int y1, const uint16_t *px)
 	S.dirty = 1;
 }
 
+/*
+ * whisker's icon (§5ak), drawn here so there is no file to ship (D23): a
+ * rounded square in whisker's accent, three whiskers either side in white,
+ * a nose in the selection's orange. ICON x ICON pixels, RGBA in memory
+ * order. The browser page's favicon is the same drawing, as SVG.
+ */
+#define ICON 64
+static uint32_t S_icon[ICON * ICON];
+
+/* how much of pixel (x, y) a round-ended line of width w from (ax, ay) to
+   (bx, by) covers, 0..256 -- anti-aliased by its distance, in fixed point */
+static int icon_line(int x, int y, int ax, int ay, int bx, int by, int w)
+{
+	long px = x * 16 + 8 - ax * 16, py = y * 16 + 8 - ay * 16;
+	long dx = (bx - ax) * 16, dy = (by - ay) * 16, len2 = dx * dx + dy * dy;
+	long t = len2 > 0 ? (px * dx + py * dy) * 256 / len2 : 0, ex, ey, d2, d;
+	if (t < 0) t = 0;
+	if (t > 256) t = 256;
+	ex = px - dx * t / 256; ey = py - dy * t / 256;
+	d2 = ex * ex + ey * ey;
+	for (d = 0; d * d < d2; d++) ;                  /* the distance, in 16ths */
+	d = (w * 8 + 8 - d) * 16;                       /* inside by how much, 1/256ths of a pixel */
+	return d < 0 ? 0 : d > 256 ? 256 : (int)d;
+}
+
+static uint32_t icon_mix(uint32_t under, uint32_t over, int a)
+{
+	uint32_t o = 0;
+	for (int sh = 0; sh < 24; sh += 8) {
+		int u = (int)((under >> sh) & 255), v = (int)((over >> sh) & 255);
+		o |= (uint32_t)((u * (256 - a) + v * a) / 256) << sh;
+	}
+	return o | (under & 0xff000000u);
+}
+
+static void icon_make(void)
+{
+	static const int W[6][4] = {                    /* the whiskers: from beside the nose, out */
+		{ 24, 33, 5, 25 }, { 24, 36, 4, 36 }, { 24, 39, 5, 47 },
+		{ 40, 33, 59, 25 }, { 40, 36, 60, 36 }, { 40, 39, 59, 47 } };
+	const uint32_t blue = 0xff8f6b2au, white = 0xffffffffu, nose = 0xff245ca0u;   /* ABGR: RGBA bytes */
+	for (int y = 0; y < ICON; y++)
+		for (int x = 0; x < ICON; x++) {
+			/* the rounded square: corners of radius 14, edges anti-aliased */
+			int cx = x < 14 ? 14 : x > ICON - 15 ? ICON - 15 : x;
+			int cy = y < 14 ? 14 : y > ICON - 15 ? ICON - 15 : y, a, cover = 0;
+			uint32_t p;
+			a = icon_line(x, y, cx, cy, cx, cy, 28);     /* inside the corner's circle, or the body */
+			p = icon_mix(0x00000000u, blue, a);
+			p = (p & 0x00ffffffu) | ((uint32_t)(a > 255 ? 255 : a) << 24);
+			for (int k = 0; k < 6; k++) {
+				int c = icon_line(x, y, W[k][0], W[k][1], W[k][2], W[k][3], 3);
+				if (c > cover) cover = c;
+			}
+			if (cover > 0 && a > 0) p = icon_mix(p, white, cover);
+			{
+				int c = icon_line(x, y, 32, 35, 32, 35, 10);
+				if (c > 0) p = icon_mix(p, nose, c);
+			}
+			S_icon[y * ICON + x] = p;
+		}
+}
+
 /* ---- the contract ---- */
 
 /* Window i, made: its SDL window, renderer, texture, pixels and device.
@@ -126,6 +190,12 @@ static int mkwin(int i, int w, int h, int scale, const char *title)
 	                         w * scale, h * scale, 0);
 	if (S.win == NULL) { fprintf(stderr, "whisker-host: %s\n", SDL_GetError()); goto fail; }
 	S.id = SDL_GetWindowID(S.win);
+	{
+		/* whisker's icon, not the X server's default (§5ak) */
+		SDL_Surface *ic = SDL_CreateRGBSurfaceWithFormatFrom(S_icon, ICON, ICON, 32, ICON * 4,
+		                                                     SDL_PIXELFORMAT_RGBA32);
+		if (ic != NULL) { SDL_SetWindowIcon(S.win, ic); SDL_FreeSurface(ic); S.iconed = 1; }
+	}
 
 	S.ren = SDL_CreateRenderer(S.win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if (S.ren == NULL) S.ren = SDL_CreateRenderer(S.win, -1, 0);
@@ -149,6 +219,10 @@ static int mkwin(int i, int w, int h, int scale, const char *title)
 		goto fail;
 	}
 	S.open = 1;
+	/* a window opened is the one a person means to use: raised and asked
+	   for the keys -- a window manager may still refuse (§5ak) */
+	SDL_RaiseWindow(S.win);
+	SDL_SetWindowInputFocus(S.win);
 	S_cur = was;
 	return 0;
 fail:
@@ -168,6 +242,10 @@ int wh_open(int w, int h, int scale, const char *title)
 	if (scale < 1) scale = 1;
 	memset(SW, 0, sizeof SW);
 	S_cur = S_ev = S_many = S_off = 0;
+	/* the class a desktop groups and names its windows by: whisker, not
+	   the program's file name -- unless the person set one (§5ak) */
+	setenv("SDL_VIDEO_X11_WMCLASS", "whisker", 0);
+	icon_make();
 	if (SDL_Init(SDL_INIT_VIDEO) != 0) {
 		fprintf(stderr, "whisker-host: SDL: %s\n", SDL_GetError());
 		return -1;
@@ -328,6 +406,8 @@ int wh_poll(wh_event_t *out)
 			else if (k == SDLK_UP) key = WH_KEY_UP;
 			else if (k == SDLK_DOWN) key = WH_KEY_DOWN;
 			else if (k == SDLK_END) key = WH_KEY_END;
+			else if (k == SDLK_PAGEUP) key = WH_KEY_PAGEUP;
+			else if (k == SDLK_PAGEDOWN) key = WH_KEY_PAGEDOWN;
 			else if (k == SDLK_BACKSPACE) key = WH_KEY_BACKSPACE;
 			else if (k == SDLK_DELETE) key = WH_KEY_DELETE;
 			else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) key = WH_KEY_ENTER;
@@ -342,7 +422,8 @@ int wh_poll(wh_event_t *out)
 			/* Shift means something only to a key that moves the caret,
 			   and to a chord; Shift-Enter is Enter */
 			if (!(mods & (WH_MOD_CTRL | WH_MOD_ALT)) && key != WH_KEY_LEFT && key != WH_KEY_RIGHT &&
-			    key != WH_KEY_HOME && key != WH_KEY_END && key != WH_KEY_UP && key != WH_KEY_DOWN)
+			    key != WH_KEY_HOME && key != WH_KEY_END && key != WH_KEY_UP && key != WH_KEY_DOWN &&
+			    key != WH_KEY_PAGEUP && key != WH_KEY_PAGEDOWN)
 				mods &= ~WH_MOD_SHIFT;
 			if (key != 0) { out->kind = WH_KEY; out->key = key | mods; return WH_KEY; }
 			break;

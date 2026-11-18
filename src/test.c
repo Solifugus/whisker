@@ -6757,6 +6757,89 @@ int main(void)
 #undef TX_AT
 	}
 
+	printf("\n-- §5ak  Page Up and Page Down\n");
+	{
+		static const wsk_widget_t MW[] = {
+			{ .kind = WSK_MEMO,  .id = "m", .sub = 0, .weight = 1 },
+			{ .kind = WSK_FIELD, .id = "f", .sub = 1, .size = 40 },
+		};
+		static char mt[1024];
+		char ft[32] = "hello";
+		wsk_buf_t bufs[2];
+		wsk_tree_t r;
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		int y0, y1, vis, line, col, lines, k = 0, n;
+
+		for (int i = 0; i < 30; i++) k += snprintf(mt + k, sizeof mt - (size_t)k, "line%02d%s", i, i < 29 ? "\n" : "");
+		memset(bufs, 0, sizeof bufs);
+		bufs[0].b = mt; bufs[0].cap = sizeof mt; bufs[0].len = k;
+		bufs[1].b = ft; bufs[1].cap = sizeof ft; bufs[1].len = 5;
+		wsk_init(&r, WSK_COL, 300, 200);
+		r.item = MW; r.n = 2; r.buf = bufs; r.bufs = 2;
+		wsk_ui_init(&ui, &r);
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		vis = wsk__vis(ui.focus_in, ui.focus_r);
+		printf("   the memo shows %d of 30 lines\n", vis);
+#define PG(K) (memset(&ev, 0, sizeof ev), ev.kind = WSK_EV_KEY, ev.key = (K), n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1), \
+		wsk__where(mt, bufs[0].len, bufs[0].caret, WSK_NOWRAP, &line, &col, &lines, 8))
+		bufs[0].caret = 2 * 7 + 3;                         /* line 2, column 3 */
+		PG(WSK_KEY_PAGEDOWN);
+		ok(line == 2 + vis && col == 3 && bufs[0].top == vis,
+		   "Page Down from line 2, column 3: a page on -- the line and the view both, the column kept");
+		for (int i = 0; i < 30 / vis + 1; i++) PG(WSK_KEY_PAGEDOWN);
+		ok(line == 29 && bufs[0].top == 30 - vis, "Page Down to the end: the last line, the view at the last page -- clamped");
+		PG(WSK_KEY_PAGEUP);
+		ok(line == 29 - vis && bufs[0].top == 30 - 2 * vis, "Page Up from there: a page back, both");
+		for (int i = 0; i < 30 / vis + 1; i++) PG(WSK_KEY_PAGEUP);
+		ok(line == 0 && bufs[0].top == 0 && col == 3, "Page Up to the start: the first line, the view at the top, the column still 3");
+		PG(WSK_KEY_PAGEDOWN | WSK_MOD_SHIFT);
+		ok(line == vis && bufs[0].span == -(vis * 7) && bufs[0].caret + bufs[0].span == 3,
+		   "Shift-Page Down: a page selected, from where the caret was");
+		bufs[0].span = 0;
+
+		/* the control: a one-line field has no page */
+		wsk_ui_focus(&ui, "f", &y0, &y1);
+		bufs[1].caret = 2;
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_PAGEDOWN;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 0 && bufs[1].caret == 2, "CONTROL: Page Down in a one-line field -- nothing, as Up and Down there");
+
+		/* a list: by the rows it shows */
+		{
+			static const wsk_widget_t TOP[] = { { .kind = WSK_STACK, .id = "list", .sub = 0, .weight = 1 } };
+			static wsk_widget_t rows[20];
+			wsk_tree_t lr, k2[1];
+			wsk_ui_t lu;
+			int shown = 0;
+			for (int i = 0; i < 20; i++) {
+				memset(&rows[i], 0, sizeof rows[i]);
+				rows[i].kind = WSK_LABEL; rows[i].size = 30;
+				snprintf(rows[i].id, WSK_ID_MAX, "r%d", i);
+				snprintf(rows[i].text, WSK_TEXT_MAX, "row %d", i);
+			}
+			wsk_init(&lr, WSK_COL, 300, 200);
+			lr.item = TOP; lr.n = 1; lr.nest = k2; lr.nests = 1;
+			wsk_nest_init(&k2[0], &lr, WSK_COL);
+			k2[0].item = rows; k2[0].n = 20; k2[0].select = 1; k2[0].overflow = WSK_SCROLL; k2[0].pad = 0; k2[0].gap = 0;
+			wsk_ui_init(&lu, &lr);
+			wsk_ui_focus(&lu, "list", &y0, &y1);
+			for (int i = 0; i < 20; i++) { wsk_rect_t rr = rect_of(&lr, rows[i].id); if (rr.y >= 8 && rr.y + rr.h <= 192) shown++; }
+			printf("   the list shows %d of 20 rows whole\n", shown);
+			k2[0].sel = 0;
+			memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_PAGEDOWN;
+			n = wsk_feed(&lu, &ev, nt, 8, &y0, &y1);
+			ok(k2[0].sel == shown && n == 1 && nt[0].kind == WSK_NOTE_SELECT && k2[0].scroll > 0,
+			   "a list: Page Down from row 0 chooses the row a page on, SELECT said, the list scrolled to it");
+			ev.key = WSK_KEY_PAGEDOWN; wsk_feed(&lu, &ev, nt, 8, &y0, &y1); wsk_feed(&lu, &ev, nt, 8, &y0, &y1); wsk_feed(&lu, &ev, nt, 8, &y0, &y1);
+			ok(k2[0].sel == 19, "Page Down on past the end: the last row");
+			ev.key = WSK_KEY_PAGEUP; for (int i = 0; i < 6; i++) wsk_feed(&lu, &ev, nt, 8, &y0, &y1);
+			ok(k2[0].sel == 0 && k2[0].scroll == 0, "Page Up back past the start: the first, the list at its top");
+		}
+#undef PG
+	}
+
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);
 	return fails != 0;
 }

@@ -60,7 +60,8 @@ enum {
 	WH_KEY_BACKSPACE, WH_KEY_DELETE, WH_KEY_ENTER, WH_KEY_TAB, WH_KEY_BACKTAB,
 	WH_KEY_ESCAPE,           /* closes a menu; both hosts send it (§5s) */
 	WH_KEY_UP, WH_KEY_DOWN,  /* a memo's lines (§5o) */
-	WH_KEY_MENU              /* the Menu key, Shift-F10 (§5s) */
+	WH_KEY_MENU,             /* the Menu key, Shift-F10 (§5s) */
+	WH_KEY_PAGEUP, WH_KEY_PAGEDOWN   /* a page of a memo or a list (§5ak) */
 };
 
 /* Modifiers on `key` (§5s), whisker's WSK_MOD_* numbers: on a named key, or

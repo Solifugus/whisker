@@ -4920,7 +4920,8 @@ enum { WSK_NOTE_CLICK = 1, WSK_NOTE_SCROLL, WSK_NOTE_TEXT, WSK_NOTE_ENTER,
 enum { WSK_KEY_LEFT = 1, WSK_KEY_RIGHT, WSK_KEY_HOME, WSK_KEY_END,
        WSK_KEY_BACKSPACE, WSK_KEY_DELETE, WSK_KEY_ENTER, WSK_KEY_TAB,
        WSK_KEY_BACKTAB, WSK_KEY_ESCAPE, WSK_KEY_UP, WSK_KEY_DOWN,
-       WSK_KEY_MENU };
+       WSK_KEY_MENU,
+       WSK_KEY_PAGEUP, WSK_KEY_PAGEDOWN };   /* a page of a memo or a list (§5ak) */
 
 /* Modifiers ride on the key (§5s rule 2): a named key above, or for a chord
    a printable character, lower-case -- Ctrl-S is 's' | WSK_MOD_CTRL. A key
@@ -5791,7 +5792,7 @@ static inline int wsk__moves(int k)
 	if (k & WSK_MOD_CTRL) k &= ~WSK_MOD_CTRL;     /* Ctrl's word moves too (§5w) */
 	else
 #endif
-	if (k == WSK_KEY_UP || k == WSK_KEY_DOWN) return 1;
+	if (k == WSK_KEY_UP || k == WSK_KEY_DOWN || k == WSK_KEY_PAGEUP || k == WSK_KEY_PAGEDOWN) return 1;
 	return k >= WSK_KEY_LEFT && k <= WSK_KEY_END;
 }
 
@@ -6365,6 +6366,20 @@ static inline int wsk__stackkeys(wsk_ui_t *ui, const wsk_event_t *ev, wsk_note_t
 		else if (key == WSK_KEY_DOWN) ns = (sel < 0) ? 0 : (sel + 1 < c.n) ? sel + 1 : sel;
 		else if (key == WSK_KEY_HOME) ns = 0;
 		else if (key == WSK_KEY_END) ns = c.n - 1;
+		else if (key == WSK_KEY_PAGEUP || key == WSK_KEY_PAGEDOWN) {
+			/* a page: by as many rows as the list shows whole (§5ak) */
+			int col = (c.axis == WSK_COL), page = 0;
+			int s0 = (col ? c.ay : c.ax), s1 = (col ? c.ay + c.ah : c.ax + c.aw);
+			for (int i = 0; i < c.n; i++) {
+				wsk_rect_t b = wsk_rect(&c, i);
+				int at = col ? b.y : b.x, len = col ? b.h : b.w;
+				if (at >= s0 && at + len <= s1) page++;
+			}
+			if (page < 1) page = 1;
+			if (key == WSK_KEY_PAGEUP) ns = (sel - page < 0) ? 0 : sel - page;
+			else ns = (sel < 0) ? ((page - 1 < c.n) ? page - 1 : c.n - 1)
+			                    : (sel + page < c.n) ? sel + page : c.n - 1;
+		}
 		else return 0;
 		if (ns != sel) {
 			o->sel = c.sel = (short)ns;
@@ -7293,6 +7308,26 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 				b->span = 0;
 				edit = 1;
 			}
+		} else if (memo && (key == WSK_KEY_PAGEUP || key == WSK_KEY_PAGEDOWN)) {
+			/* a page: the caret by as many lines as the memo shows, its
+			   column kept, and the view by the same page, so the caret
+			   keeps its place on the screen; clamped at both ends (§5ak) */
+			int line = 0, col = 0, lines = 1, at, end, to, top, maxtop, tw = wsk__tabw(b);
+			int wr = wsk__mroom(ui->focus_in, &ui->focus_in->item[ui->focus_item], ui->focus_r, b);
+			int vis = wsk__vis(ui->focus_in, ui->focus_r), d = (key == WSK_KEY_PAGEUP) ? -vis : vis;
+			wsk__where(b->b, b->len, b->caret, wr, &line, &col, &lines, tw);
+			top = wsk__top(b, vis, line, lines);
+			maxtop = (lines > vis) ? lines - vis : 0;
+			line += d;
+			if (line < 0) line = 0;
+			if (line > lines - 1) line = lines - 1;
+			top += d;
+			if (top > maxtop) top = maxtop;
+			if (top < 0) top = 0;
+			b->top = top;
+			at = wsk__line(b->b, b->len, line, wr, &end, tw);
+			to = at + wsk__vat(b->b + at, end - at, col, tw);
+			if (to != b->caret) { b->caret = to; moved = 1; }
 		} else if (memo && (key == WSK_KEY_UP || key == WSK_KEY_DOWN ||
 		                    key == WSK_KEY_HOME || key == WSK_KEY_END)) {
 			int line = 0, col = 0, lines = 1, at, end, to = b->caret;

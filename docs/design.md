@@ -3513,6 +3513,72 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5ak. Page Up and Page Down, and a desktop window that behaves (2026-11-17), written before its code
+
+Matthew, using the SDL window: *"every time I open it, it's opened but
+without focus. i tab over to it"*; *"the icon in the upper left of the
+window looks like the xorg default"*; *"page up/down is not working
+yet"* — and: *"I don't know if this little local window will be the
+beginnings of the standard client or not but if so then we might want to
+make it a little nicer."* It is: every whisker program on a desktop runs
+in it, and a gBASIC backend will (D23). So it should behave like an
+application.
+
+1. **Page Up and Page Down are whisker's** (`WSK_KEY_PAGEUP`,
+   `WSK_KEY_PAGEDOWN`; the hosts pass them as they pass Up and Down):
+   - **in a memo or source**, the caret moves a page — as many lines
+     as the memo shows — keeping its column (§5ai's rule through a
+     tab), and **the view moves by the same page**, so the caret keeps
+     its place on the screen, as every editor does; at either end the
+     view stops and the caret goes to the first or last line. **Shift**
+     extends the selection (§5s), as with Up and Down.
+   - **in a selecting list that is a Tab stop** (§5z), the choice moves
+     by the rows the list shows, and the list follows it.
+   - elsewhere they do nothing, as Up and Down do there — a named key
+     no widget used is not reported; only a chord is (§5s). *(Written
+     first as "the program's"; a probe showed named keys are not, and
+     the rule stays one rule.)*
+   Ctrl-Page Up/Down are not used: a browser keeps them for its tabs.
+2. **The window takes focus when it opens.** The SDL host raises it and
+   asks for input focus after creating it, so typing goes to it without a
+   click. A window manager may still refuse (focus-stealing prevention);
+   the host asks, it cannot insist.
+3. **whisker's icon**, not the X server's: drawn in code at startup —
+   no file to ship (D23) — and set on every SDL window; the window class
+   `whisker`, so a desktop groups and names it. The same mark as the
+   browser page's favicon, an inline SVG. A program may set its own
+   later; this is the default.
+
+Done when: Page Down and Up in a memo by its visible lines, the view
+moving with the caret, clamped at both ends, a column through a tab
+kept, Shift selecting; in a list, the choice by its visible rows;
+nothing elsewhere (the control: a focused one-line field's caret
+unmoved); the hosts mapping both keys;
+SDL: the window raised and given focus, an icon set (asked of SDL in the
+self-test), the class named; the page's favicon; the icon looked at.
+
+**What it came to** (2026-11-17): as written, with the one correction
+above (named keys elsewhere do nothing). **9 checks** (1,241 → 1,250):
+a memo showing 6 of 30 lines — Page Down from line 2 column 3 to line 8
+with the view at 6, on to the last line with the view at the last page,
+Page Up a page back with both, to the first line and the top with the
+column still 3, Shift-Page Down selecting a page from where the caret
+was; a one-line field's caret unmoved (the control); a list showing 6
+of 20 rows — Page Down from row 0 to row 6, SELECT, scrolled to it; on
+to the last; Page Up to the first and the list's top. The SDL self-test
+(82): **an icon set on the window**, and its pixels what they say — a
+corner see-through, the body whisker's blue, the nose orange, a whisker
+white — written out at four times size and looked at. The page (web
+184): **the same icon as its favicon**, an inline SVG that parses; its
+key table passing Page Up and Down, Shift kept with them. Every earlier
+output — 47 files — byte-identical.
+
+**Not measured, and cannot be here**: that the window takes focus. The
+self-test runs SDL's dummy driver, which has no window manager to ask;
+the host raises the window and asks for input focus, and whether a
+desktop grants it is Matthew's to see. Likewise the window class
+(`SDL_VIDEO_X11_WMCLASS=whisker`, unless set already) is X11's to show.
+
 ## 5aj. What a file holds that a memo cannot draw (2026-11-16)
 
 Matthew, after §5ai: *"The web and local window both load files...

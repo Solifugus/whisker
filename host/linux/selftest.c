@@ -94,6 +94,27 @@ int main(void)
 	setenv("SDL_VIDEODRIVER", "dummy", 1);
 
 	ok(wh_open(W, H, SCALE, "selftest") == 0, "the window opens");
+	{
+		/* §5ak: whisker's own icon on it, not the X server's -- and what
+		   it looks like, written out for a person to see */
+		uint32_t corner = S_icon[0], body = S_icon[8 * ICON + 32], nose = S_icon[35 * ICON + 32];
+		uint32_t whisker = S_icon[36 * ICON + 10];
+		FILE *f = fopen("/tmp/whisker-host/icon.ppm", "wb");
+		ok(SW[0].iconed, "an icon set on the window: whisker's, drawn in code (§5ak)");
+		ok((corner >> 24) == 0 && body == 0xff8f6b2au && nose == 0xff245ca0u && (whisker & 0xffffffu) == 0xffffffu,
+		   "and it is what it says: a corner see-through, the body whisker's blue, the nose orange, a whisker white");
+		if (f != NULL) {
+			fprintf(f, "P6\n%d %d\n255\n", ICON * 4, ICON * 4);
+			for (int y = 0; y < ICON * 4; y++)
+				for (int x = 0; x < ICON * 4; x++) {
+					uint32_t p = S_icon[(y / 4) * ICON + x / 4];
+					int a = (int)(p >> 24);
+					for (int sh = 0; sh < 24; sh += 8)       /* over a mid grey, as a panel shows it */
+						fputc((int)(((p >> sh) & 255) * (unsigned)a / 255 + 0x80 * (unsigned)(255 - a) / 255), f);
+				}
+			fclose(f);
+		}
+	}
 
 	wsk_clone(live, PANEL, 3);
 	wsk_init(&t, WSK_COL, W, H);

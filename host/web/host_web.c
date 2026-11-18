@@ -64,6 +64,12 @@
 static const char PAGE[] =
 "<!doctype html><html><head><meta charset=utf-8>"
 "<meta name=viewport content='width=device-width,initial-scale=1'>"
+/* whisker's icon (§5ak): the SDL host's drawing, as SVG */
+"<link rel=icon href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E"
+"%3Crect width='64' height='64' rx='14' fill='%232a6b8f'/%3E"
+"%3Cg stroke='white' stroke-width='3' stroke-linecap='round'%3E"
+"%3Cpath d='M24 33L5 25M24 36L4 36M24 39L5 47M40 33L59 25M40 36L60 36M40 39L59 47'/%3E%3C/g%3E"
+"%3Ccircle cx='32' cy='35' r='5' fill='%23a05c24'/%3E%3C/svg%3E\">"
 "<title>whisker</title><style>"
 "html,body{margin:0;height:100%;background:#000}"
 "canvas{display:block;margin:auto;max-width:100vw;max-height:100vh;touch-action:none;outline:none}"
@@ -164,8 +170,8 @@ static const char PAGE[] =
    would think the finger still down. Each window's canvas listens for its
    own, and says which window it is (§5af). */
 "let touched=0,active=0;\n"
-"const KEYS={ArrowLeft:1,ArrowRight:2,Home:3,End:4,Backspace:5,Delete:6,Enter:7,Escape:10,ArrowUp:11,ArrowDown:12,ContextMenu:13};\n"
-"const MOVES={1:1,2:1,3:1,4:1,11:1,12:1};\n"
+"const KEYS={ArrowLeft:1,ArrowRight:2,Home:3,End:4,Backspace:5,Delete:6,Enter:7,Escape:10,ArrowUp:11,ArrowDown:12,ContextMenu:13,PageUp:14,PageDown:15};\n"
+"const MOVES={1:1,2:1,3:1,4:1,11:1,12:1,14:1,15:1};\n"
 "function attach(cv,n){\n"
 "  const S=(l)=>send(l,n);\n"
 "  const pt=e=>{const r=cv.getBoundingClientRect(),v=V[n];\n"
