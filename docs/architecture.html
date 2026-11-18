@@ -1,0 +1,285 @@
+<title>whisker Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column, figures run the column's full width; whisker's own colours (navy, its blue, its selection orange) carry the drawing. */
+:root {
+  --bg: #f4f6f9;
+  --panel: #e7ebf1;
+  --ink: #142233;
+  --muted: #4e5d70;
+  --line: #b9c3d0;
+  --accent: #2a6b8f;
+  --hot: #a05c24;
+  --ok: #2f7a4f;
+  --plan: #7a6418;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1724; --panel: #15233a; --ink: #e3e9f1; --muted: #9aa9bc; --line: #34475f;
+    --accent: #5fa3c9; --hot: #d48a4a; --ok: #6cc08f; --plan: #d6b85a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1724; --panel: #15233a; --ink: #e3e9f1; --muted: #9aa9bc; --line: #34475f;
+  --accent: #5fa3c9; --hot: #d48a4a; --ok: #6cc08f; --plan: #d6b85a; color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+main { max-width: 920px; margin: 0 auto; display: grid; gap: 40px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(30px, 5vw, 44px); line-height: 1.1; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--font-display); font-weight: 600; font-size: 24px; line-height: 1.2; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--font-display); font-weight: 600; font-size: 18px; margin: 0; }
+p { margin: 0; max-width: 66ch; }
+section { display: grid; gap: 14px; }
+.lede { font-size: 18px; color: var(--muted); max-width: 62ch; }
+code, .mono { font-family: var(--font-mono); font-size: .9em; }
+.answer {
+  border-left: 4px solid var(--hot); background: var(--panel);
+  padding: 16px 20px; display: grid; gap: 10px; border-radius: 0 6px 6px 0;
+}
+.answer p { max-width: 70ch; }
+figure { margin: 0; display: grid; gap: 10px; }
+.fig { overflow-x: auto; background: var(--panel); border-radius: 8px; padding: 12px; }
+.fig svg { display: block; width: 100%; min-width: 640px; height: auto; color: var(--ink); }
+figcaption { font-size: 14px; color: var(--muted); max-width: 70ch; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 600px; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+th { font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+.chip { display: inline-block; font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; vertical-align: 1px; white-space: nowrap; }
+.built { color: var(--ok); }
+.designed { color: var(--plan); }
+.open { color: var(--muted); }
+ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 70ch; }
+.owners { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.owner { background: var(--panel); border-radius: 6px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+.owner h3 { font-size: 16px; }
+.owner p { font-size: 15px; color: var(--muted); }
+.fig .accbox { fill: var(--accent); stroke: var(--accent); }
+.fig .hotbox { fill: var(--hot); stroke: var(--hot); }
+.fig .hotline { stroke: var(--hot); color: var(--hot); }
+.fig .hottext { fill: var(--hot); }
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">whisker · bird's-eye view · 2026-11-17</div>
+    <h1>How a whisker program reaches a screen</h1>
+    <p class="lede">One program, written in any language that can call C, draws through the same few layers whether its screen is a desktop window, an RV-9 panel, a browser, or a client on another machine. This page shows those layers, where the remote design (D25, §5al) fits, and what each language has to provide.</p>
+  </header>
+
+  <section class="answer" aria-labelledby="w0">
+    <h2 id="w0">Is <code>/w0</code> the client for RV-9?</h2>
+    <p><strong>No, <code>/w0</code> is RV-9's screen</strong>: the device a program writes SVG to and RV-9's rasteriser draws. It does the same job on a board that the SDL window does on a desktop. In fact the desktop window <em>is</em> RV-9's <code>/w0</code> driver, compiled for Linux.</p>
+    <p>A <strong>client on RV-9</strong> would be a small module that receives a remote program's documents over the network and writes them into <code>/w0</code>, and reads <code>/touch</code> and sends the points back. <code>/w0</code> is where it draws, not the client itself. RV-9 can also be the other end: a module serving its own window to a desktop or a phone, which is design §9.6, "an X11 for appliances".</p>
+  </section>
+
+  <section aria-labelledby="layers">
+    <h2 id="layers">The layers every program sits on</h2>
+    <p>From the top: a program, the language's way of describing a window, whisker itself, the host contract, and a host that owns the actual screen. Only the host differs between a desktop, a board and the network.</p>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 900 560" role="img" aria-label="Programs in C, gBASIC and R9 reach whisker through their own binding layers; whisker speaks one host contract; three hosts implement it: the SDL desktop window, RV-9's /w0 and /touch, and the wire to remote screens.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+          </defs>
+          <g font-family="IBM Plex Sans, system-ui, sans-serif" font-size="13" fill="currentColor">
+            <!-- row labels -->
+            <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity=".65">
+              <text x="12" y="52">PROGRAM</text>
+              <text x="12" y="146">LANGUAGE</text>
+              <text x="12" y="246">WHISKER</text>
+              <text x="12" y="336">CONTRACT</text>
+              <text x="12" y="440">HOST</text>
+            </g>
+            <!-- programs -->
+            <g fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="110" y="24" width="230" height="46" rx="6"/>
+              <rect x="370" y="24" width="230" height="46" rx="6"/>
+              <rect x="630" y="24" width="250" height="46" rx="6" stroke-dasharray="5 4"/>
+            </g>
+            <text x="225" y="52" text-anchor="middle" font-weight="600">C program</text>
+            <text x="485" y="52" text-anchor="middle" font-weight="600">gBASIC program (Studio…)</text>
+            <text x="755" y="52" text-anchor="middle" font-weight="600">R9 program — designed</text>
+            <!-- bindings -->
+            <g fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="110" y="116" width="230" height="56" rx="6"/>
+              <rect x="370" y="116" width="230" height="56" rx="6"/>
+              <rect x="630" y="116" width="250" height="56" rx="6" stroke-dasharray="5 4"/>
+            </g>
+            <text x="225" y="140" text-anchor="middle">its own widget arrays</text>
+            <text x="225" y="158" text-anchor="middle" font-size="11" opacity=".75">includes whisker.h directly</text>
+            <text x="485" y="140" text-anchor="middle">ui module → ui_whisker.c</text>
+            <text x="485" y="158" text-anchor="middle" font-size="11" opacity=".75">a retained model behind 148 members</text>
+            <text x="755" y="140" text-anchor="middle">R9's runtime, in an RV-9 module</text>
+            <text x="755" y="158" text-anchor="middle" font-size="11" opacity=".75">module rules: no libc, no .data</text>
+            <g stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)">
+              <line x1="225" y1="70" x2="225" y2="112"/>
+              <line x1="485" y1="70" x2="485" y2="112"/>
+              <line x1="755" y1="70" x2="755" y2="112"/>
+              <line x1="225" y1="172" x2="225" y2="212"/>
+              <line x1="485" y1="172" x2="485" y2="212"/>
+              <line x1="755" y1="172" x2="755" y2="212"/>
+            </g>
+            <!-- whisker band -->
+            <rect x="110" y="216" width="770" height="64" rx="6" class="accbox" fill-opacity=".14" stroke-width="1.6"/>
+            <text x="495" y="242" text-anchor="middle" font-weight="600">whisker.h — drawing (a tree → SVG, a point → an id) and the toolkit (an event → what changed)</text>
+            <text x="495" y="264" text-anchor="middle" font-size="12" opacity=".8">plus whisker_chooser.h · whisker_dock.h · whisker_tabs.h — keeps no state of its own (D5)</text>
+            <!-- contract band -->
+            <line x1="495" y1="280" x2="495" y2="312" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)"/>
+            <rect x="110" y="316" width="770" height="34" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <text x="495" y="338" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12">host contract: write SVG · the rows to repaint · events in · windows · seats · clipboard</text>
+            <!-- hosts -->
+            <g stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)">
+              <line x1="225" y1="350" x2="225" y2="398"/>
+              <line x1="485" y1="350" x2="485" y2="398"/>
+              <line x1="755" y1="350" x2="755" y2="398"/>
+            </g>
+            <g fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="110" y="402" width="230" height="74" rx="6"/>
+              <rect x="370" y="402" width="230" height="74" rx="6"/>
+            </g>
+            <rect x="630" y="402" width="250" height="74" rx="6" class="hotbox" fill-opacity=".12" stroke-width="1.8"/>
+            <text x="225" y="428" text-anchor="middle" font-weight="600">desktop window</text>
+            <text x="225" y="446" text-anchor="middle" font-size="12">SDL + RV-9's rasteriser</text>
+            <text x="225" y="464" text-anchor="middle" font-size="11" opacity=".75">linked into the program (D23)</text>
+            <text x="485" y="428" text-anchor="middle" font-weight="600">RV-9 board</text>
+            <text x="485" y="446" text-anchor="middle" font-size="12">writes /w0, reads /touch</text>
+            <text x="485" y="464" text-anchor="middle" font-size="11" opacity=".75">C5 readout, P4 panel</text>
+            <text x="755" y="428" text-anchor="middle" font-weight="600">the wire</text>
+            <text x="755" y="446" text-anchor="middle" font-size="12">documents out, events in</text>
+            <text x="755" y="464" text-anchor="middle" font-size="11" opacity=".75">today: the browser host</text>
+            <line x1="755" y1="476" x2="755" y2="520" class="hotline" stroke-width="1.6" marker-end="url(#ar)"/>
+            <text x="770" y="506" font-size="12" class="hottext">to a remote screen — next figure</text>
+            <text x="225" y="510" text-anchor="middle" font-size="12" opacity=".75">a screen on this machine</text>
+            <text x="485" y="510" text-anchor="middle" font-size="12" opacity=".75">a screen on this board</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Everything above the host contract is the same on every screen. A program chooses no host: the build and the environment do (§5al). Dashed boxes are designed, not built.</figcaption>
+    </figure>
+  </section>
+
+  <section aria-labelledby="remote">
+    <h2 id="remote">One program, a local window or a remote screen</h2>
+    <p>The same binary decides at start. If <code>WHISKER_DISPLAY</code> names a client or desktop, it shows there. If there is a graphical session, it opens its own window. If it is headless, it serves and prints where to connect. Remote traffic goes over SSH first, with SSH as the lock and the tunnel, and the program, not the operating system, deciding who each person is.</p>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 900 430" role="img" aria-label="A program on one machine runs once, with each connection joining as a seat through an attach relay. Documents travel out and events back over SSH or over HTTP with a token, to three kinds of client: the native whisker-client, a browser page, and an RV-9 module drawing into /w0.">
+          <defs>
+            <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+          </defs>
+          <g font-family="IBM Plex Sans, system-ui, sans-serif" font-size="13" fill="currentColor">
+            <!-- the machine running the program -->
+            <rect x="20" y="20" width="270" height="380" rx="8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 4" opacity=".7"/>
+            <text x="34" y="44" font-family="IBM Plex Mono, monospace" font-size="11" opacity=".7">THE MACHINE WITH THE DATA</text>
+            <rect x="44" y="64" width="222" height="96" rx="6" class="accbox" fill-opacity=".14" stroke-width="1.6"/>
+            <text x="155" y="90" text-anchor="middle" font-weight="600">the program, running once</text>
+            <text x="155" y="110" text-anchor="middle" font-size="12">its state and its users</text>
+            <text x="155" y="128" text-anchor="middle" font-size="12">whisker · the wire server</text>
+            <text x="155" y="146" text-anchor="middle" font-size="11" opacity=".75">keeps running when no one is attached</text>
+            <rect x="44" y="196" width="222" height="70" rx="6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="5 4"/>
+            <text x="155" y="222" text-anchor="middle" font-weight="600">attach relay</text>
+            <text x="155" y="240" text-anchor="middle" font-size="12">each connection a seat (§5ab)</text>
+            <text x="155" y="256" text-anchor="middle" font-size="11" opacity=".75">passes which key connected</text>
+            <line x1="155" y1="196" x2="155" y2="164" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"/>
+            <rect x="44" y="302" width="222" height="74" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <text x="155" y="328" text-anchor="middle" font-weight="600">SSH server</text>
+            <text x="155" y="346" text-anchor="middle" font-size="12">OpenSSH, RV-9's sshd, or the app</text>
+            <text x="155" y="362" text-anchor="middle" font-size="11" opacity=".75">encrypts, and gates who may reach it</text>
+            <line x1="155" y1="302" x2="155" y2="270" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"/>
+
+            <!-- transports -->
+            <g font-family="IBM Plex Mono, monospace" font-size="11" opacity=".7"><text x="330" y="44">HOW IT TRAVELS</text><text x="640" y="44">THE SCREEN</text></g>
+            <rect x="330" y="112" width="250" height="58" rx="6" class="hotbox" fill-opacity=".12" stroke-width="1.8"/>
+            <text x="455" y="136" text-anchor="middle" font-weight="600">SSH — first</text>
+            <text x="455" y="154" text-anchor="middle" font-size="12">encrypted, keys you already have</text>
+            <rect x="330" y="236" width="250" height="58" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <text x="455" y="260" text-anchor="middle" font-weight="600">HTTP + a token</text>
+            <text x="455" y="278" text-anchor="middle" font-size="12">browsers and phones; TLS later</text>
+            <g stroke="currentColor" stroke-width="1.3" fill="none">
+              <path d="M266 339 C300 339 300 141 326 141" marker-end="url(#ar2)" class="hotline"/>
+              <path d="M266 112 C300 112 300 265 326 265" marker-end="url(#ar2)"/>
+            </g>
+            <text x="455" y="200" text-anchor="middle" font-size="12" opacity=".8">documents →     ← events</text>
+
+            <!-- clients -->
+            <g fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="640" y="64" width="240" height="66" rx="6" stroke-dasharray="5 4"/>
+              <rect x="640" y="176" width="240" height="66" rx="6"/>
+              <rect x="640" y="288" width="240" height="66" rx="6" stroke-dasharray="5 4"/>
+            </g>
+            <text x="760" y="90" text-anchor="middle" font-weight="600">whisker-client</text>
+            <text x="760" y="108" text-anchor="middle" font-size="12">desktop; saved connections</text>
+            <text x="760" y="202" text-anchor="middle" font-weight="600">a browser page</text>
+            <text x="760" y="220" text-anchor="middle" font-size="12">nothing installed — built</text>
+            <text x="760" y="314" text-anchor="middle" font-weight="600">RV-9 client module</text>
+            <text x="760" y="332" text-anchor="middle" font-size="12">documents into /w0, /touch back</text>
+            <g stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)">
+              <line x1="580" y1="141" x2="636" y2="97" class="hotline"/>
+              <line x1="580" y1="141" x2="636" y2="321" class="hotline"/>
+              <line x1="580" y1="265" x2="636" y2="209"/>
+            </g>
+            <text x="455" y="384" text-anchor="middle" font-size="12" opacity=".8">either side may dial: a client opens a saved place,</text>
+            <text x="455" y="402" text-anchor="middle" font-size="12" opacity=".8">or a program is told WHISKER_DISPLAY and shows there</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>After the connection opens, it does not matter who dialled: documents (or changed bands) go one way and points, keys and text the other. Detaching ends a seat, not the program. Dashed boxes are designed, not built.</figcaption>
+    </figure>
+  </section>
+
+  <section aria-labelledby="langs">
+    <h2 id="langs">What each language provides</h2>
+    <p>whisker is C with no dependencies, so any language that can call C can use it. What a language has to supply is a way to describe a window that fits its own style, mapped onto whisker's trees.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Language</th><th>How a window is described</th><th>What sits between it and whisker</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>C</td><td>Static arrays of widgets and trees, owned by the program</td><td>Nothing: includes <code>whisker.h</code>. Every demo and RV-9 module is this.</td><td><span class="chip built">built</span></td></tr>
+          <tr><td>gBASIC</td><td>A <code>window</code> declaration, read and written through the <code>ui</code> module</td><td><code>ui_whisker.c</code>: a retained model that allocates trees, rows and menus, behind gBASIC's 148-member backend table and its seven loop rules. gBASIC's code, since it allocates.</td><td><span class="chip designed">gBASIC's step 6, then this</span></td></tr>
+          <tr><td>R9 (Rachis9)</td><td>Not yet designed</td><td>R9 compiles to RV-9 modules, so its runtime would include <code>whisker.h</code> like any module, under the module rules, drawing to <code>/w0</code>, or to the wire for a remote screen.</td><td><span class="chip open">open</span></td></tr>
+          <tr><td>Any other</td><td>Its own idiom</td><td>The same shape as gBASIC's: a binding that owns a retained model and calls whisker. A language that cannot call C would need a widget-level protocol, which is not designed.</td><td><span class="chip open">open</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="owners">
+    <h2 id="owners">Who owns what</h2>
+    <p>The same rule runs through RV-9, gBASIC's G-SQL and whisker: the application owns its people and their rights; the layers below carry them and decide nothing.</p>
+    <div class="owners">
+      <div class="owner"><h3>The program</h3><p>All state, its users, their permissions, and what each seat may see. A login screen, or keys kept in its own tables.</p></div>
+      <div class="owner"><h3>whisker</h3><p>Nothing between calls (D5). It turns a tree into SVG and an event into what changed, and defines no users or roles.</p></div>
+      <div class="owner"><h3>The host</h3><p>The screen, the input, window and seat numbers, and at most "this connection came with key X", passed on and never interpreted.</p></div>
+      <div class="owner"><h3>SSH</h3><p>Encryption, and whether a connection may reach the program at all. Never the user directory: no one needs an operating-system account.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="next">
+    <h2 id="next">What is built and what is next</h2>
+    <ul>
+      <li><span class="chip built">built</span> whisker, its three helper headers, the desktop window, the RV-9 modules, the browser host with seats and several windows.</li>
+      <li><span class="chip designed">designed</span> the remote client (§5al, D25): SSH first, either side dialling, attach rather than launch, detach keeps running. The wire to be written down; a token and this-machine-only for the browser host before anything goes remote.</li>
+      <li><span class="chip designed">designed</span> gBASIC's whisker backend (<code>ui-backend-gap.md</code>), waiting on gBASIC's contract suites.</li>
+      <li><span class="chip open">open</span> a whisker desktop, which grows from a client that can hold windows from many programs; R9's window description; Windows and macOS builds; a desktop font beyond ASCII (D23).</li>
+    </ul>
+  </section>
+
+  <footer>Source: <span class="mono">whisker/docs/architecture.html</span>, from design.md §5al, §6.1, §9.6 and decisions D5, D23–D25. Written for Matthew, and for the gBASIC and RV-9 sessions.</footer>
+</main>
