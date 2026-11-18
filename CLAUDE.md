@@ -370,6 +370,13 @@ directly**.
   Ctrl-W, Ctrl-N** (Matthew's Ctrl-W closed the browser tab): a program
   binding one gives an Alt chord too; Chrome checks cannot see this.
   **Matthew, after: works well in both hosts.**
+- **§5al — running remotely, designed** (2026-11-17, **D25**: *both* —
+  a program's own window, and a client that shows a program running
+  elsewhere, "like Xorg or RDP but better"). The browser host's protocol
+  is the wire; a native `whisker-client` reads it, tested by giving the
+  same pixels as the program's own window. **The browser host listens on
+  every interface with no secret — fix that first** (a token, this
+  machine by default). Not built yet.
 - **§5ak — Page Up/Down, and a window that behaves** (2026-11-17,
   Matthew: no focus on opening, the X default icon, no Page Up/Down):
   `WSK_KEY_PAGEUP`/`PAGEDOWN` — a memo moves caret and view a page
@@ -576,7 +583,7 @@ layout is compiled in cannot change without a reflash).
 
 ## Read before working
 
-1. `docs/decisions.md` — twenty-five ratified outcomes (D0–D24), one screen. **First**, so that
+1. `docs/decisions.md` — twenty-six ratified outcomes (D0–D25), one screen. **First**, so that
    the design's §4 arguments read as history rather than as open questions.
    Then `docs/roadmap.md`, which is what is left and what would let us stop.
 2. `docs/design.md` — all of it. It is the whole project, and it has been

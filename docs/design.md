@@ -3513,6 +3513,59 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5al. Running remotely — a client for any whisker program (2026-11-17), written before its code
+
+D25: a program keeps its own window, **and** a client can show it from
+elsewhere — *"similar to Xorg or RDP but better"*. Most of it exists: the
+browser host already is a program serving its window over a socket —
+SVG documents (or changed bands) out as Server-Sent Events, points, keys
+and text in as POSTed lines — with seats (§5ab), windows (§5af) and the
+clipboard (§5s) in the protocol. What is missing is a native client, the
+protocol as a written contract, and security.
+
+**Better than X or RDP, measurably, not by claim**: X sends drawing calls
+a client must interpret with the server's fonts and extensions, RDP sends
+pixels; whisker sends **what the window is** — a few kilobytes of SVG for
+a whole screen, a band for a change — and the browser, a phone or a
+native client draws it at its own resolution. Not better yet: no
+encryption, no compression, and a native client draws only what RV-9's
+rasteriser draws (ASCII, no images) until D23's font.
+
+1. **The wire, written down** (`docs/wire.md`): every message each way,
+   as the browser host speaks it today — the contract both clients read
+   and any host serves. Nothing changes but that it is fixed and named;
+   the web suites are its tests.
+2. **A secret on every connection — before anything goes remote.** The
+   host makes a random token at start and prints the address with it
+   (`http://host:8090/?k=…`); the page carries it on its stream and its
+   posts, a client is given it; anything without it is refused before
+   it is read. **Default: listen on this machine only**; listening on
+   the network is asked for (`WHISKER_LISTEN`). Encryption is not this
+   step: an SSH tunnel gives it today (`ssh -L 8090:localhost:8090`),
+   and TLS waits on a library choice (D23).
+3. **`whisker-client`**, native: an SDL window (the desktop host's code),
+   a socket, the documents drawn by RV-9's rasteriser as the desktop host
+   draws them, input sent as the page sends it; seats, extra windows and
+   the clipboard as the page handles them. **Tested by identity**: a
+   program drawn by its own SDL window and the same program drawn
+   through the client — the same documents into the same rasteriser —
+   must give the **same pixels**.
+4. **What a screen can draw, per screen.** Today the browser host tells
+   a program it draws UTF-8 and images, which the native client cannot.
+   A screen says what it draws when it connects; the host answers a
+   program the most every connected screen can (`wh_caps`), and a
+   program asks again when one joins.
+5. Then the Windows and macOS builds of both (§ the porting notes in the
+   conversation of 2026-11-17: five POSIX calls, an icon resource, DPI on
+   Windows; Retina, Cmd as Ctrl and a bundle on macOS).
+
+Done when — for steps 1 to 3, the first increment: the contract
+written; a request without the token refused and one with it served (the
+control); the host on this machine only unless told; the client showing
+the code editor running in another process, typed into and scrolled;
+its pixels equal to the editor's own window's; the browser still a
+client, the token carried.
+
 ## 5ak. Page Up and Page Down, and a desktop window that behaves (2026-11-17), written before its code
 
 Matthew, using the SDL window: *"every time I open it, it's opened but
