@@ -193,8 +193,8 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line)
             <text x="155" y="110" text-anchor="middle" font-size="12">its state and its users</text>
             <text x="155" y="128" text-anchor="middle" font-size="12">whisker · the wire server</text>
             <text x="155" y="146" text-anchor="middle" font-size="11" opacity=".75">keeps running when no one is attached</text>
-            <rect x="44" y="196" width="222" height="70" rx="6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="5 4"/>
-            <text x="155" y="222" text-anchor="middle" font-weight="600">attach relay</text>
+            <rect x="44" y="196" width="222" height="70" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <text x="155" y="222" text-anchor="middle" font-weight="600">seats</text>
             <text x="155" y="240" text-anchor="middle" font-size="12">each connection a seat (§5ab)</text>
             <text x="155" y="256" text-anchor="middle" font-size="11" opacity=".75">passes which key connected</text>
             <line x1="155" y1="196" x2="155" y2="164" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"/>
@@ -220,12 +220,12 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line)
 
             <!-- clients -->
             <g fill="none" stroke="currentColor" stroke-width="1.4">
-              <rect x="640" y="64" width="240" height="66" rx="6" stroke-dasharray="5 4"/>
+              <rect x="640" y="64" width="240" height="66" rx="6"/>
               <rect x="640" y="176" width="240" height="66" rx="6"/>
               <rect x="640" y="288" width="240" height="66" rx="6" stroke-dasharray="5 4"/>
             </g>
             <text x="760" y="90" text-anchor="middle" font-weight="600">whisker-client</text>
-            <text x="760" y="108" text-anchor="middle" font-size="12">desktop; saved connections</text>
+            <text x="760" y="108" text-anchor="middle" font-size="12">desktop — built 2026-11-18</text>
             <text x="760" y="202" text-anchor="middle" font-weight="600">a browser page</text>
             <text x="760" y="220" text-anchor="middle" font-size="12">nothing installed — built</text>
             <text x="760" y="314" text-anchor="middle" font-weight="600">RV-9 client module</text>
@@ -275,7 +275,8 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line)
     <h2 id="next">What is built and what is next</h2>
     <ul>
       <li><span class="chip built">built</span> whisker, its three helper headers, the desktop window, the RV-9 modules, the browser host with seats and several windows.</li>
-      <li><span class="chip designed">designed</span> the remote client (§5al, D25): SSH first, either side dialling, attach rather than launch, detach keeps running. The wire to be written down; a token and this-machine-only for the browser host before anything goes remote.</li>
+      <li><span class="chip built">built</span> the remote client (§5al, D25): the wire written down (<code>docs/wire.md</code>), <code>whisker-client</code>, the browser host on this machine only unless asked, and the code editor a seat per viewer. Tested through real SSH: the client's pixels equal the editor's own window, a viewer detaches and comes back to their caret and view, and each viewer's input reaches only their seat.</li>
+      <li><span class="chip designed">designed</span> the program dialling a screen (<code>WHISKER_DISPLAY</code>), a screen saying what it can draw, a token for pages, saved connections in the client.</li>
       <li><span class="chip designed">designed</span> gBASIC's whisker backend (<code>ui-backend-gap.md</code>), waiting on gBASIC's contract suites.</li>
       <li><span class="chip open">open</span> a whisker desktop, which grows from a client that can hold windows from many programs; R9's window description; Windows and macOS builds; a desktop font beyond ASCII (D23).</li>
     </ul>
