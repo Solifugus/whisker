@@ -96,6 +96,9 @@ if [[ "${1:-}" == "--test" ]]; then
 		# §5am: the wire on one stream -- ssh -W, screens that say what they
 		# draw, a program that dials a listening client through ssh -R
 		python3 "$HERE/../web/duplex.py" "$OUT/whisker-code-web" "$OUT/whisker-client" "$OUT/whisker-code" || exit 1
+		# the fourth independent read's host findings, each a check that
+		# failed before its fix (clipboards, a dial, idle slots, long lines)
+		python3 "$HERE/../web/review4.py" "$OUT/whisker-code-web" "$OUT/whisker-client" || exit 1
 	else
 		echo "      no ssh, sshd or python3: the remote check was skipped"
 	fi

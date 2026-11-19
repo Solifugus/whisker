@@ -1064,6 +1064,8 @@ static inline int wsk__ok_n(const char *t, int n, int caps, int nl)
 		if (c == '\n' && nl) { i++; continue; }
 #ifndef WSK_NO_TABCHAR
 		if (c == '\t' && nl) { i++; continue; }      /* where lines are, columns are (§5ai) */
+#else
+		if (c == '\t') return 0;     /* refused, not a marker: no columns for it */
 #endif
 		if (c < 0x80) {
 #ifndef WSK_NO_UNDRAWN
@@ -3930,7 +3932,11 @@ static inline int wsk__vrow(const char *b, int len, int at, int room, int *end, 
 	   no wider than a tab (§5ai) */
 	if (e - at > room / tw && wsk__vcol(b + at, e - at, tw) > room) {
 		int cut = at + wsk__vfit(b + at, e - at, room, tw);
-		int sp = cut;                    /* a space here may still break, */
+		int sp;
+		/* a row holds a character at least -- a tab wider than the room
+		   would otherwise make an empty row, and every walk an endless one */
+		if (cut == at) cut = wsk__next(b, e, at);
+		sp = cut;                    /* a space here may still break, */
 		while (sp > at && b[sp] != ' ' && b[sp] != '\t') sp--;   /* or a tab */
 		if (sp > at) { *end = sp; return sp + 1; }
 		*end = cut;
@@ -5733,9 +5739,18 @@ static int wsk__focus_off(const wsk_tree_t *r)
 {
 	wsk_tree_t c;
 	const wsk_tree_t *orig, *k;
+	int o;
 	if (r->focus == 0) return 0;
 	k = wsk__keys_in(r, &c, &orig);
-	return wsk__offw(k, r->focus, 0) == 1 || (k != r && wsk__offw(r, r->focus, 0) == 1);
+	o = wsk__offw(k, r->focus, 0);
+	if (o != 1 && k != r) {
+		int p = wsk__offw(r, r->focus, 0);
+		if (p >= 0) o = (o == 1 || p == 1) ? 1 : 0;
+	}
+	/* -1: the focused part is under no tree shown any more -- a tab
+	   closed or switched, a pane closed by the program -- so the keys are
+	   no longer its (fourth read) */
+	return o != 0;
 }
 
 #if !defined(WSK_NO_LISTKEYS) && !defined(WSK_NO_NEST)
@@ -6179,6 +6194,7 @@ static inline int wsk_ui_paste(wsk_ui_t *ui, const char *text, int len,
 	if (ui->root->focus == 0) return WSK_E_NOTFOUND;
 	wsk__focus_now(ui);
 	if ((b = ui->focus_b) == 0) return WSK_E_NOTFOUND;
+	if (wsk__focus_off(ui->root)) return WSK_E_NOTFOUND;     /* off, or gone (§5an) */
 	if (ui->focus_in->item[ui->focus_item].flags & WSK_READONLY) return WSK_E_KIND;   /* §5ap */
 #ifndef WSK_NO_MEMO
 	memo = wsk__lined(ui->focus_in->item[ui->focus_item].kind);
@@ -6635,7 +6651,7 @@ static inline int wsk__stackkeys(wsk_ui_t *ui, const wsk_event_t *ev, wsk_note_t
 	if (c.select && c.n > 0) {
 		int sel = (c.sel >= 0 && c.sel < c.n) ? c.sel : -1, ns;
 		if (key == WSK_KEY_ENTER) {
-			if (sel >= 0) *n = wsk__note(note, max, *n, WSK_NOTE_CLICK, o, sel, -1);
+			if (sel >= 0 && !c.item[sel].off) *n = wsk__note(note, max, *n, WSK_NOTE_CLICK, o, sel, -1);
 			return 1;
 		}
 		if (key == WSK_KEY_UP) ns = (sel <= 0) ? 0 : sel - 1;
@@ -6657,7 +6673,16 @@ static inline int wsk__stackkeys(wsk_ui_t *ui, const wsk_event_t *ev, wsk_note_t
 			                    : (sel + page < c.n) ? sel + page : c.n - 1;
 		}
 		else return 0;
-		if (ns != sel) {
+		/* an off row is passed, the way the key went; none that way, the
+		   other; none at all, the choice stays (§5an) */
+		if (c.item[ns].off) {
+			int d = (key == WSK_KEY_UP || key == WSK_KEY_PAGEUP || key == WSK_KEY_END) ? -1 : 1, m = ns;
+			while (m >= 0 && m < c.n && c.item[m].off) m += d;
+			if (m < 0 || m >= c.n)
+				for (m = ns; m >= 0 && m < c.n && c.item[m].off; m -= d) ;
+			ns = (m >= 0 && m < c.n) ? m : sel;
+		}
+		if (ns != sel && ns >= 0) {
 			o->sel = c.sel = (short)ns;
 #ifndef WSK_NO_SCROLL
 			/* a list that scrolls keeps its choice whole in sight */
@@ -6843,7 +6868,8 @@ static inline int wsk__types_tab(const wsk_ui_t *ui)
 #if !defined(WSK_NO_TABCHAR) && !defined(WSK_NO_MEMO)
 	return ui->root->focus != 0 && ui->focus_b != 0 && ui->focus_b->tabkey && ui->focus_in != 0 &&
 	       wsk__lined(ui->focus_in->item[ui->focus_item].kind) &&
-	       !(ui->focus_in->item[ui->focus_item].flags & WSK_READONLY);   /* walks, read only (§5ap) */
+	       !(ui->focus_in->item[ui->focus_item].flags & WSK_READONLY) &&  /* walks, read only (§5ap), */
+	       !wsk__focus_off(ui->root);                                     /* or off (§5an) */
 #else
 	(void)ui;
 	return 0;
@@ -6913,7 +6939,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		used = 1;
 		if (wsk__over_tree(r, &c)) {
 			if (ev->key == WSK_KEY_ENTER) {
-				if (k >= 0 && k < c.n && c.item[k].kind == WSK_BUTTON) {
+				if (k >= 0 && k < c.n && c.item[k].kind == WSK_BUTTON && !c.goff && !c.item[k].off) {
 					n = wsk__note(note, max, n, WSK_NOTE_CLICK, o, k, -1);
 					if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
 					wsk_over_close(r);
@@ -6929,9 +6955,10 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 					at += up ? -1 : 1;
 					if (at < 0) at = c.n - 1;
 					if (at >= c.n) at = 0;
-					if (c.item[at].kind == WSK_BUTTON) break;
+					if (c.item[at].kind == WSK_BUTTON && !c.item[at].off) break;   /* off passed (§5an) */
 				}
-				if (at >= 0 && at < c.n && c.item[at].kind == WSK_BUTTON && at != k) {
+				if (at >= 0 && at < c.n && c.item[at].kind == WSK_BUTTON && !c.item[at].off &&
+				    !c.goff && at != k) {
 					r->ohi = (short)at;
 #ifndef WSK_NO_SCROLL
 					/* a menu that scrolls keeps it whole in sight (rule 5) */
@@ -6995,8 +7022,8 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 #ifndef WSK_NO_FIELD
 		/* a field without focus takes it, so a Paste goes there; the
 		   focused one keeps its caret and selection, for a Copy */
-		if (k >= 0 && wsk__fbuf(lay, &lay->item[k]) != 0 &&
-		    (const void *)&in->item[k] != r->focus)
+		if (k >= 0 && wsk__fbuf(lay, &lay->item[k]) != 0 && !lay->goff && !lay->item[k].off &&
+		    (const void *)&in->item[k] != r->focus)          /* an off one does not (§5an) */
 			n = wsk__press_field(ui, in, k, lay, rect, x, y, 0, &lo, &hi, note, max, n);
 #endif
 #ifndef WSK_NO_TEXTSEL
@@ -7032,10 +7059,12 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		const wsk_tree_t *in = 0, *lay = r;
 		wsk_tree_t at;
 		wsk_rect_t rect = { 0, 0, 0, 0 };
-		int word = -1, k = wsk__ui_hit(r, x, y, &in, &rect, &word, &at, &lay);
+		int word = -1, k = wsk__ui_hit(r, x, y, &in, &rect, &word, &at, &lay), k0 = k;
 		/* a part that is off is pressed as nothing (§5an): no held mark, no
-		   click, no focus -- while a drag begun there still scrolls */
+		   click, no focus -- while a drag begun there still scrolls, and a
+		   finger held there may still be told why it is off */
 		if (k >= 0 && (lay->goff || lay->item[k].off)) k = -1;
+		(void)k0;
 		ui->down = 1;
 		ui->dragging = 0;
 		ui->x0 = (short)x;
@@ -7059,7 +7088,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 #endif
 #ifndef WSK_NO_TIP
 		/* a finger held is a rest; a mouse's press never is (§5ac rule 1) */
-		if ((ev->key & WSK_MOD_TOUCH) && k >= 0) wsk__tip_rest(ui, in, k, rect, 1, &lo, &hi);
+		if ((ev->key & WSK_MOD_TOUCH) && k0 >= 0) wsk__tip_rest(ui, in, k0, rect, 1, &lo, &hi);
 #endif
 		if (k >= 0 && in->item[k].kind == WSK_BUTTON) {
 			r->held = &in->item[k];
@@ -7134,7 +7163,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			for (int j = wt->n - 1; j >= 0; j--) {
 				int i = wsk__wi(wt, j);
 				if (!wsk__whit(wt, i, x, y)) continue;
-				if (wt->place[i].move) {
+				if (wt->place[i].move && !wt->goff && !wt->item[i].off) {   /* §5an */
 					ui->witem = (short)i;
 					ui->wp0x = wt->place[i].x;
 					ui->wp0y = wt->place[i].y;

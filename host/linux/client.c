@@ -64,6 +64,9 @@ typedef struct {
 	char *b;                 /* what has come and is not yet a whole line */
 	int   len;
 	int   rwin[8];           /* its window n, here: a local number, or -1 */
+	struct { int w, h; char title[64]; } pend[8];   /* a window the program had open
+	                            before this screen had one to open it beside:
+	                            w 0 for none -- opened with window 0 (fourth read) */
 	int   seat;
 } conn_t;
 
@@ -103,7 +106,7 @@ static conn_t *adopt(int rfd, int wfd, pid_t ssh)
 			if (c->b == NULL) c->b = (char *)malloc(BUF);
 			if (c->b == NULL) return NULL;
 			c->live = 1; c->rfd = rfd; c->wfd = wfd; c->ssh = ssh; c->len = 0; c->seat = -1;
-			for (int n = 0; n < 8; n++) c->rwin[n] = -1;
+			for (int n = 0; n < 8; n++) { c->rwin[n] = -1; c->pend[n].w = 0; }
 			fcntl(rfd, F_SETFL, fcntl(rfd, F_GETFL) | O_NONBLOCK);
 			hello(c);
 			return c;
@@ -212,15 +215,22 @@ static void message(conn_t *c, char *m)
 	if (m[0] == 'C' && m[1] == ' ') { unesc(m + 2); wh_copy(m + 2, (int)strlen(m + 2)); return; }
 	if (m[0] == 'O' && m[1] == ' ') {
 		int n, w, h, at = 0;
-		if (sscanf(m + 2, "%d %d %d %n", &n, &w, &h, &at) == 3 && n > 0 && n < 8 && opened) {
+		if (sscanf(m + 2, "%d %d %d %n", &n, &w, &h, &at) == 3 && n > 0 && n < 8) {
+			if (!opened || c->rwin[0] < 0) {   /* on joining, O comes before window 0's first document */
+				c->pend[n].w = w; c->pend[n].h = h;
+				snprintf(c->pend[n].title, sizeof c->pend[n].title, "%s", m + 2 + at);
+				return;
+			}
 			if (c->rwin[n] >= 0) wh_window_close(c->rwin[n]);
 			c->rwin[n] = wh_window(w, h, m + 2 + at);
+			fprintf(stderr, "whisker-client: the program's window %d: %s\n", n, m + 2 + at);
 		}
 		return;
 	}
 	if (m[0] == 'Q' && m[1] == ' ') {
 		int n = atoi(m + 2);
 		if (n > 0 && n < 8 && c->rwin[n] >= 0) { wh_window_close(c->rwin[n]); c->rwin[n] = -1; }
+		if (n > 0 && n < 8) c->pend[n].w = 0;
 		return;
 	}
 	{
@@ -231,6 +241,12 @@ static void message(conn_t *c, char *m)
 		if (n == 0 && c->rwin[0] < 0) {
 			c->rwin[0] = main_window(w, h);
 			if (listening) lobby();
+			for (int k = 1; k < 8 && c->rwin[0] >= 0; k++)   /* the windows it had open already */
+				if (c->pend[k].w > 0 && c->rwin[k] < 0) {
+					c->rwin[k] = wh_window(c->pend[k].w, c->pend[k].h, c->pend[k].title);
+					c->pend[k].w = 0;
+					fprintf(stderr, "whisker-client: the program's window %d, open already: %s\n", k, c->pend[k].title);
+				}
 		}
 		if (c->rwin[n] < 0) return;
 		wh_on(c->rwin[n]);
@@ -243,7 +259,7 @@ static void message(conn_t *c, char *m)
 /* An event of this screen's, as a wire line, to the program it belongs to. */
 static void input(const wh_event_t *e)
 {
-	char l[12064];
+	static char l[60100];
 	conn_t *c = NULL;
 	int w = -1, k = 0;
 	for (int i = 0; i < CONNS && c == NULL; i++)
@@ -263,7 +279,7 @@ static void input(const wh_event_t *e)
 		if (e->key == ('v' | WH_MOD_CTRL)) {
 			/* a paste: this machine's clipboard, carried as the page carries
 			   its own (P, escaped) */
-			char t[6000];
+			static char t[30000];           /* escaped, it fits the host's 64 KB line */
 			int n = wh_paste(t, sizeof t);
 			if (n <= 0) return;
 			l[k++] = 'P'; l[k++] = ' ';

@@ -49,7 +49,8 @@ enum { WSK_TABS_TOP = 0, WSK_TABS_BOTTOM = 1 };
 enum { WSK_TABS_CHOSEN = 1, WSK_TABS_ASKED = 2 };   /* what wsk_tabs_feed says */
 
 typedef struct {
-	char          name[24];     /* what the program calls it, and its id */
+	char          name[24];     /* what the program calls it, and its id: at most
+	                               WSK_ID_MAX - 1 bytes (fourth read) */
 	char          caption[48];  /* what a person reads on it */
 	short         content;      /* its content: a tree in the root's `nest` */
 	unsigned char closable;
@@ -156,7 +157,7 @@ static inline const char *wsk_tabs_current(const wsk_tabs_t *t)
 
 /*
  * A tab: at the end, or with `next` just after the chosen one -- its index,
- * or -1 (no room, a name already used or empty or longer than 23 bytes, no
+ * or -1 (no room, a name already used or empty or longer than WSK_ID_MAX - 1 (11) bytes, no
  * such tree). The first tab is chosen; after that, choosing is the
  * program's. Build after.
  */
@@ -166,7 +167,9 @@ static inline int wsk_tabs_add(wsk_tabs_t *t, const char *name, const char *capt
 	int at, len = 0;
 	if (t->n >= WSK_TABS_MAX || name == 0 || name[0] == '\0' || content < 0 ||
 	    content >= t->root->nests || wsk_tabs_find(t, name) >= 0) return -1;
-	while (name[len] != '\0') if (++len >= (int)sizeof t->tab[0].name) return -1;
+	/* the name is the bar's widget id too, so it fits one -- a longer one
+	   was cut there, and the chosen tab never found to keep in view */
+	while (name[len] != '\0') if (++len >= WSK_ID_MAX) return -1;
 	at = (next && t->cur >= 0) ? t->cur + 1 : t->n;
 	for (int i = t->n; i > at; i--) wsk__tb_move(&t->tab[i], &t->tab[i - 1]);
 	wsk__tb_cpy(t->tab[at].name, name, (int)sizeof t->tab[at].name);
@@ -176,6 +179,7 @@ static inline int wsk_tabs_add(wsk_tabs_t *t, const char *name, const char *capt
 	t->n++;
 	if (t->cur < 0) t->cur = (short)at;
 	else if (at <= t->cur) t->cur++;
+	if (t->asked >= 0 && at <= t->asked) t->asked++;   /* the question stays on its tab */
 	return at;
 }
 

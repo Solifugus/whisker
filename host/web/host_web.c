@@ -48,6 +48,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <stdio.h>
@@ -254,7 +255,9 @@ typedef struct {
 	int  w, h;               /* a seat's screen, once it says (§5ab step 2), or 0 */
 	unsigned gen;            /* which joining of this seat: its posts must say it */
 	long last;               /* when it was last heard from, in ms */
-	char req[8192];          /* a paste comes in one: room for a few KB */
+	char req[65536];         /* a paste comes in one line: room for tens of KB */
+	int  skip;               /* a duplex line too long for req: passed over to its end */
+	int  connecting;         /* a display being dialled, not yet answered (§5am) */
 	char who[64];            /* who its viewer says it is, from ?v= (§5al), or "" */
 	int  caps;               /* what its screen says it draws (§5am), or -1: it did not say */
 	int  duplex;             /* the wire on this one connection, both ways (§5am) */
@@ -280,8 +283,11 @@ static struct {
 	struct { int open, w, h; char title[64]; } win[8];   /* 0 is wh_open's */
 	char      display[256];  /* WHISKER_DISPLAY, a screen to dial (§5am), or "" */
 	long      dlast;         /* when it was last dialled */
-	char     *clip;          /* the clipboard: the last copied or pasted */
-	int       clen;
+	char     *clip[WH_SEATS];  /* each seat's clipboard: the last it copied or
+	                            pasted -- one for all let one viewer's paste
+	                            put in another's text (fourth read) */
+	int       clen[WH_SEATS];
+	int       pseat;         /* the seat of the event wh_poll gave last */
 } S;
 
 static void grow(char **b, int *cap, int need)
@@ -305,6 +311,16 @@ static void push(const wh_event_t *e)
 	   has eight places kept for it, since a lost GONE is a person owned for
 	   ever, and a lost JOIN a screen nobody draws */
 	if (nt == S.qh) return;
+	/* a pointer moving again, before the program saw it move: the one
+	   event, where it is now -- a flood of motion from one seat must not
+	   crowd out another's keys (fourth read) */
+	if (held > 0 && (e->kind == WH_HOVER || e->kind == WH_MOVE)) {
+		wh_event_t *l = &S.q[(S.qt + 63) % 64];
+		if (l->kind == e->kind && l->seat == e->seat && l->win == e->win && l->finger == e->finger) {
+			*l = *e;
+			return;
+		}
+	}
 	if (held >= 56 && e->kind != WH_JOIN && e->kind != WH_GONE) return;
 	S.q[S.qt] = *e;
 	S.qt = nt;
@@ -341,6 +357,8 @@ static void drop(int i)
 	S.c[i].caps = -1;
 	S.c[i].duplex = 0;
 	S.c[i].dialled = 0;
+	S.c[i].skip = 0;
+	S.c[i].connecting = 0;
 }
 
 /*
@@ -365,15 +383,16 @@ static int emit(int i, const char *m, int n)
 }
 
 /* The clipboard's text, kept: the host's copy of what the page has. */
-static void keep(const char *t, int n)
+static void keep(int seat, const char *t, int n)
 {
-	free(S.clip);
-	S.clip = (char *)malloc((size_t)n + 1);
-	S.clen = 0;
-	if (S.clip == 0) return;
-	memcpy(S.clip, t, (size_t)n);
-	S.clip[n] = '\0';
-	S.clen = n;
+	if (seat < 0 || seat >= WH_SEATS) seat = 0;
+	free(S.clip[seat]);
+	S.clip[seat] = (char *)malloc((size_t)n + 1);
+	S.clen[seat] = 0;
+	if (S.clip[seat] == 0) return;
+	memcpy(S.clip[seat], t, (size_t)n);
+	S.clip[seat][n] = '\0';
+	S.clen[seat] = n;
 }
 
 /* One line of /ev: a pointer, a key, text, a paste, or "draw it all again". */
@@ -396,7 +415,7 @@ static void event_line(const char *l, int seat, int win)
 			if (*p == '\\' && p[1] != '\0') { p++; t[n++] = (*p == 'n') ? '\n' : *p; }
 			else t[n++] = *p;
 		}
-		keep(t, n);
+		keep(e.seat, t, n);
 		free(t);
 		e.kind = WH_KEY;
 		e.key = 'v' | WH_MOD_CTRL;
@@ -533,7 +552,12 @@ static void lines_of(int i)
 	while ((nl = memchr(p, '\n', (size_t)(c->got - (p - c->req)))) != 0) {
 		int win = 0;
 		char *l = p;
+		/* the program behind: the rest waits here, and while it waits this
+		   connection is not read -- TCP holds the screen back, rather than
+		   its events being dropped (fourth read) */
+		if ((S.qt - S.qh + 64) % 64 >= 48) break;
 		*nl = '\0';
+		if (c->skip) { c->skip = 0; p = nl + 1; continue; }   /* the end of one too long */
 		if (nl > l && nl[-1] == '\r') nl[-1] = '\0';
 		if (l[0] == 'w' && l[1] >= '0' && l[1] <= '9') {
 			win = atoi(l + 1);
@@ -550,6 +574,14 @@ static void lines_of(int i)
 	c->got -= (int)(p - c->req);
 	memmove(c->req, p, (size_t)c->got);
 	c->req[c->got] = '\0';
+	/* a line longer than the buffer: passed over to its end, said on
+	   stderr -- the seat stays (it was dropped) */
+	if (c->got >= (int)sizeof c->req - 1 && memchr(c->req, '\n', (size_t)c->got) == 0) {
+		fprintf(stderr, "whisker-web: seat %d sent a line over %d bytes: passed over\n", i, (int)sizeof c->req - 1);
+		c->got = 0;
+		c->req[0] = '\0';
+		c->skip = 1;
+	}
 }
 
 static void respond(int i)
@@ -595,6 +627,7 @@ static void respond(int i)
 			event_line(p, seat, win);
 			if (!nl) break;
 			p = nl + 1;
+			if (S.seats && S.c[seat].fd < 0) break;   /* gone (G): nothing after it is its */
 		}
 		send_str(c->fd, "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n");
 		drop(i);
@@ -659,6 +692,19 @@ static void service(int ms)
 		for (int i = 0; i < MAXC; i++)
 			if (S.c[i].fd >= 0 && S.c[i].sub && !S.c[i].duplex && t - S.c[i].last > 6000) drop(i);
 	}
+	/* a connection that is not yet a screen -- a request, a display being
+	   dialled or not yet answering -- and silent five seconds is dropped:
+	   sixteen idle sockets held every slot, and no page could load (fourth
+	   read) */
+	{
+		long t = now_ms();
+		for (int i = WH_SEATS; i < MAXC; i++)
+			if (S.c[i].fd >= 0 && !S.c[i].sub && t - S.c[i].last > 5000) drop(i);
+	}
+	/* lines a duplex screen sent while the program was behind (lines_of) */
+	for (int i = 0; i < MAXC; i++)
+		if (S.c[i].fd >= 0 && S.c[i].duplex && S.c[i].got > 0 && memchr(S.c[i].req, '\n', (size_t)S.c[i].got))
+			lines_of(i);
 	/* a display this program dials (§5am): again every three seconds while
 	   it is not there -- gone, it may come back */
 	if (S.display[0] != '\0' && now_ms() - S.dlast >= 3000) {
@@ -677,9 +723,15 @@ static void service(int ms)
 				hints.ai_family = AF_UNSPEC;
 				hints.ai_socktype = SOCK_STREAM;
 				if (getaddrinfo(host[0] ? host : "127.0.0.1", colon + 1, &hints, &ai) == 0) {
+					/* without waiting: a display that is away (a laptop asleep)
+					   held connect() -- and every screen -- for minutes; the
+					   poll below finishes it (fourth read) */
 					for (a = ai; a != 0 && fd < 0; a = a->ai_next) {
 						fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
-						if (fd >= 0 && connect(fd, a->ai_addr, a->ai_addrlen) != 0) { close(fd); fd = -1; }
+						if (fd >= 0) fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+						if (fd >= 0 && connect(fd, a->ai_addr, a->ai_addrlen) != 0 && errno != EINPROGRESS) {
+							close(fd); fd = -1;
+						}
 					}
 					freeaddrinfo(ai);
 				}
@@ -687,15 +739,24 @@ static void service(int ms)
 			for (i = WH_SEATS; fd >= 0 && i < MAXC && S.c[i].fd >= 0; i++) ;
 			if (fd >= 0 && i < MAXC) {          /* the screen speaks first: its WHISKER line */
 				struct timeval tv = { 1, 0 };
+				int one = 1;
 				setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+				setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof one);   /* a half-open one ends */
 				S.c[i].fd = fd; S.c[i].sub = 0; S.c[i].got = 0; S.c[i].dialled = 1;
 				S.c[i].caps = -1; S.c[i].duplex = 0; S.c[i].who[0] = '\0';
+				S.c[i].connecting = 1; S.c[i].skip = 0; S.c[i].last = now_ms();
 			} else if (fd >= 0) close(fd);
 		}
 	}
 	p[n].fd = S.lfd; p[n].events = POLLIN; idx[n] = -1; n++;
 	for (int i = 0; i < MAXC; i++)
-		if (S.c[i].fd >= 0) { p[n].fd = S.c[i].fd; p[n].events = POLLIN; idx[n] = i; n++; }
+		if (S.c[i].fd >= 0) {
+			p[n].fd = S.c[i].fd;
+			p[n].events = S.c[i].connecting ? POLLOUT
+			            : (S.c[i].got >= (int)sizeof S.c[i].req - 1 ||
+			               (S.c[i].duplex && (S.qt - S.qh + 64) % 64 >= 48)) ? 0 : POLLIN;
+			idx[n] = i; n++;
+		}
 	if (poll(p, (nfds_t)n, ms) <= 0) return;
 
 	if (p[0].revents & POLLIN) {
@@ -707,16 +768,31 @@ static void service(int ms)
 			/* a new request starts above the seats; a stream moves down */
 			for (i = WH_SEATS; i < MAXC && S.c[i].fd >= 0; i++) ;
 			if (i == MAXC) close(fd);
-			else { S.c[i].fd = fd; S.c[i].sub = 0; S.c[i].got = 0; S.c[i].caps = -1; S.c[i].duplex = 0; S.c[i].dialled = 0; S.c[i].who[0] = '\0'; }
+			else {
+				S.c[i].fd = fd; S.c[i].sub = 0; S.c[i].got = 0; S.c[i].caps = -1; S.c[i].duplex = 0; S.c[i].dialled = 0;
+				S.c[i].who[0] = '\0'; S.c[i].skip = 0; S.c[i].connecting = 0; S.c[i].last = now_ms();
+			}
 		}
 	}
 	for (int k = 1; k < n; k++) {
 		int i = idx[k];
 		client_t *c = &S.c[i];
 		ssize_t r;
+		if (c->connecting) {                   /* the dial answered, or failed */
+			int err = 0;
+			socklen_t el = sizeof err;
+			if (!(p[k].revents & (POLLOUT | POLLHUP | POLLERR))) continue;
+			if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &err, &el) != 0 || err != 0) { drop(i); continue; }
+			fcntl(c->fd, F_SETFL, fcntl(c->fd, F_GETFL) & ~O_NONBLOCK);
+			c->connecting = 0;
+			c->last = now_ms();
+			continue;
+		}
 		if (!(p[k].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+		if (c->got >= (int)sizeof c->req - 1) { drop(i); continue; }   /* full, and hung up */
 		r = recv(c->fd, c->req + c->got, sizeof c->req - 1 - (size_t)c->got, 0);
 		if (r <= 0) { drop(i); continue; }
+		if (!c->sub) c->last = now_ms();
 		if (c->sub && !c->duplex) continue;  /* a stream's screen says nothing more on it */
 		c->got += (int)r;
 		c->req[c->got] = '\0';
@@ -967,6 +1043,7 @@ int wh_poll(wh_event_t *out)
 	if (S.qh == S.qt) { out->kind = WH_NOTHING; return WH_NOTHING; }
 	*out = S.q[S.qh];
 	S.qh = (S.qh + 1) % 64;
+	S.pseat = out->seat;
 	return out->kind;
 }
 
@@ -982,7 +1059,7 @@ int wh_copy(const char *s, int n)
 	char *m = (char *)malloc((size_t)n * 2 + 16);
 	int k;
 	if (m == 0) return -1;
-	keep(s, n);
+	keep(S.pseat, s, n);          /* the seat whose event the program is answering */
 	k = snprintf(m, 16, "data: C ");
 	for (int i = 0; i < n; i++) {
 		if (s[i] == '\n') { m[k++] = '\\'; m[k++] = 'n'; }
@@ -1000,9 +1077,10 @@ int wh_copy(const char *s, int n)
    or -1. */
 int wh_paste(char *b, int cap)
 {
-	if (S.clip == 0 || S.clen == 0 || S.clen >= cap) return -1;
-	memcpy(b, S.clip, (size_t)S.clen + 1);
-	return S.clen;
+	int k = (S.pseat >= 0 && S.pseat < WH_SEATS) ? S.pseat : 0;
+	if (S.clip[k] == 0 || S.clen[k] == 0 || S.clen[k] >= cap) return -1;
+	memcpy(b, S.clip[k], (size_t)S.clen[k] + 1);
+	return S.clen[k];
 }
 
 void wh_close(void)
@@ -1010,6 +1088,7 @@ void wh_close(void)
 	if (!S.open) return;
 	for (int i = 0; i < MAXC; i++) if (S.c[i].fd >= 0) drop(i);
 	close(S.lfd);
-	free(S.doc); free(S.log); free(S.clip);
+	free(S.doc); free(S.log);
+	for (int i = 0; i < WH_SEATS; i++) free(S.clip[i]);
 	S.open = 0;
 }

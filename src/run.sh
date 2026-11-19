@@ -103,6 +103,17 @@ for D in "" -DWSK_PANEL -DWSK_MINIMAL -DWSK_NO_FIELD -DWSK_NO_MARKS -DWSK_NO_SCR
 	fi
 done
 echo "ok    whisker.h builds with each of the 29 profiles and switches, -Werror"
+# a switch that drops a thing refuses it, rather than drawing it some other
+# way: WSK_NO_TABCHAR let a tab into a memo as a marker (the fourth read)
+cat > /tmp/wsk_notab.c <<'C'
+#include "whisker.h"
+int main(void) { return wsk__ok_n("a\tb", 3, 0, 1) != 0; }
+C
+if ${CC:-gcc} -O1 -Wall -Wextra -Werror -DWSK_NO_TABCHAR -I"$HERE" -o /tmp/wsk_notab /tmp/wsk_notab.c && /tmp/wsk_notab; then
+	echo "ok    -DWSK_NO_TABCHAR: a memo refuses a tab, not a marker for it"
+else
+	echo "FAIL  -DWSK_NO_TABCHAR lets a tab into a memo"; exit 1
+fi
 
 echo
 echo "-- the default palette: legible, and told apart in every kind of colour vision (D24)"

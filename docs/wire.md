@@ -37,7 +37,10 @@ Plain **HTTP/1.1 over TCP**. The program listens; screens connect.
 | `WHISKER 1 …` | not HTTP at all: **the wire on one connection**, both ways (§8) |
 | `POST /ev[?s=<seat>&g=<gen>][&w=<window>]` | **events**: this screen's input, lines in the body; answered `204`, connection closed |
 
-A request is at most 8 KB. Anything else is `404`; a stream when sixteen
+A request, or a line on one stream (§8), is at most 64 KB — a longer line
+is passed over to its end and the seat kept. A connection that is not yet
+a screen (a request, a display dialled) and silent five seconds is
+closed. Anything else is `404`; a stream when sixteen
 are open is `503`.
 
 ## 2. The stream: program → screen
@@ -81,14 +84,17 @@ a window other than 0.
 | `W <x> <y> <d>` | wheel: `d` pixels, positive toward the end |
 | `K <key>` | **a key**: one of `WH_KEY_*` — 1 Left, 2 Right, 3 Home, 4 End, 5 Backspace, 6 Delete, 7 Enter, 8 Tab, 9 Shift-Tab, 10 Escape, 11 Up, 12 Down, 13 Menu, 14 Page Up, 15 Page Down — or a **chord**, a printable character lower-case; either with modifiers added: 256 Shift, 512 Ctrl, 1024 Alt. Ctrl-S is `K 627` |
 | `T <text>` | typed text, UTF-8, up to 7 bytes, to the end of the line |
-| `P <text>` | **pasted** text, escaped (§4): kept as the clipboard, then Ctrl-V |
+| `P <text>` | **pasted** text, escaped (§4): kept as **this seat's** clipboard, then Ctrl-V — each seat has its own |
 | `X` | draw everything again (`WH_EXPOSE`) |
 | `C` | a window's close button (`WH_CLOSE`), with `w` — never window 0 here |
 | `Y` | still here (seats): every 2 s; **6 s of silence and the seat is gone** |
 | `G` | gone for good: the page is closing (seats) |
 | `Z <w> <h>` | this screen's size in pixels, 160..4096 (seats) |
 
-A point outside the screen is dropped (a hover's `-1 -1` aside). A finger's
+A point outside the screen is dropped (a hover's `-1 -1` aside). Motion
+(`M`, `H`) the program has not yet taken is merged, the newest standing,
+so one screen's pointer cannot crowd out another's keys; and while the
+program is behind, a stream is not read — TCP holds the screen back. A finger's
 number is the screen's, so it is folded into 1–255 and never becomes 0.
 
 ## 4. Text in messages
@@ -132,6 +138,11 @@ lines.)
 
 ## 7. Not yet
 
+- **A slow screen slows every screen**: a document is written to each in
+  turn, waiting up to a second on one whose link is full (and dropping it
+  after). Queues per screen would end that; named by the fourth review,
+  not built.
+
 - **No encryption, no secret in the protocol itself**: SSH provides both
   for a remote screen; a browser on the network has only
   `WHISKER_LISTEN`'s choice to open it. A token for pages (design §5al
@@ -174,4 +185,6 @@ default), which answers with its `WHISKER` line; from there it is a seat
 like any other. Across machines: `ssh -R 9100:127.0.0.1:9100 you@server`,
 then on the server `WHISKER_DISPLAY=127.0.0.1:9100 program`. **The display
 going away leaves the program running**, and it dials again every three
-seconds while it is away — a display that comes back gets it back.
+seconds while it is away — a display that comes back gets it back. The
+dial never waits: a display that does not answer (a laptop asleep) costs
+the program's other screens nothing.

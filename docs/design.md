@@ -3513,6 +3513,80 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## A fourth independent read, 2026-11-18 — tabs to read only
+
+Overdue: nine iterations since the third (§5ah–§5ap). The same two-reader
+shape, from `98a08d9`: one on `whisker.h` and `whisker_tabs.h`, one on
+the hosts, the wire and the client. **Eight in the headers (seven
+confirmed by running), ten in the hosts (eight confirmed)** — each fixed
+with a check that fails before its fix, except the slow screen, named in
+`wire.md` §7. **1,360 checks** (1,338); the Linux suite gains
+`host/web/review4.py` (12). Every earlier output byte-identical.
+
+**The headers**:
+
+- **A wrapping memo narrower than a tab hung for ever**: a soft row
+  starting with a tab wider than the room took nothing, so every walk of
+  rows — drawing, a click, the arrows — never ended. A row now takes a
+  character at least. (§5ai; any memo under ~8 columns, or `tab` above
+  the room, which the check allowed.)
+- **§5an's off parts were still reachable four ways**: an open menu's
+  keys walked to an off item and Enter chose it; a focused list's keys
+  chose an off row and Enter clicked it; a right-click focused an off
+  field and `wsk_ui_paste` then wrote into it; a movable world item that
+  was off was still dragged. Each is passed over now — the list's keys
+  step past an off row, and a world drag on one pans instead.
+- **Focus stayed in a tab's body after the program removed or switched
+  the tab** (Studio's own flow: ASKED, then remove), and typing went into
+  a field no one could see. Fixed in the toolkit, not the tabs header:
+  **a focus under no tree shown is not given keys** — the same answer for
+  a dock pane the program closes, or any rebuilt window.
+- **A tab name of 12–23 bytes** was taken but cut as the bar's widget
+  id, so the chosen tab was never scrolled into view; names now fit an
+  id (11 bytes) or are refused. A tab added before the one whose close
+  was asked moves `asked` with it.
+- **`-DWSK_NO_TABCHAR` let a tab into a memo** as a silent one-column
+  gap (§5aj's markers took it); it is refused, as the switch says. The
+  run checks it now.
+- **A memo that types tabs, gone off while focused, trapped Tab**; and
+  **a finger held on an off part could never be told why** — the tip's
+  rest now starts from what is under the finger, off or not.
+
+**The hosts**:
+
+- **The code editor: two seats' edits.** A deletion moved other seats'
+  carets twice (clamped, then shifted); and an edit whose common prefix
+  ended inside a character (é replaced by è) moved another caret into
+  it — the next key from that seat made the document invalid UTF-8 and
+  **every screen stopped drawing**. Both ends of an edit are now between
+  characters, and carets move once.
+- **One clipboard for every seat**: two pastes arriving together, one
+  viewer got the other's text. Each seat has its own; `wh_paste` and
+  `wh_copy` use the seat of the event being answered.
+- **`WHISKER_DISPLAY` naming a machine that does not answer froze the
+  program** for the length of a TCP timeout, again every three seconds.
+  The dial is non-blocking, finished by the poll.
+- **Sixteen silent connections held every slot** — no page loaded, no
+  screen joined, seated pages timed out. A connection that is not yet a
+  screen is closed after five silent seconds; a dialled one keeps alive.
+- **A paste over 8 KB dropped its viewer** (a duplex line filled the
+  buffer). Lines may be 64 KB, the client sends up to 30,000 bytes of
+  clipboard, and a longer line is passed over with the seat kept.
+- **One seat's pointer flood dropped another's keys** (the shared queue
+  full). Motion not yet taken is merged; a stream is not read while the
+  program is behind.
+- **The client never showed a window already open when it attached**:
+  `O` came before window 0 existed. Remembered and opened with it.
+- **A file named beyond ASCII** cut mid-character in the status line —
+  refused at start ("a NUL byte"), or a blank window on a screen without
+  UTF-8. The name is cut between characters and `?` stands for what a
+  screen cannot draw.
+- Lesser: events after `G` in one POST were still the seat's; the
+  editor's 32 remembered viewers never forgot one (the oldest goes now).
+- **Not fixed: a slow screen slows every screen** — documents are
+  written to each in turn, up to a second's wait on a full link. Queues
+  per screen; named in `wire.md` §7.
+
 ## 5ap. Striped rows and a part that is read only (2026-11-18), written before its code
 
 The last two of `ui-backend-gap.md`'s small gaps: gBASIC's `striped`

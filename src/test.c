@@ -7281,6 +7281,186 @@ int main(void)
 		ok(wsk_check(&r, &which) == WSK_OK, "and the window checks with it on a field and a memo");
 	}
 
+	printf("\n-- a fourth independent read: the library\n");
+	{
+		/* 1. a wrapping memo whose room is narrower than a tab */
+		int end = -1, nx = wsk__vrow("\tx", 2, 0, 4, &end, 8);
+		ok(nx > 0 && end > 0, "a soft row that starts with a tab wider than the room takes the tab: the walks end");
+		nx = wsk__vrow("ab cd", 5, 0, 3, &end, 8);
+		ok(nx == 3 && end == 2, "CONTROL: an ordinary wrap still breaks at its space");
+	}
+	{
+		/* 2. parts that are off: a menu's keys, a list's keys, a right-click, a paste, a world */
+		static wsk_widget_t W[3], MENU[2], ROWS[3];
+		char f[32] = "abc";
+		wsk_buf_t b;
+		wsk_tree_t r, k[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		int n, y0, y1, clicked;
+		memset(W, 0, sizeof W); memset(MENU, 0, sizeof MENU); memset(ROWS, 0, sizeof ROWS); memset(&b, 0, sizeof b);
+		W[0].kind = WSK_BUTTON; snprintf(W[0].id, WSK_ID_MAX, "file"); snprintf(W[0].text, WSK_TEXT_MAX, "File"); W[0].size = 30;
+		W[1].kind = WSK_STACK; snprintf(W[1].id, WSK_ID_MAX, "list"); W[1].sub = 1; W[1].size = 90;
+		W[2].kind = WSK_FIELD; snprintf(W[2].id, WSK_ID_MAX, "fld"); W[2].sub = 0; W[2].size = 30; W[2].off = 1;
+		MENU[0].kind = WSK_BUTTON; snprintf(MENU[0].id, WSK_ID_MAX, "del"); snprintf(MENU[0].text, WSK_TEXT_MAX, "Delete"); MENU[0].size = 30; MENU[0].off = 1;
+		MENU[1].kind = WSK_BUTTON; snprintf(MENU[1].id, WSK_ID_MAX, "cpy"); snprintf(MENU[1].text, WSK_TEXT_MAX, "Copy"); MENU[1].size = 30;
+		for (int i = 0; i < 3; i++) {
+			ROWS[i].kind = WSK_LABEL; ROWS[i].size = 30;
+			snprintf(ROWS[i].id, WSK_ID_MAX, "r%d", i); snprintf(ROWS[i].text, WSK_TEXT_MAX, "row %d", i);
+		}
+		ROWS[1].off = 1;
+		b.b = f; b.cap = sizeof f; b.len = 3;
+		wsk_init(&r, WSK_COL, 300, 300); r.pad = 4; r.gap = 4; r.item = W; r.n = 3; r.buf = &b; r.bufs = 1; r.nest = k; r.nests = 2;
+		wsk_nest_init(&k[0], &r, WSK_COL); k[0].item = MENU; k[0].n = 2; k[0].w = 100; k[0].h = 68;
+		wsk_nest_init(&k[1], &r, WSK_COL); k[1].item = ROWS; k[1].n = 3; k[1].select = 1; k[1].pad = 0; k[1].gap = 0;
+		wsk_ui_init(&ui, &r);
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY;
+		wsk_ui_open(&ui, 0, "file", &y0, &y1);
+		ev.key = WSK_KEY_DOWN; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(r.ohi == 1, "a menu's Down passes its off Delete and reaches Copy");
+		ev.key = WSK_KEY_ENTER; n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_CLICK && nt[0].item == 1, "and Enter chooses Copy");
+		wsk_ui_open(&ui, 0, "file", &y0, &y1);
+		r.ohi = 0;                                       /* as if reached before it went off */
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 0, "Enter on an off item reached: no CLICK");
+		wsk_over_close(&r);
+		wsk_ui_focus(&ui, "list", &y0, &y1);
+		k[1].sel = 0;
+		ev.key = WSK_KEY_DOWN; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(k[1].sel == 2, "a list's Down from row 0 passes off row 1 to row 2");
+		ev.key = WSK_KEY_UP; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(k[1].sel == 0, "and Up passes it back to row 0");
+		k[1].sel = 1;
+		ev.key = WSK_KEY_ENTER; n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		clicked = (n > 0 && nt[0].kind == WSK_NOTE_CLICK);
+		ok(!clicked, "Enter on an off row chosen by the program: no CLICK");
+		k[1].sel = 2; n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].item == 2, "CONTROL: on row 2, CLICK");
+		{
+			wsk_rect_t fr = rect_of(&r, "fld");
+			memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_MENU; ev.x = (short)(fr.x + 5); ev.y = (short)(fr.y + 5);
+			wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+			ok(r.focus != &W[2], "a right-click on an off field: it does not take the focus");
+			wsk_ui_focus(&ui, "list", &y0, &y1);
+			W[2].off = 0; wsk_ui_focus(&ui, "fld", &y0, &y1); W[2].off = 1;
+			ok(wsk_ui_paste(&ui, "ZZ", 2, nt, 8, &y0, &y1) < 0 && b.len == 3, "wsk_ui_paste into a field gone off: refused");
+			W[2].off = 0;
+			ok(wsk_ui_paste(&ui, "ZZ", 2, nt, 8, &y0, &y1) > 0 && b.len == 5, "CONTROL: on, it pastes");
+		}
+	}
+	{
+		static wsk_widget_t WI[1];
+		wsk_place_t pl[1];
+		wsk_tree_t w;
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		int y0, y1;
+		memset(WI, 0, sizeof WI); memset(pl, 0, sizeof pl);
+		WI[0].kind = WSK_BUTTON; snprintf(WI[0].id, WSK_ID_MAX, "a"); snprintf(WI[0].text, WSK_TEXT_MAX, "Ann"); WI[0].off = 1;
+		pl[0].x = 10; pl[0].y = 20; pl[0].w = 100; pl[0].h = 30; pl[0].scale = 256; pl[0].move = 1;
+		wsk_init(&w, WSK_COL, 320, 200); w.item = WI; w.n = 1; w.overflow = WSK_WORLD; w.place = pl; w.wspace = WSK_OPEN;
+		wsk_ui_init(&ui, &w);
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_DOWN; ev.x = 20; ev.y = 30; ev.d = 1; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = 80; ev.y = 90; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(pl[0].x == 10 && pl[0].y == 20 && (w.vx != 0 || w.vy != 0),
+		   "a movable world item that is off: not moved by a drag -- which pans the world instead");
+		WI[0].off = 0; w.vx = 0; w.vy = 0;
+		ev.kind = WSK_EV_DOWN; ev.x = 20; ev.y = 30; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ev.kind = WSK_EV_MOVE; ev.x = 80; ev.y = 90; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(pl[0].x != 10, "CONTROL: on, it moves");
+	}
+	{
+		/* 3. focus in a tab body no longer shown; 4. long names; 8. asked */
+		static wsk_widget_t C0[1], C1[1];
+		static const wsk_widget_t TOP[] = { { .kind = WSK_STACK, .id = "set", .sub = 2, .weight = 1 } };
+		static wsk_tabs_t tb;
+		static const char *strs[WSK_TABS_MAX];
+		static wsk_tree_t k[2 + WSK_TABS_TREES], root;
+		char fa[32] = "aaa", fb[32] = "bbb";
+		wsk_buf_t bufs[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		int y0, y1;
+		memset(bufs, 0, sizeof bufs); memset(C0, 0, sizeof C0); memset(C1, 0, sizeof C1);
+		bufs[0].b = fa; bufs[0].cap = 32; bufs[0].len = 3; bufs[1].b = fb; bufs[1].cap = 32; bufs[1].len = 3;
+		C0[0].kind = WSK_FIELD; snprintf(C0[0].id, WSK_ID_MAX, "fa"); C0[0].sub = 0; C0[0].size = 30;
+		C1[0].kind = WSK_FIELD; snprintf(C1[0].id, WSK_ID_MAX, "fb"); C1[0].sub = 1; C1[0].size = 30;
+		wsk_init(&root, WSK_COL, 400, 200); root.pad = 0; root.gap = 0; root.item = TOP; root.n = 1; root.buf = bufs; root.bufs = 2;
+		root.nest = k; root.nests = 2 + WSK_TABS_TREES; root.str = strs; root.strs = WSK_TABS_MAX;
+		wsk_nest_init(&k[0], &root, WSK_COL); k[0].item = C0; k[0].n = 1;
+		wsk_nest_init(&k[1], &root, WSK_COL); k[1].item = C1; k[1].n = 1;
+		memset(&tb, 0, sizeof tb);
+		wsk_tabs_init(&tb, &root, strs, 2, 0, WSK_TABS_TOP);
+		wsk_tabs_add(&tb, "a", "a", 0, 1, 0); wsk_tabs_add(&tb, "b", "b", 1, 1, 0); wsk_tabs_build(&tb);
+		wsk_ui_init(&ui, &root);
+		wsk_ui_focus(&ui, "fa", &y0, &y1);
+		wsk_tabs_remove(&tb, "a"); wsk_tabs_build(&tb);
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_TEXT; ev.text[0] = 'Z';
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].len == 3, "a tab removed by the program while its field had the keys: typing no longer reaches it");
+		wsk_ui_focus(&ui, "fb", &y0, &y1);
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[1].len == 4, "CONTROL: the field shown takes them");
+		ok(wsk_tabs_add(&tb, "document_190", "x", 0, 1, 0) < 0 && wsk_tabs_add(&tb, "document_19", "x", 0, 1, 0) >= 0,
+		   "a tab's name must fit a widget id: 12 bytes refused, 11 taken");
+		tb.asked = 1;
+		wsk_tabs_add(&tb, "c", "c", 0, 1, 0);           /* at the end: asked stays */
+		tb.cur = 0;
+		wsk_tabs_add(&tb, "d", "d", 0, 1, 1);           /* after the chosen: before the asked */
+		ok(tb.asked == 2, "a tab added before the one whose close was asked: the question stays on its tab");
+	}
+	{
+		/* 6. a tabkey memo gone off: Tab walks */
+		static wsk_widget_t W[2];
+		char m[64] = "one", f2[32] = "x";
+		wsk_buf_t b[2];
+		wsk_tree_t r;
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		int y0, y1;
+		memset(W, 0, sizeof W); memset(b, 0, sizeof b);
+		W[0].kind = WSK_MEMO; snprintf(W[0].id, WSK_ID_MAX, "m"); W[0].sub = 0; W[0].size = 60;
+		W[1].kind = WSK_FIELD; snprintf(W[1].id, WSK_ID_MAX, "f"); W[1].sub = 1; W[1].size = 30;
+		b[0].b = m; b[0].cap = sizeof m; b[0].len = 3; b[0].tabkey = 1;
+		b[1].b = f2; b[1].cap = sizeof f2; b[1].len = 1;
+		wsk_init(&r, WSK_COL, 300, 200); r.item = W; r.n = 2; r.buf = b; r.bufs = 2;
+		wsk_ui_init(&ui, &r);
+		wsk_ui_focus(&ui, "m", &y0, &y1);
+		W[0].off = 1;
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_TAB;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(r.focus == &W[1] && b[0].len == 3, "a memo that types tabs, gone off with the keys: Tab walks on");
+	}
+	{
+		/* 7. a finger held on an off part may be told why it is off */
+		static wsk_widget_t W[1];
+		wsk_tree_t r;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		int y0, y1, n;
+		memset(W, 0, sizeof W);
+		W[0].kind = WSK_BUTTON; snprintf(W[0].id, WSK_ID_MAX, "save"); snprintf(W[0].text, WSK_TEXT_MAX, "Save");
+		W[0].size = 40; W[0].off = 1;
+		wsk_init(&r, WSK_COL, 300, 100); r.item = W; r.n = 1;
+		wsk_ui_init(&ui, &r);
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_DOWN; ev.x = 50; ev.y = 20; ev.key = WSK_MOD_TOUCH;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_TICK; ev.d = 500; ev.key = 0;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_TIP && nt[0].item == 0, "a finger held on Save, off: TIP -- a tip may say why");
+		ev.kind = WSK_EV_UP;
+		n = wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ok(n == 0 || nt[0].kind != WSK_NOTE_CLICK, "and lifted: still no CLICK");
+	}
+
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);
 	return fails != 0;
 }

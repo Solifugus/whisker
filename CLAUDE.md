@@ -461,6 +461,17 @@ directly**.
   sets it and **opens tab-indented files in both hosts**. +882 bytes
   default, +746 panel; `WSK_NO_TABCHAR`. One check rebaselined on
   purpose ("a memo holding a tab is refused").
+- **A fourth independent read, 2026-11-18** (design, after §5ap): a
+  wrapping memo narrower than a tab **hung**; off parts still reached by
+  a menu's keys, a list's keys, a right-click and paste, a world drag;
+  **a focus under no tree shown is given no keys** (a tab removed while
+  its field had them); tab names cut as ids. Hosts: two seats' edits
+  could make the document **invalid UTF-8 and stop every screen**; one
+  clipboard for all seats; an unanswering `WHISKER_DISPLAY` froze the
+  program; sixteen silent sockets locked everyone out; pastes over 8 KB
+  dropped the viewer; a pointer flood ate others' keys. 22 + 12 checks
+  (`host/web/review4.py`). **Not fixed**: a slow screen slows all
+  (`wire.md` §7).
 - **A third independent read, 2026-11-16** (design, after §5ag): a grab
   ended by a menu, a dialog or a lost lifting left the dock mid-drag —
   and the program's own grab tree moved a pane; a triple-click floated
@@ -541,10 +552,10 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,338 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,360 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 123 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 135 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),

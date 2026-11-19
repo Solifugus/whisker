@@ -254,12 +254,29 @@ static void status(seat_t *st)
 		if (text[i] == '\n') { line++; col = 1; }
 		else if (((unsigned char)text[i] & 0xC0) != 0x80) col++;   /* characters, not bytes */
 	}
-	const char *base = strrchr(path, '/');
-	char t[96];
+	const char *base = strrchr(path, '/'), *nm = base ? base + 1 : path;
+	char t[160], name[64];
 	char kind[24];
+	int utf8 = (wh_seat_caps((int)(st - seat)) & WH_CAP_UTF8) != 0, o = 0, chars = 0, room;
+	/* the file's name, sixteen characters at most and never cut inside
+	   one; a screen that draws only ASCII gets '?' for each other one --
+	   else its status line was refused, and the window stayed blank */
+	for (int i = 0; nm[i] != '\0' && chars < 16 && o < (int)sizeof name - 5; chars++) {
+		int n = 1;
+		while (((unsigned char)nm[i + n] & 0xC0) == 0x80) n++;
+		if (!utf8 && ((unsigned char)nm[i] & 0x80)) name[o++] = '?';
+		else for (int k = 0; k < n; k++) name[o++] = nm[i + k];
+		i += n;
+	}
+	name[o] = '\0';
 	tf_name(&tf, kind, sizeof kind);
-	snprintf(t, sizeof t, "%.16s  %d:%d%s%s", base ? base + 1 : path, line, col, kind[0] ? "  " : "", kind);
-	snprintf(st->items[0].text, WSK_TEXT_MAX, "%.31s", t);
+	snprintf(t, sizeof t, "%s  %d:%d%s%s", name, line, col, kind[0] ? "  " : "", kind);
+	room = WSK_TEXT_MAX - 1;                       /* and the whole cut between characters too */
+	if ((int)strlen(t) > room) {
+		while (room > 0 && ((unsigned char)t[room] & 0xC0) == 0x80) room--;
+		t[room] = '\0';
+	}
+	snprintf(st->items[0].text, WSK_TEXT_MAX, "%s", t);
 }
 
 static void to_window(wsk_sink_t *s, const char *b, int n) { (void)s; wh_write(b, n); }
@@ -393,7 +410,12 @@ static void edited(int by)
 {
 	int a = 0, z = 0, oe, ne, lines = 0;
 	while (a < prevlen && a < textlen && prev[a] == text[a]) a++;
+	/* both ends between characters: a caret moved to `a` must never land
+	   inside one -- é replaced by è shares its first byte (fourth read) */
+	while (a > 0 && ((a < prevlen && ((unsigned char)prev[a] & 0xC0) == 0x80) ||
+	                 (a < textlen && ((unsigned char)text[a] & 0xC0) == 0x80))) a--;
 	while (z < prevlen - a && z < textlen - a && prev[prevlen - 1 - z] == text[textlen - 1 - z]) z++;
+	while (z > 0 && ((unsigned char)text[textlen - z] & 0xC0) == 0x80) z--;
 	oe = prevlen - z;
 	ne = textlen - z;
 	if (oe == a && ne == a) return;                 /* nothing changed */
@@ -451,7 +473,11 @@ static void left(int i)
 	if (!st->on) return;
 	if (st->who[0]) {
 		for (v = 0; v < nviewers && strcmp(viewers[v].who, st->who) != 0; v++) ;
-		if (v == nviewers && nviewers < VIEWERS) nviewers++;
+		if (v == nviewers && nviewers == VIEWERS) {     /* full: the oldest is forgotten */
+			memmove(viewers, viewers + 1, (VIEWERS - 1) * sizeof viewers[0]);
+			v = --nviewers;
+		}
+		if (v == nviewers) nviewers++;
 		if (v < nviewers) {
 			snprintf(viewers[v].who, sizeof viewers[v].who, "%s", st->who);
 			viewers[v].caret = st->buf[0].caret;
@@ -685,8 +711,8 @@ int main(int argc, char **argv)
 		   and the others' carets and views moved with it (§5al) */
 		if (text_changed && !st->choosing) {
 			colour();
+			if (snap) edited(he.seat);     /* before views() clamps: else moved twice */
 			views();
-			if (snap) edited(he.seat);
 			y0 = 0; y1 = H;                 /* a line's colours can change the lines after */
 		}
 		status(st);
