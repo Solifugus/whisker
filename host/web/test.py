@@ -78,7 +78,10 @@ class Events:
 
 
 env = dict(os.environ, WHISKER_PORT=str(PORT))
-p = subprocess.Popen([BIN], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+# from this folder, whose static/ holds the image a document names -- run from
+# anywhere else, the host looked for ./static there and the check failed
+p = subprocess.Popen([BIN], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                     cwd=os.path.dirname(os.path.abspath(__file__)))
 time.sleep(0.3)
 try:
     c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=5)

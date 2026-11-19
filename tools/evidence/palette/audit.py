@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # The default palette, held to two rules (decisions.md D24):
 #   - every fill whisker draws text on gives white ink 4.5:1 or more (WCAG AA);
+#   - a field's hint, the ink half way to the well, 4.5:1 on the well too;
 #   - every pair of colours that tells one state from another stays 10 delta-E
 #     apart (CIE76, Lab) for normal vision and under protanopia, deuteranopia
 #     and tritanopia, simulated at full severity (Machado, Oliveira and
@@ -48,6 +49,12 @@ def ok(c, what):
 for f in ("bg", "accent", "selfill", "trough"):
     c = contrast(P["ink"], P[f])
     ok(c >= 4.5, f"palette: white ink on {f} (#{P[f]:06x}) {c:.2f}:1, at least 4.5")
+# a hint (design §5ao): the ink half way to the well, channel by channel as
+# wsk__half does -- faint, and still to be read: a hint is not exempt as a
+# disabled part is
+half = sum((((P["ink"] >> s & 255) + (P["trough"] >> s & 255)) // 2) << s for s in (16, 8, 0))
+c = contrast(half, P["trough"])
+ok(c >= 4.5, f"palette: a hint (#{half:06x}) on the well {c:.2f}:1, at least 4.5")
 for a, b in [("selfill","accent"),("selfill","bg"),("accent","bg"),("trough","bg"),("selfill","trough"),("accent","trough")]:
     worst = min((dE(P[a], P[b], M[m]), m) for m in M)
     ok(worst[0] >= 10, f"palette: {a} and {b} {worst[0]:.1f} delta-E apart at the least ({worst[1]}), at least 10")

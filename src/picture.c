@@ -93,6 +93,21 @@ static int bright(wsk_rect_t r)
 	return n;
 }
 
+/* The brightest green in a rectangle, 0..63: how far its text reaches
+   toward white -- a thin glyph's antialiasing may never land on its exact
+   colour, but never passes it. */
+static int peak(wsk_rect_t r)
+{
+	int m = 0;
+	for (int y = r.y; y < r.y + r.h && y < PH; y++)
+		for (int x = r.x; x < r.x + r.w && x < PW; x++) {
+			uint16_t v = screen[y * PW + x];
+			v = (uint16_t)((v >> 8) | (v << 8));
+			if (((v >> 5) & 63) > m) m = (v >> 5) & 63;
+		}
+	return m;
+}
+
 static uint16_t pix565(unsigned int c)
 {
 	return (uint16_t)(((c >> 8) & 0xF800) | ((c >> 5) & 0x07E0) | ((c >> 3) & 0x001F));
@@ -2283,6 +2298,62 @@ int main(void)
 		ok(a_on > on.w * on.h / 2 && a_off == 0 && f_off > off.w * off.h / 2 && bright(on) > 10 && bright(off) == 0,
 		   "Save in the accent with bright text; Open in the faint accent, none of the full one, its text not bright");
 		shot("off.ppm");
+	}
+
+	/*
+	 * A form's small words (§5ao) at the pixels: a name field showing its
+	 * hint, a password drawn as stars, OK the default in its pixel's frame
+	 * and Cancel without one.
+	 */
+	{
+		static wsk_widget_t W[4];
+		static char nb[16], pb[16];
+		wsk_buf_t bufs[2];
+		wsk_tree_t root, at;
+		wsk_sink_t s;
+		wsk_rect_t rn, rp, rk, rc, edge;
+		int lo, hi, which = 0, p_name, p_pass, p_hint, b_pass, w_ok, w_cancel;
+		unsigned int hint;
+
+		memset(W, 0, sizeof W); memset(bufs, 0, sizeof bufs);
+		snprintf(pb, sizeof pb, "hunter2");
+		bufs[0].b = nb; bufs[0].cap = sizeof nb;
+		bufs[1].b = pb; bufs[1].cap = sizeof pb; bufs[1].len = 7; bufs[1].caret = 7;
+		W[0].kind = WSK_FIELD; snprintf(W[0].id, WSK_ID_MAX, "name"); snprintf(W[0].text, WSK_TEXT_MAX, "your name");
+		W[0].sub = 0; W[0].size = 30; W[0].flags = WSK_HINT;
+		W[1].kind = WSK_FIELD; snprintf(W[1].id, WSK_ID_MAX, "pass"); W[1].sub = 1; W[1].size = 30; W[1].flags = WSK_SECRET;
+		W[2].kind = WSK_BUTTON; snprintf(W[2].id, WSK_ID_MAX, "ok"); snprintf(W[2].text, WSK_TEXT_MAX, "OK");
+		W[2].size = 30; W[2].flags = WSK_DEFAULT;
+		W[3].kind = WSK_BUTTON; snprintf(W[3].id, WSK_ID_MAX, "cancel"); snprintf(W[3].text, WSK_TEXT_MAX, "Cancel"); W[3].size = 30;
+		wsk_init(&root, WSK_COL, PW, PH);
+		root.bg = 0x10203au; root.font = 16; root.item = W; root.n = 4; root.pad = 6; root.gap = 6;
+		root.buf = bufs; root.bufs = 2;
+		printf("\n  a form's small words (§5ao)\n");
+		ok(wsk_check(&root, &which) == WSK_OK, "a hint, a secret and a default check");
+		rn = wsk_rect(&at, wsk__lookup(&root, "name", &at, 0));
+		rp = wsk_rect(&at, wsk__lookup(&root, "pass", &at, 0));
+		rk = wsk_rect(&at, wsk__lookup(&root, "ok", &at, 0));
+		rc = wsk_rect(&at, wsk__lookup(&root, "cancel", &at, 0));
+		hint = wsk__half(root.ink, root.trough);
+		s.put = to_window; s.ctx = &dev;
+		{ uint32_t v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); }
+		s.len = 0;
+		ok(wsk_render(&root, &s, 4096) > 0, "drawn, in one document under 4 KB");
+		p_name = peak(rn);
+		p_pass = peak(rp);
+		p_hint = (int)((hint >> 10) & 63);
+		b_pass = bright(rp);
+		edge = rk; edge.h = 1;
+		w_ok = span(edge, pix565(root.ink), &lo, &hi);
+		edge = rc; edge.h = 1;
+		w_cancel = span(edge, pix565(root.ink), &lo, &hi);
+		printf("    brightest green (of 63) in the name field %d, the hint's own %d; in the password %d,"
+		       " bright pixels there %d; white along OK's top row %d of %d, Cancel's %d\n",
+		       p_name, p_hint, p_pass, b_pass, w_ok, rk.w, w_cancel);
+		ok(p_name > 16 && p_name <= p_hint, "the empty name field: its hint drawn, and never brighter than the faint ink");
+		ok(b_pass > 0 && p_pass > p_hint + 8, "the password: stars, brighter than any hint -- the full ink");
+		ok(w_ok >= rk.w - 2 && w_cancel == 0, "OK framed along its edge in the ink; Cancel not");
+		shot("form.ppm");
 	}
 
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);

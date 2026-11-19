@@ -3513,6 +3513,141 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5ap. Striped rows and a part that is read only (2026-11-18), written before its code
+
+The last two of `ui-backend-gap.md`'s small gaps: gBASIC's `striped`
+(Qt's `alternatingRowColors`) and `read_only` on a **memo** — a field
+could already be read only by having no buffer, but then it can be
+neither selected nor copied, and a memo without a buffer is a label.
+
+1. **`stripe`, a byte on the stack**: 1 fills its odd items, 2 its even
+   ones — a list drawn **a slice at a time** (§5e) starting at an odd
+   row says 2, so the stripes stay with the rows as they scroll. The
+   fill is **derived, not chosen**: the tree's background an eighth of
+   the way to its ink, so it follows any theme and nothing new is
+   stored. Drawn as a chosen row's box is, behind the item — a label's
+   text, a table row's cells — and **never over** what is chosen
+   (`selfill` wins) or over an item's own fill. The palette gate gains
+   it: white on it 4.5:1 or more, and 10 ΔE from `selfill` in every
+   vision, since a stripe must never be mistaken for the choice.
+2. **`WSK_READONLY` (8) in `flags`**, on a field or memo with a buffer
+   (refused elsewhere, as §5ao's are): it takes the focus, shows its
+   caret, moves, selects and copies — Ctrl-A, Ctrl-C, Shift-arrows, a
+   double-click — and **changes nothing**: typing, Backspace, Delete,
+   a memo's Enter and typed tab, Ctrl-X, Ctrl-V, undo, Ctrl-Backspace
+   all used and doing nothing (none of them the program's), and
+   `wsk_ui_paste` refuses it. A read-only field's Enter is still ENTER
+   (and §5ao's default). **The program may still write the buffer** —
+   read only is the person's, as Qt's is.
+3. **Byte for byte as before** with `stripe` 0 and no `WSK_READONLY`.
+
+Done when: a striped list's odd rows in the stripe and its even rows
+not, a chosen odd row in `selfill` and not the stripe, `stripe` 2 the
+other parity; a table's rows striped behind their cells; the audit's
+two new lines, each able to fail; a read-only memo: focused by a tap,
+the caret moved by arrows, Shift selecting, Ctrl-C a COPY — and each
+editing key and typing leaving the buffer as it was, with an open memo
+the control; `wsk_ui_paste` refused; the flag refused on a button; the
+bytes; a picture of a striped list.
+
+## 5ao. A form's three small words — `default`, `secret`, `hint` (2026-11-18), written before its code
+
+The next three of `ui-backend-gap.md`'s gaps, together because each is a
+bit on a field or a button and they meet in one place — a login form: a
+name with a hint, a password, and an OK that Enter presses. gBASIC's
+words are Qt's `default`, `echoMode` Password and `placeholderText`.
+
+1. **`flags`, a byte on the widget** — the last byte of padding, after
+   `off`; a widget is still 64 bytes. `WSK_DEFAULT` (1) on a button,
+   `WSK_SECRET` (2) on a field, `WSK_HINT` (4) on a field or a memo.
+   **Anywhere else the check refuses it** (`WSK_E_KIND`): a flag that
+   silently did nothing would be a form that looks right and is not.
+2. **`default` — the button Enter presses.** Enter in a single-line
+   field still says ENTER, and then, if the tree with the keys (an open
+   dialog, else the window) has a default button that is not off, it
+   says CLICK on it as a press would — the first in declaration order,
+   not inside a list. Enter with nothing focused does the same. Enter on
+   a focused button is still that button's, in a memo still a new line,
+   on a list still its row, on a check still its toggle. **Drawn by
+   shape, not colour (D24)**: a one-pixel frame in the ink at the
+   button's edge, outside where focus's ring goes (inset two), so a
+   default button with the focus shows both.
+3. **`secret` — a password field.** Each character drawn as one `*`
+   (ASCII, so every host draws it; one column each, so caret, view and
+   selection land where they did). **Its text never leaves it**: Ctrl-C
+   and Ctrl-X copy and cut nothing, and are not the program's either —
+   a shortcut must not be a way round; word moves and a double-click
+   treat it as one word, since word ends would say where its spaces
+   are. What it may hold is what a field may hold, as before.
+4. **`hint` — what goes there, while nothing does.** A field or memo
+   whose buffer is empty draws the widget's own `text` (31 characters)
+   in its ink half way to the well, from the first column; the caret,
+   when focused, is drawn over its start. **It has a buffer or it is
+   refused**: without one, the field's text is its content. The faint
+   ink must still read — white half way to the well is ~5:1, above
+   WCAG's 4.5 (a hint is not exempt as a disabled part is), and the
+   palette audit gains the pair.
+5. **Byte for byte as before** with `flags` 0 — every earlier output.
+
+Profiles: `default`'s Enter is the toolkit's (`WSK_NO_INPUT` drops it,
+and the frame with it); `secret` and `hint` are the field's and memo's.
+No new switch unless the bytes ask for one.
+
+Done when: each flag on the wrong kind refused, and on the right one
+not; a secret field drawn as stars and never its characters, the caret
+and a selection in the same places as an open field's, Ctrl-C giving no
+COPY and Ctrl-X cutting nothing (the control: an open field's do);
+Ctrl-Left and a double-click taking the whole; a hint drawn faint while
+empty and gone after one character, in a field and a memo, with the
+caret over it focused; Enter in a field giving ENTER then CLICK on the
+default button, in a dialog the dialog's, none when it is off, none when
+there is no default (the control); Enter with nothing focused; Enter on
+another focused button that button's; the frame drawn and not without
+the flag; the bytes measured; the picture through RV-9's rasteriser.
+
+**What it came to** (2026-11-18): as written. Every earlier output is
+byte-identical (the 47, and all 1,276 earlier checks unchanged).
+
+- **The frame and the ring are one function now** (`wsk__frame`: an
+  inset and a thickness; the ring is 2 and 2, the default 0 and 1), and
+  the marker's half-way colour became `wsk__half`, which the hint shares
+  — the marker pictures unchanged.
+- **Enter** reaches the default through one out-of-line function, from
+  two places: a single-line field after its ENTER, and the key with
+  nothing focused. The walk is the Tab walk's shape: depth first, the
+  open dialog's tree if there is one, not into a list, an off part
+  passed. A focused button, check, list or memo keeps Enter as before.
+- **A secret's Ctrl-C and Ctrl-X are used and do nothing** even with no
+  clipboard given (`ui.clip` 0), so the chord never reaches the
+  program; Ctrl-Left/Right and Ctrl-Backspace/Delete go to its ends,
+  and a double-click (or triple) takes all of it.
+- **Stars are sent 32 at a time** from one literal, each run its own
+  `<text>` at its column — no buffer, no table.
+- In the picture, a hint's thin glyphs never land on its exact colour;
+  the check measures the brightest pixel instead (31 of 63 green, the
+  hint's own 33; the stars 53).
+
+**Measured** (`module_nest`, RISC-V `-Os`): **+688 bytes at the default,
++700 at `WSK_PANEL`**; no new switch. Stack: `wsk__item` 320 → 336, so
+16 bytes a level of nesting (the deepest chain 2,544 against 2,528). No
+libc, no `.data`.
+
+**38 checks** (1,276 → 1,314): in `test.c`, 32 — each flag refused on
+the wrong kind, an unknown flag refused, a hint with no buffer refused;
+the hint faint in a field and a memo, gone without the flag (the
+control) and after one character, shown focused with the caret at its
+start; nine stars for nine characters and **the document otherwise
+byte for byte an open field's** — caret, selection and all; Ctrl-C and
+Ctrl-X: nothing, and in an open field a COPY (the control); Ctrl-Left
+and a double-click the whole, open a word; Enter: ENTER then CLICK on
+OK, ENTER alone with no default and with the default off, a memo's new
+line, Cancel's own click when Tab focused it, OK with nothing focused,
+and the dialog's Yes rather than the window's OK; the frame, and none
+without the flag. The palette audit gains the hint on the well (5.29:1,
+and 1.89 on a pale well, the control). In the picture (`form.ppm`): the
+hint never brighter than its ink, stars brighter than any hint, OK's
+top row in the ink across its width and Cancel's not — looked at.
+
 ## 5an. A part that is off — `enabled` (2026-11-18), written before its code
 
 The first of `ui-backend-gap.md`'s small gaps: gBASIC's `enabled` — Qt's

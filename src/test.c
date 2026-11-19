@@ -6987,6 +6987,174 @@ int main(void)
 #undef OFF_TAP
 	}
 
+	printf("\n-- §5ao  a form's three small words: default, secret, hint\n");
+	{
+		static wsk_widget_t W[6], DW[2];
+		char fn[32] = "", fp[32] = "", fm[64] = "", fd[32] = "", clip[32] = "", doc[16384], open[16384], want[160];
+		wsk_buf_t bufs[4];
+		wsk_tree_t r, k[1];
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		wsk_rect_t rok, rp;
+		int y0, y1, n, which = 0;
+		unsigned int hint_ink;
+
+		memset(W, 0, sizeof W); memset(DW, 0, sizeof DW);
+		W[0].kind = WSK_FIELD;  snprintf(W[0].id, WSK_ID_MAX, "name"); snprintf(W[0].text, WSK_TEXT_MAX, "your name");
+		W[0].sub = 0; W[0].size = 30; W[0].flags = WSK_HINT;
+		W[1].kind = WSK_FIELD;  snprintf(W[1].id, WSK_ID_MAX, "pass"); W[1].sub = 1; W[1].size = 30; W[1].flags = WSK_SECRET;
+		W[2].kind = WSK_BUTTON; snprintf(W[2].id, WSK_ID_MAX, "ok"); snprintf(W[2].text, WSK_TEXT_MAX, "OK");
+		W[2].size = 30; W[2].flags = WSK_DEFAULT;
+		W[3].kind = WSK_BUTTON; snprintf(W[3].id, WSK_ID_MAX, "cancel"); snprintf(W[3].text, WSK_TEXT_MAX, "Cancel"); W[3].size = 30;
+		W[4].kind = WSK_MEMO;   snprintf(W[4].id, WSK_ID_MAX, "notes"); snprintf(W[4].text, WSK_TEXT_MAX, "notes here");
+		W[4].sub = 2; W[4].size = 60; W[4].flags = WSK_HINT;
+		W[5].kind = WSK_LABEL;  snprintf(W[5].id, WSK_ID_MAX, "lab"); snprintf(W[5].text, WSK_TEXT_MAX, "label"); W[5].size = 30;
+		DW[0].kind = WSK_FIELD;  snprintf(DW[0].id, WSK_ID_MAX, "dname"); DW[0].sub = 3; DW[0].size = 30;
+		DW[1].kind = WSK_BUTTON; snprintf(DW[1].id, WSK_ID_MAX, "yes"); snprintf(DW[1].text, WSK_TEXT_MAX, "Yes");
+		DW[1].size = 30; DW[1].flags = WSK_DEFAULT;
+		memset(bufs, 0, sizeof bufs);
+		bufs[0].b = fn; bufs[0].cap = sizeof fn;
+		bufs[1].b = fp; bufs[1].cap = sizeof fp;
+		bufs[2].b = fm; bufs[2].cap = sizeof fm;
+		bufs[3].b = fd; bufs[3].cap = sizeof fd;
+		wsk_init(&r, WSK_COL, 400, 400);
+		r.pad = 4; r.gap = 4;
+		r.item = W; r.n = 6; r.buf = bufs; r.bufs = 4; r.nest = k; r.nests = 1;
+		wsk_nest_init(&k[0], &r, WSK_COL); k[0].item = DW; k[0].n = 2; k[0].pad = 4; k[0].gap = 4;
+		wsk_ui_init(&ui, &r);
+		ui.clip = clip; ui.clipcap = sizeof clip;
+		rok = rect_of(&r, "ok"); rp = rect_of(&r, "pass");
+		hint_ink = wsk__half(r.ink, r.trough);
+
+		/* each on the part it means something on, refused elsewhere */
+		ok(wsk_check(&r, &which) == WSK_OK, "CONTROL: default on a button, secret on a field, hints on a field and a memo: the window checks");
+		W[5].flags = WSK_HINT;
+		ok(wsk_check(&r, &which) == WSK_E_KIND && which == 5, "a hint on a label: refused, WSK_E_KIND, naming it");
+		W[5].flags = WSK_DEFAULT;
+		ok(wsk_check(&r, &which) == WSK_E_KIND && which == 5, "default on a label: refused");
+		W[5].flags = 0; W[3].flags = WSK_SECRET;
+		ok(wsk_check(&r, &which) == WSK_E_KIND && which == 3, "secret on a button: refused");
+		W[3].flags = 0; W[4].flags = WSK_SECRET;
+		ok(wsk_check(&r, &which) == WSK_E_KIND && which == 4, "secret on a memo: refused -- a password is one line");
+		W[4].flags = WSK_HINT; W[0].sub = 9;
+		ok(wsk_check(&r, &which) == WSK_E_KIND && which == 0, "a hint on a field with no buffer -- its text is its content: refused");
+		W[0].sub = 0; W[2].flags = 8;
+		ok(wsk_check(&r, &which) == WSK_E_KIND && which == 2, "a flag whisker does not know: refused");
+		W[2].flags = WSK_DEFAULT;
+
+		/* hint: faint while empty, gone after a character */
+		render_into(&r, doc, sizeof doc, 16384);
+		snprintf(want, sizeof want, "fill=\"#%06x\">your name</text>", hint_ink);
+		ok(has(doc, want), "an empty field with a hint: its text, in the ink half way to the well");
+		snprintf(want, sizeof want, "fill=\"#%06x\">notes here</text>", hint_ink);
+		ok(has(doc, want), "and an empty memo's, the same");
+		W[0].flags = 0; W[4].flags = 0;
+		render_into(&r, doc, sizeof doc, 16384);
+		ok(!has(doc, "your name") && !has(doc, "notes here"), "CONTROL: without the flag, an empty field and memo show nothing");
+		W[0].flags = WSK_HINT; W[4].flags = WSK_HINT;
+		wsk_ui_focus(&ui, "name", &y0, &y1);
+		render_into(&r, doc, sizeof doc, 16384);
+		{
+			wsk_rect_t rn = rect_of(&r, "name");
+			snprintf(want, sizeof want, "x=\"%d\" y=\"%%d\" width=\"%d\"", rn.x + WSK_FIELD_PAD, WSK_CARET_W);
+			ok(r.focus == &W[0] && has(doc, "your name</text>") && has_x(doc, want),
+			   "focused and empty: the hint still shown, the caret at its start");
+		}
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_TEXT; ev.text[0] = 'M';
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		render_into(&r, doc, sizeof doc, 16384);
+		ok(!has(doc, "your name") && has(doc, ">M</text>"), "one character typed: the hint gone, the character there");
+
+		/* secret: stars, in the same places */
+		snprintf(fp, sizeof fp, "hunter 2x"); bufs[1].len = 9; bufs[1].caret = 9;
+		wsk_ui_focus(&ui, "pass", &y0, &y1);
+		bufs[1].span = -3;
+		render_into(&r, doc, sizeof doc, 16384);
+		ok(!has(doc, "hunter") && has(doc, ">*********</text>"), "a secret field: nine stars for nine characters, never the characters");
+		W[1].flags = 0;
+		render_into(&r, open, sizeof open, 16384);
+		W[1].flags = WSK_SECRET;
+		{
+			char *p = strstr(open, ">hunter 2x</text>");
+			if (p != 0) memcpy(p, ">*********</text>", 17);
+			ok(p != 0 && strcmp(doc, open) == 0,
+			   "and the rest byte for byte an open field's: caret, selection, the text's x -- only the characters differ");
+		}
+		ok(bufs[1].caret == 9, "(the selection: the last three, caret at the end)");
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = 'c' | WSK_MOD_CTRL;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 0 && clip[0] == 0, "Ctrl-C in it: no COPY, nothing in the clipboard -- and not the program's chord either");
+		ev.key = 'x' | WSK_MOD_CTRL;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 0 && bufs[1].len == 9 && clip[0] == 0, "Ctrl-X: nothing cut, nothing copied");
+		W[1].flags = 0;
+		ev.key = 'c' | WSK_MOD_CTRL;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_COPY && strcmp(clip, " 2x") == 0, "CONTROL: an open field: Ctrl-C copies");
+		W[1].flags = WSK_SECRET;
+		bufs[1].span = 0;
+		ev.key = WSK_KEY_LEFT | WSK_MOD_CTRL;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[1].caret == 0, "Ctrl-Left in it: to the start -- one word, so no word end gives away a space");
+		W[1].flags = 0; bufs[1].caret = 9;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[1].caret == 7, "CONTROL: open, Ctrl-Left stops at the word");
+		W[1].flags = WSK_SECRET;
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_DOWN; ev.x = (short)(rp.x + WSK_FIELD_PAD + 2); ev.y = (short)(rp.y + 5); ev.d = 2;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[1].caret == 9 && bufs[1].span == -9, "a double-click in it: the whole");
+		W[1].flags = 0;
+		ev.kind = WSK_EV_DOWN; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[1].caret == 6 && bufs[1].span == -6, "CONTROL: open, the word \"hunter\"");
+		W[1].flags = WSK_SECRET;
+
+		/* default: Enter in a field, then CLICK on it */
+		wsk_ui_focus(&ui, "name", &y0, &y1);
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_ENTER;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_ENTER && nt[1].kind == WSK_NOTE_CLICK && nt[1].in == &r && nt[1].item == 2,
+		   "Enter in a field: ENTER, then CLICK on OK, the default");
+		W[2].flags = 0;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_ENTER, "CONTROL: no default: ENTER alone");
+		W[2].flags = WSK_DEFAULT; W[2].off = 1;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_ENTER, "the default off (§5an): ENTER alone");
+		W[2].off = 0;
+		wsk_ui_focus(&ui, "notes", &y0, &y1);
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[2].len == 1 && fm[0] == '\n' && (n == 0 || nt[0].kind != WSK_NOTE_CLICK), "Enter in a memo: a new line, no CLICK");
+		wsk_ui_focus(&ui, "pass", &y0, &y1);
+		ev.key = WSK_KEY_TAB; wsk_feed(&ui, &ev, nt, 8, &y0, &y1); wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ev.key = WSK_KEY_ENTER;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(r.focus == &W[3] && n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].item == 3, "Enter on Cancel, focused by Tab: Cancel's click, not OK's");
+		wsk_ui_init(&ui, &r);
+		ui.clip = clip; ui.clipcap = sizeof clip;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(r.focus == 0 && n == 1 && nt[0].kind == WSK_NOTE_CLICK && nt[0].item == 2, "Enter with nothing focused: OK");
+		wsk_ui_dialog(&ui, 0, 200, 100, &y0, &y1);
+		wsk_ui_focus(&ui, "dname", &y0, &y1);
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 2 && nt[1].kind == WSK_NOTE_CLICK && nt[1].in == &k[0] && nt[1].item == 1,
+		   "in a dialog: the dialog's default, Yes -- not the window's OK beneath");
+		wsk_ui_dialog_close(&ui, &y0, &y1);
+
+		/* the frame */
+		r.focus = 0;
+		render_into(&r, doc, sizeof doc, 16384);
+		snprintf(want, sizeof want, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"1\" fill=\"#", rok.x, rok.y, rok.w);
+		ok(has(doc, want), "OK, the default, wears a pixel's frame in the ink at its edge");
+		W[2].flags = 0;
+		render_into(&r, doc, sizeof doc, 16384);
+		ok(!has(doc, want), "CONTROL: not the default, no frame");
+		W[2].flags = WSK_DEFAULT;
+		ok(wsk_check(&r, &which) == WSK_OK, "and the window checks throughout");
+	}
+
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);
 	return fails != 0;
 }

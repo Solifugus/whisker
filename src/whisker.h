@@ -408,6 +408,15 @@ enum {
    the widget, or its start, as a table's cells do. */
 enum { WSK_MIDDLE = 0, WSK_ALIGN_START };
 
+/* A form's small words (§5ao), in a widget's `flags`; on any other kind
+   the check refuses them. */
+enum {
+	WSK_DEFAULT = 1,             /* a button: the one Enter presses from a field */
+	WSK_SECRET  = 2,             /* a field: drawn as stars, never copied */
+	WSK_HINT    = 4              /* a field or memo with a buffer: its own text,
+	                                faint, while the buffer is empty */
+};
+
 typedef struct {
 	unsigned char kind;
 	char          id[WSK_ID_MAX];
@@ -418,6 +427,9 @@ typedef struct {
 	                                focused or typed into, and so is everything
 	                                under a stack that is (§5an); in the padding,
 	                                so still 64 bytes */
+	unsigned char flags;         /* WSK_DEFAULT on a button, WSK_SECRET on a field,
+	                                WSK_HINT on a field or memo (§5ao); the last
+	                                byte of padding */
 	unsigned int  fill;          /* WSK_INHERIT to take the tree's accent */
 	unsigned int  ink;           /* WSK_INHERIT to take the tree's ink */
 	unsigned char mark;          /* WSK_MARK_CORNERS, or 0 */
@@ -1270,6 +1282,29 @@ static inline int wsk_scroll_max(const wsk_tree_t *t)
 	return (over > 0) ? over : 0;
 }
 
+/*
+ * A form's words (§5ao) on the parts they mean something on: default on a
+ * button, secret on a field, a hint on a field or memo that has a buffer --
+ * a flag that did nothing would be a form that looks right and is not. A
+ * build without the toolkit has no Enter to press a default button with.
+ */
+static inline int wsk__flags_ok(const wsk_tree_t *t, const wsk_widget_t *w)
+{
+	int f = w->flags, edit = (w->kind == WSK_FIELD
+#ifndef WSK_NO_MEMO
+	                          || wsk__lined(w->kind)
+#endif
+	                         );
+	if (f & ~(WSK_DEFAULT | WSK_SECRET | WSK_HINT)) return 0;
+#ifdef WSK_NO_INPUT
+	if (f & WSK_DEFAULT) return 0;
+#endif
+	if ((f & WSK_DEFAULT) && w->kind != WSK_BUTTON) return 0;
+	if ((f & WSK_SECRET) && w->kind != WSK_FIELD) return 0;
+	if ((f & WSK_HINT) && (!edit || t->buf == 0 || w->sub < 0 || w->sub >= t->bufs)) return 0;
+	return 1;
+}
+
 static inline int wsk__check1(const wsk_tree_t *t, int *which)
 {
 	for (int i = 0; i < t->n; i++) {
@@ -1283,6 +1318,10 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 			return WSK_E_KIND;
 		}
 #endif
+		if (t->item[i].flags != 0 && !wsk__flags_ok(t, &t->item[i])) {
+			if (which != 0) *which = i;
+			return WSK_E_KIND;
+		}
 #ifdef WSK_NO_TEXT
 		if (t->item[i].kind == WSK_TEXT) {
 			if (which != 0) *which = i;
@@ -1683,6 +1722,7 @@ static inline void wsk_clone(wsk_widget_t *dst, const wsk_widget_t *src, int n)
 		dst[i].size   = src[i].size;
 		dst[i].weight = src[i].weight;
 		dst[i].off    = src[i].off;     /* or a clone is off by whatever the stack held (§5an) */
+		dst[i].flags  = src[i].flags;   /* every field, every time (§5ao) */
 		dst[i].fill   = src[i].fill;
 		dst[i].ink    = src[i].ink;
 		dst[i].mark   = src[i].mark;
@@ -2246,6 +2286,19 @@ static unsigned int wsk__fade(const wsk_tree_t *t, unsigned int c)   /* out of l
 		out |= (unsigned int)(((x * (256 - a) + b * a) >> 8) & 0xFF) << sh;
 	}
 	return out;
+}
+
+/* A colour half way to another, channel by channel: an undrawable
+   character's marker (§5aj) and a hint (§5ao). */
+#if defined(__GNUC__)
+__attribute__((unused))
+#endif
+static inline unsigned int wsk__half(unsigned int a, unsigned int b)
+{
+	unsigned int m = 0;
+	for (int sh = 0; sh < 24; sh += 8)
+		m |= ((((a >> sh) & 0xffu) + ((b >> sh) & 0xffu)) / 2u) << sh;
+	return m;
 }
 
 #ifndef WSK_NO_WORLD
@@ -3750,8 +3803,10 @@ static inline void wsk__field(wsk_sink_t *s, const wsk_tree_t *t,
                               const wsk_widget_t *w, wsk_rect_t r)
 {
 	const wsk_buf_t *b = wsk__fbuf(t, w);
-	const char *txt = (b != 0) ? b->b : w->text;
-	int len = (b != 0) ? b->len : wsk__len(w->text);
+	/* a hint, while the buffer is empty, is the widget's own text (§5ao) */
+	int hint = (b != 0 && b->len == 0 && (w->flags & WSK_HINT));
+	const char *txt = (b != 0 && !hint) ? b->b : w->text;
+	int len = (b != 0 && !hint) ? b->len : wsk__len(w->text);
 	int caret = (b != 0) ? b->caret : len;
 	/* the view is in characters, the text in bytes (§5v step 3) */
 	int col = wsk__chars(txt, caret);
@@ -3769,12 +3824,23 @@ static inline void wsk__field(wsk_sink_t *s, const wsk_tree_t *t,
 #ifndef WSK_NO_TEXTSEL
 	wsk__selbox(s, t, w, b, from, n, x, top, from, 8);
 #endif
-	{
+	if ((w->flags & WSK_SECRET) && !hint) {
+		/* a star a character, never the character (§5ao): ASCII, so every
+		   host draws it, and a column each, so the caret stays put */
+		for (int k = wsk__chars(txt + from, n), at = 0; k > 0; ) {
+			int m = (k > 32) ? 32 : k;
+			wsk__textel(s, 1, x + at * wsk_advance(t->font), wsk_baseline_of(top, t->font),
+			            wsk__fade(t, w->ink), "********************************", m);
+			at += m; k -= m;
+		}
+	} else {
 		/* leading spaces placed past, not sent: /w0 drops them (§5aj) */
 		int sp = 0;
 		while (sp < n && txt[from + sp] == ' ') sp++;
 		if (sp < n)
-			wsk__textel(s, 1, x + sp * wsk_advance(t->font), wsk_baseline_of(top, t->font), wsk__fade(t, w->ink),
+			wsk__textel(s, 1, x + sp * wsk_advance(t->font), wsk_baseline_of(top, t->font),
+			            hint ? wsk__half(ink, (w->fill != WSK_INHERIT) ? wsk__fade(t, w->fill) : t->trough)
+			                 : wsk__fade(t, w->ink),
 			            txt + from + sp, n - sp);
 	}
 
@@ -4038,10 +4104,8 @@ static inline void wsk__rowtext(wsk_sink_t *s, const wsk_tree_t *t, int x, int y
 			}
 		}
 		if (q < stop && txt[q] != '\t') {
-			unsigned int k = (ink != WSK_INHERIT) ? ink : t->ink, w = t->trough, m = 0;
+			unsigned int m = wsk__half((ink != WSK_INHERIT) ? ink : t->ink, t->trough);
 			wsk_rect_t r;
-			for (int sh = 0; sh < 24; sh += 8)       /* half way, channel by channel */
-				m |= ((((k >> sh) & 0xffu) + ((w >> sh) & 0xffu)) / 2u) << sh;
 			r.x = (short)(x + (wsk__vcol(txt + row, q - row, tw) - c0) * adv + 1);
 			r.y = (short)(y + t->font / 4);
 			r.w = (short)((adv > 3) ? adv - 2 : 1);
@@ -4140,6 +4204,18 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 		}
 		if (next > len) break;
 		at = next;
+	}
+	/* a hint while the buffer is empty: the widget's own text, faint, on
+	   the first row, from the first column (§5ao) */
+	if (b != 0 && b->len == 0 && (w->flags & WSK_HINT)) {
+		int y = r.y + WSK_FIELD_PAD, sp = 0, n = wsk__len(w->text);
+		if (wsk__chars(w->text, n) > room) n = wsk__byte_of(w->text, n, room);
+		while (sp < n && w->text[sp] == ' ') sp++;
+		if (sp < n && y + pitch > ry0 && y < ry1 && wsk__shows(t, r.x, r.x + r.w, y))
+			wsk__textel(s, 1, tr.x + WSK_FIELD_PAD + sp * adv, wsk_baseline_of(y, t->font),
+			            wsk__half((w->ink != WSK_INHERIT) ? wsk__fade(t, w->ink) : t->ink,
+			                      (w->fill != WSK_INHERIT) ? wsk__fade(t, w->fill) : t->trough),
+			            w->text + sp, n - sp);
 	}
 #ifndef WSK_NO_INPUT
 	if ((const void *)w == t->focus) show = 1;
@@ -4405,20 +4481,26 @@ static void wsk__stack(const wsk_doc_t *d, const wsk_tree_t *t, int i,
  * widget's ink -- rectangles, not a stroke, so it costs the window nothing
  * it does not already draw.
  */
-static inline void wsk__ring(wsk_sink_t *s, const wsk_tree_t *t,
-                             const wsk_widget_t *w, wsk_rect_t r)
+static inline void wsk__frame(wsk_sink_t *s, const wsk_tree_t *t,
+                              const wsk_widget_t *w, wsk_rect_t r, int in, int th)
 {
 	unsigned int ink = (w->ink != WSK_INHERIT) ? wsk__fade(t, w->ink) : t->ink;
 	wsk_rect_t e;
 	if (r.w < 12 || r.h < 12) return;
-	e.x = (short)(r.x + 2); e.y = (short)(r.y + 2); e.w = (short)(r.w - 4); e.h = 2;
+	e.x = (short)(r.x + in); e.y = (short)(r.y + in); e.w = (short)(r.w - 2 * in); e.h = (short)th;
 	wsk__box(s, 0, e, ink);
-	e.y = (short)(r.y + r.h - 4);
+	e.y = (short)(r.y + r.h - in - th);
 	wsk__box(s, 0, e, ink);
-	e.y = (short)(r.y + 2); e.w = 2; e.h = (short)(r.h - 4);
+	e.y = (short)(r.y + in); e.w = (short)th; e.h = (short)(r.h - 2 * in);
 	wsk__box(s, 0, e, ink);
-	e.x = (short)(r.x + r.w - 4);
+	e.x = (short)(r.x + r.w - in - th);
 	wsk__box(s, 0, e, ink);
+}
+
+static inline void wsk__ring(wsk_sink_t *s, const wsk_tree_t *t,
+                             const wsk_widget_t *w, wsk_rect_t r)
+{
+	wsk__frame(s, t, w, r, 2, 2);
 }
 #endif
 
@@ -4619,6 +4701,11 @@ static inline void wsk__item(const wsk_doc_t *d, const wsk_tree_t *t, int i, wsk
 	if ((const void *)w == t->focus && w->kind == WSK_BUTTON &&
 	    (t->axis == WSK_COL ? v.h == r.h : v.w == r.w))
 		wsk__ring(s, t, w, r);
+	/* the button Enter presses: a pixel's frame at its edge, outside
+	   focus's ring, so one button may wear both (§5ao) */
+	if ((w->flags & WSK_DEFAULT) && w->kind == WSK_BUTTON &&
+	    (t->axis == WSK_COL ? v.h == r.h : v.w == r.w))
+		wsk__frame(s, t, w, r, 0, 1);
 #endif
 #ifndef WSK_NO_MARKS
 	if ((w->mark == WSK_MARK_CORNERS
@@ -5655,6 +5742,50 @@ static void wsk__focus_now(wsk_ui_t *ui)
 	k = wsk__keys_in(ui->root, &c, &orig);
 	(void)wsk__fields(k, orig, 0, ui->root->focus, -1, 0, &ui->focus_in,
 	                  &ui->focus_item, &ui->focus_r, &ui->focus_b, 0);
+}
+
+/*
+ * The button Enter presses (§5ao): the first marked default and not off, in
+ * declaration order, depth first -- not inside a list, whose rows are rows.
+ */
+static inline int wsk__dflt(const wsk_tree_t *t, const wsk_tree_t *orig,
+                            const wsk_tree_t **in, short *item, int depth)
+{
+	for (int i = 0; i < t->n; i++) {
+		const wsk_widget_t *w = &t->item[i];
+		if (w->kind == WSK_BUTTON && (w->flags & WSK_DEFAULT) && !t->goff && !w->off) {
+			*in = orig; *item = (short)i;
+			return 1;
+		}
+#ifndef WSK_NO_NEST
+		if (w->kind == WSK_STACK && depth + 1 < WSK_DEPTH_MAX && t->nest != 0 &&
+		    w->sub >= 0 && w->sub < t->nests && !t->nest[w->sub].select) {
+			wsk_tree_t c;
+			if (wsk__child(t, i, &c) && wsk__dflt(&c, &t->nest[w->sub], in, item, depth + 1))
+				return 1;
+		}
+#endif
+	}
+	(void)depth;
+	return 0;
+}
+
+/* Enter, where nothing else takes it: CLICK on the default button of the
+   tree with the keys -- an open dialog's, else the window's -- if it has
+   one. Out of line: two callers. */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static int wsk__enter(wsk_ui_t *ui, wsk_note_t *note, int max, int n, int *used)
+{
+	wsk_tree_t c;
+	const wsk_tree_t *orig, *in, *k = wsk__keys_in(ui->root, &c, &orig);
+	short item;
+	if (wsk__dflt(k, orig, &in, &item, 0)) {
+		*used = 1;
+		n = wsk__note(note, max, n, WSK_NOTE_CLICK, in, item, -1);
+	}
+	return n;
 }
 
 /*
@@ -6911,7 +7042,9 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			if (ev->d >= 2 && !(ev->key & WSK_MOD_SHIFT)) {
 				wsk_buf_t *b = wsk__fbuf(lay, &lay->item[k]);
 				int a = b->caret, z = b->caret, c;
-				if (ev->d >= 3) {
+				if (lay->item[k].flags & WSK_SECRET) {
+					a = 0; z = b->len;        /* one word: no ends to tell (§5ao) */
+				} else if (ev->d >= 3) {
 					while (a > 0 && b->b[a - 1] != '\n') a--;
 					while (z < b->len && b->b[z] != '\n') z++;
 				} else {
@@ -7274,6 +7407,9 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	         !wsk__focus_off(r) && wsk__stackkeys(ui, ev, note, max, &n, &lo, &hi))
 		used = 1;
 #endif
+	/* ENTER with nothing focused presses the default button, if any (§5ao) */
+	else if (ev->kind == WSK_EV_KEY && ev->key == WSK_KEY_ENTER && r->focus == 0)
+		n = wsk__enter(ui, note, max, n, &used);
 	/* ENTER on a focused button is its click, and on a check its toggle. */
 	else if (ev->kind == WSK_EV_KEY && ev->key == WSK_KEY_ENTER && r->focus != 0 &&
 	         ui->focus_b == 0 && !wsk__focus_off(r)) {
@@ -7290,12 +7426,15 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	}
 	else if ((ev->kind == WSK_EV_TEXT || ev->kind == WSK_EV_KEY) && ui->focus_b != 0 && !wsk__focus_off(r)) {
 		wsk_buf_t *b;
-		int edit = 0, moved = 0, memo = 0, key = ev->key, sel = 0, s0 = 0;
+		int edit = 0, moved = 0, memo = 0, key = ev->key, sel = 0, s0 = 0, secret;
 #ifndef WSK_NO_TEXTSEL
 		int ext = 0, anchor, s1 = 0;
 #endif
 		wsk__focus_now(ui);
 		b = ui->focus_b;
+		/* a secret is one word, and its text never leaves it (§5ao) */
+		secret = (ui->focus_in->item[ui->focus_item].flags & WSK_SECRET) != 0;
+		(void)secret;
 #ifndef WSK_NO_MEMO
 		memo = wsk__lined(ui->focus_in->item[ui->focus_item].kind);
 #else
@@ -7346,9 +7485,11 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 				b->span = -b->len;
 				moved = 1;
 			}
-		} else if ((key == ('c' | WSK_MOD_CTRL) || key == ('x' | WSK_MOD_CTRL)) && ui->clip != 0) {
+		} else if ((key == ('c' | WSK_MOD_CTRL) || key == ('x' | WSK_MOD_CTRL)) && (ui->clip != 0 || secret)) {
+			/* a secret's text never leaves it, by the clipboard or by a
+			   shortcut of the program's (§5ao) */
 			used = 1;
-			if (sel > 0 && sel < ui->clipcap) {
+			if (sel > 0 && sel < ui->clipcap && !secret) {
 				for (int j = 0; j < sel; j++) ui->clip[j] = b->b[s0 + j];
 				ui->clip[sel] = '\0';
 				n = wsk__note(note, max, n, WSK_NOTE_COPY, ui->focus_in, ui->focus_item, sel);
@@ -7372,7 +7513,8 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		else if (key == (WSK_KEY_LEFT | WSK_MOD_CTRL) || key == (WSK_KEY_RIGHT | WSK_MOD_CTRL) ||
 		         key == (WSK_KEY_HOME | WSK_MOD_CTRL) || key == (WSK_KEY_END | WSK_MOD_CTRL)) {
 			int k0 = key & ~WSK_MOD_CTRL;
-			int to = (k0 == WSK_KEY_HOME) ? 0 : (k0 == WSK_KEY_END) ? b->len
+			int to = (k0 == WSK_KEY_HOME || (secret && k0 == WSK_KEY_LEFT)) ? 0
+			       : (k0 == WSK_KEY_END || secret) ? b->len
 			       : wsk__wmove(b->b, b->len, b->caret, k0 == WSK_KEY_LEFT);
 			used = 1;
 			if (to != b->caret) { b->caret = to; moved = 1; }
@@ -7389,7 +7531,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 #endif
 			{
 				int back = ((key & ~WSK_MOD_CTRL) == WSK_KEY_BACKSPACE);
-				int to = wsk__wmove(b->b, b->len, b->caret, back);
+				int to = secret ? (back ? 0 : b->len) : wsk__wmove(b->b, b->len, b->caret, back);
 				int a = back ? to : b->caret, z = back ? b->caret : to;
 				if (z > a) { wsk__put(b, a, z - a, "", 0, 0); b->caret = a; edit = 1; }
 			}
@@ -7470,6 +7612,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			edit = 1;
 		} else if (key == WSK_KEY_ENTER) {
 			n = wsk__note(note, max, n, WSK_NOTE_ENTER, ui->focus_in, ui->focus_item, b->len);
+			n = wsk__enter(ui, note, max, n, &used);    /* and the default button (§5ao) */
 		}
 #ifndef WSK_NO_TEXTSEL
 		/* Shift kept the anchor; any other move lets the selection go --

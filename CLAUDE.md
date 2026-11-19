@@ -394,6 +394,17 @@ directly**.
   keys. **`wsk_clone` must copy every field** — it missed the new byte
   and cloned widgets came out randomly off; the byte-identical
   comparison caught it. +944 bytes default, +1,152 panel.
+- **§5ao — `default`, `secret`, `hint`** (2026-11-18): a byte `flags`,
+  the widget's last padding (still 64), each flag refused on the wrong
+  kind. **Default**: Enter in a field says ENTER and then CLICK on the
+  first default button of the tree with the keys (a dialog's, else the
+  window's), and with nothing focused the CLICK alone; a one-pixel frame
+  in the ink, outside focus's ring. **Secret**: a star per character,
+  everything else byte for byte an open field's; Ctrl-C/X do nothing and
+  are not the program's either; word moves and a double-click take the
+  whole. **Hint**: the widget's own text, ink half way to the well
+  (5.29:1, now in the palette gate), while the buffer is empty — a
+  field or memo, with a buffer or refused. +688 default, +700 panel.
 - **§5am — the wire on one stream** (2026-11-18): a connection opening
   `WHISKER 1 v=… caps=…` is a seat on that connection, lines both ways
   (`docs/wire.md` §8) — nothing else speaks for it, a POST with its very
@@ -521,7 +532,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,276 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,314 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 123 — every demo program started — including the
