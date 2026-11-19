@@ -10,6 +10,33 @@ of building toward that is design §8.9, which supersedes this map's order
 where they differ; this document's gates (G2's measurements on the P4, G3's
 gBASIC bar) still hold as gates.
 
+**2026-11-18: where it stands now, and what is next.** This map's tables
+below are history from October; read these first:
+
+- **The window is done.** All 25 of Studio's `window` words are answered
+  directly (§5x–§5ah, `window-gap.md` §8), and the desktop's plumbing is
+  built — right-click, shortcuts, the clipboard, file dialogs, several
+  windows, dividers, docking, floating, tabs.
+- **The distance to gBASIC is `docs/ui-backend-gap.md`** (2026-11-16):
+  gBASIC built its neutral `ui` module and a 148-member backend table, so
+  what is left there is a `ui_whisker.c` (a retained model, gBASIC's code)
+  measured by gBASIC's contract suites, plus a list of named word gaps.
+  Closed since: tab characters (§5ai), files that are not plain UTF-8 and
+  characters a host cannot draw (§5aj), Page Up/Down (§5ak). Still open:
+  `enabled`, `secret`, `hint`, `default`, striped rows, a read-only memo;
+  `cells` with spans; submenus.
+- **Running remotely (D25, §5al)** — a program's own window *and* a
+  client that shows it from elsewhere: the wire is written down
+  (`docs/wire.md`), `whisker-client` built, the code editor serves a seat
+  per viewer, and the whole is tested through real SSH. Next there: the
+  wire over **one duplex stream**, so SSH can carry it on a session's own
+  input and output (no tunnel, no open port), a program can **dial a
+  screen** (`WHISKER_DISPLAY`), and a screen can **say what it draws**.
+- **Decided since**: one binary as far as reasonable (D23); accessibility
+  MCP first, and whisker's palette gated for contrast and colour vision
+  (D24); both a program's window and a remote client (D25).
+- **The bird's-eye view** is `docs/architecture.html`.
+
 ---
 
 ## 1. What "complete" means here, since there is no feature list

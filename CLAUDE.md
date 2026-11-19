@@ -595,18 +595,22 @@ layout is compiled in cannot change without a reflash).
 1. `docs/decisions.md` — twenty-six ratified outcomes (D0–D25), one screen. **First**, so that
    the design's §4 arguments read as history rather than as open questions.
    Then `docs/roadmap.md`, which is what is left and what would let us stop.
-2. `docs/design.md` — all of it. It is the whole project, and it has been
+2. `docs/architecture.html` — the bird's-eye view (layers, local and
+   remote, languages, who owns what); then `docs/ui-backend-gap.md`, the
+   distance to gBASIC, and `docs/wire.md`, the protocol a remote screen
+   speaks.
+3. `docs/design.md` — all of it. It is the whole project, and it has been
    revised against the review, so it and the answers no longer disagree.
-3. `docs/rv9-answers.md` — the measurements and the four things the review did
+4. `docs/rv9-answers.md` — the measurements and the four things the review did
    not think to ask. Read §2.5 before writing any C, and §4 before deciding how
    anything is sized.
-4. `docs/review-2026-09-30.md` — the substrate checked by running it. Five
+5. `docs/review-2026-09-30.md` — the substrate checked by running it. Five
    findings; §7 lists what they change. Read it before §5, because two of them
    change iteration 1's done-criteria and one changes what a tree may look
    like. The programs behind every number are in `tools/evidence/`.
-5. `docs/rv9-review.md` — the questions as they were put. Historical; kept so
+6. `docs/rv9-review.md` — the questions as they were put. Historical; kept so
    question and answer stay separable.
-6. `~/development/Software-Development-Conventions.md` — the house conventions.
+7. `~/development/Software-Development-Conventions.md` — the house conventions.
 7. For anything touching the substrate: `~/development/esp32/rv9` —
    `components/rv9_io/src/drv_svgwin.c` (its header states two design decisions
    whisker adopts), `raster.c`, `modules/flick/flick.c` (the only working example

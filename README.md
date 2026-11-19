@@ -59,6 +59,22 @@ change to the program. The page repaints only the rows each document names,
 exactly as the board does, and a test in headless Chrome holds it to that
 pixel for pixel.
 
+**And a program can be shown from anywhere** (§5al, D25, 2026-11-18): it
+keeps its own window, and **`whisker-client`** shows it from another
+machine — through SSH, like X or RDP but sending what the window *is*, a
+few kilobytes of SVG, rather than drawing calls or pixels. The client's
+frame is the program's own window's to the byte. Each viewer gets their own
+seat, a viewer who leaves leaves the program running, and one who comes back
+finds their caret and view where they left them. The protocol is
+`docs/wire.md`; the overall picture is `docs/architecture.html`.
+
+    host/web/run.sh --code file.bas                  # serve it (this machine only)
+    ssh -N -L 8090:localhost:8090 you@that-machine   # from yours
+    host/linux/run.sh --client 8090 yourname         # and see it
+
+The browser host now listens on **this machine only**: to reach it from a
+phone, start the program with `WHISKER_LISTEN=0.0.0.0`.
+
 **And menus open over the window** (§5l): any tree can be opened over the
 rest, hanging from the widget that opened it, drawn on top and asked first
 for taps — and a band repaint under an open menu is exact.
@@ -156,10 +172,17 @@ what it lacks by name rather than substituting, both gated in `src/run.sh`.
 At the other end nothing was needed: gBASIC's declarative `gui` names five
 component kinds and whisker has all five.
 
+- `docs/architecture.html` — **the bird's-eye view**: the layers every
+  program sits on, local and remote, what each language provides, and who
+  owns what.
+- `docs/ui-backend-gap.md` — **the current distance to gBASIC**: what a
+  `ui_whisker.c` needs behind gBASIC's backend table, word by word.
+- `docs/wire.md` — **the wire**: how a program and a screen talk — the
+  browser, `whisker-client`, any other.
 - `docs/roadmap.md` — **what is left**, in what order, and what would let us
   stop. Three gates: what the C5 is *for* (a question, not code), what only the
   P4 can measure, and gBASIC's answer.
-- `docs/decisions.md` — **read first.** Nine decisions; D0–D5 ratified 2026-09-29, D6–D8 since.
+- `docs/decisions.md` — **read first.** Twenty-six decisions, D0–D25.
 - `docs/design.md` — the project, revised against the review.
 - `docs/rv9-answers.md` — the RV-9 session's replies: the measurements, and four
   things the review did not think to ask.
@@ -178,14 +201,17 @@ component kinds and whisker has all five.
   read by a backend.
 - `docs/window-gap.md` — the current answer, measured against `window` and
   Studio on it: Studio's window is now a pure record that touches no toolkit,
-  and whisker answered 15 of the 25 words it uses. **Recounted 2026-11-12: 21
-  of 25**, three in part (`memo`, `table`, `tree`), one not (`source`).
+  and whisker answered 15 of the 25 words it uses. **Since 2026-11-16 all 25,
+  directly** — superseded as the measure by `ui-backend-gap.md`.
 - `docs/rv9-ask-2026-10-02.md` and `docs/rv9-answers-2026-10-02.md` — a defect
   reported to RV-9, what they did about it, and the stack finding that came
   back the other way. Question and answer kept separable, as before.
 - `src/` — the library. `whisker.h` is the whole of it.
-- `host/linux/` — whisker running: a window, a blit, a point. 276 lines over
-  RV-9's own rasteriser, so what it draws is what the board draws.
+- `host/linux/` — whisker running: a window, a blit, a point, over RV-9's
+  own rasteriser, so what it draws is what the board draws — and the
+  demos, and `whisker-client`.
+- `host/web/` — the browser host: a program served to any browser, and the
+  wire every remote screen speaks.
 
 **The question that blocked everything was answered by a purchase.** A Waveshare
 ESP32-P4-WIFI6-Touch-LCD-7B — 1024×600, five-point capacitive touch — was
