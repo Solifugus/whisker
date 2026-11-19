@@ -185,10 +185,10 @@ Design §6.1's four, as they stand:
 
 ## 8. What follows, in order
 
-1. **whisker, small and first — the gaps any program meets.** A tab
-   character drawn (a width in spaces, `tab_width`); `enabled` (drawn
-   faint, never pressed, skipped by Tab); `secret`; `hint`; `default`;
-   `striped`; a read-only memo. Each a whisker iteration with its
+1. **whisker, small and first — the gaps any program meets.** ~~A tab
+   character drawn~~ (§5ai); ~~`enabled`~~ (§5an: `off`, drawn faint,
+   never pressed, skipped by Tab, down a branch); `secret`; `hint`;
+   `default`; `striped`; a read-only memo. Each a whisker iteration with its
    profile question (§7), none touching the board budgets.
 2. **whisker, larger**: `cells` with spans; submenus; raise and retitle
    in the host contract.

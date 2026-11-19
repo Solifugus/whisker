@@ -414,6 +414,10 @@ typedef struct {
 	char          text[WSK_TEXT_MAX];
 	short         size;          /* rows in a column, columns in a row; 0 = default */
 	short         weight;        /* share of what is left over; 0 = fixed */
+	unsigned char off;           /* 1: here but not now -- drawn faint, not pressed,
+	                                focused or typed into, and so is everything
+	                                under a stack that is (§5an); in the padding,
+	                                so still 64 bytes */
 	unsigned int  fill;          /* WSK_INHERIT to take the tree's accent */
 	unsigned int  ink;           /* WSK_INHERIT to take the tree's ink */
 	unsigned char mark;          /* WSK_MARK_CORNERS, or 0 */
@@ -696,13 +700,19 @@ typedef struct wsk_tree {
 	short         zoom;
 	unsigned char wspace;
 	unsigned char wone;
-	unsigned char wfade;         /* whisker's, in those copies: the item's fade */
-	unsigned int  wbg;           /* ... and the world's background it fades toward */
 	int           wdx, wdy;      /* and which copy of a torus's item: 0 or -ww, -wh */
 	/* whisker's, in the copies a poster is laid out in (step 2b): the
 	   factor, 256 = 1:1, its lengths were scaled by -- 0 outside a world */
 	int           wz;
 #endif
+
+	/* Whisker's, in the copies a part is drawn through: how far its colours
+	   are faded toward `wbg` -- a world's item by distance (§5q), a part
+	   that is off by half (§5an) -- and whether it is under a stack that is
+	   off, so not pressed, focused or typed into either. */
+	unsigned char wfade;
+	unsigned int  wbg;
+	unsigned char goff;
 
 	/* Set by whisker in those copies, never by a caller: the intersection of
 	   every scrolling viewport above this stack, which cuts it (§5f rule 3). */
@@ -1672,6 +1682,7 @@ static inline void wsk_clone(wsk_widget_t *dst, const wsk_widget_t *src, int n)
 		dst[i].kind   = src[i].kind;
 		dst[i].size   = src[i].size;
 		dst[i].weight = src[i].weight;
+		dst[i].off    = src[i].off;     /* or a clone is off by whatever the stack held (§5an) */
 		dst[i].fill   = src[i].fill;
 		dst[i].ink    = src[i].ink;
 		dst[i].mark   = src[i].mark;
@@ -1759,11 +1770,12 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->zoom = 256;
 	t->wspace = WSK_OPEN;
 	t->wone = 0;
-	t->wfade = 0;
-	t->wbg = 0;
 	t->wdx = t->wdy = 0;
 	t->wz = 0;
 #endif
+	t->wfade = 0;
+	t->wbg = 0;
+	t->goff = 0;
 	t->clipped = 0;
 	t->cx0 = t->cy0 = t->cx1 = t->cy1 = 0;
 }
@@ -2215,6 +2227,27 @@ static inline wsk_rect_t wsk__cell(const wsk_tree_t *t, int idx)
 }
 #endif
 
+/*
+ * A colour faded toward a background -- a world's item by its distance
+ * (step 2, §5q rule 6), a part that is off by half (§5an): /w0 has no
+ * opacity, so fading is a colour. 0 leaves it exactly; 255 is the
+ * background. No division: the fraction is taken out of 256.
+ */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static unsigned int wsk__fade(const wsk_tree_t *t, unsigned int c)   /* out of line: a dozen callers */
+{
+	unsigned int out = 0;
+	int a = t->wfade + (t->wfade >> 7);
+	if (t->wfade == 0 || c == WSK_INHERIT) return c;
+	for (int sh = 0; sh < 24; sh += 8) {
+		int x = (int)((c >> sh) & 0xFF), b = (int)((t->wbg >> sh) & 0xFF);
+		out |= (unsigned int)(((x * (256 - a) + b * a) >> 8) & 0xFF) << sh;
+	}
+	return out;
+}
+
 #ifndef WSK_NO_WORLD
 /*
  * Item i of a world (§5q rule 3): its place less the view, times the zoom,
@@ -2311,25 +2344,8 @@ static inline int wsk__whit(const wsk_tree_t *t, int i, int x, int y)
 	return 0;
 }
 
-/*
- * A colour faded toward the world's background (step 2, §5q rule 6): /w0
- * has no opacity, so fading is a colour. 0 leaves it exactly; 255 is the
- * background. No division: the fraction is taken out of 256.
- */
-static inline unsigned int wsk__fade(const wsk_tree_t *t, unsigned int c)
-{
-	unsigned int out = 0;
-	int a = t->wfade + (t->wfade >> 7);
-	if (t->wfade == 0 || c == WSK_INHERIT) return c;
-	for (int sh = 0; sh < 24; sh += 8) {
-		int x = (int)((c >> sh) & 0xFF), b = (int)((t->wbg >> sh) & 0xFF);
-		out |= (unsigned int)(((x * (256 - a) + b * a) >> 8) & 0xFF) << sh;
-	}
-	return out;
-}
-#else
-#define wsk__fade(t, c) (c)
-#endif
+#endif /* WSK_NO_WORLD: the world's own above; wsk__fade is every profile's (§5an) */
+
 
 /* A widget's weight -- none once the caller has sized it (§5x rule 1). */
 static inline int wsk__wt(const wsk_tree_t *t, int i)
@@ -2512,15 +2528,26 @@ static inline int wsk__child(const wsk_tree_t *t, int i, wsk_tree_t *c)
 		c->clipped = 1;
 	}
 	if (c->wz != 0) wsk__zscale(c, c->wz);
+#endif
 	c->wfade = t->wfade;
 	c->wbg = t->wbg;                    /* toward the world's, not the poster's own */
-	if (c->wfade != 0) {                /* faded with the poster (step 2) */
+	if (c->wfade != 0) {                /* faded with the poster (§5q step 2) */
 		c->ink = wsk__fade(c, c->ink);
 		c->accent = wsk__fade(c, c->accent);
 		c->trough = wsk__fade(c, c->trough);
 		c->selfill = wsk__fade(c, c->selfill);
 	}
-#endif
+	/* under a stack that is off, everything is (§5an): faded half way, at
+	   least, and marked so that nothing under it is pressed or focused */
+	c->goff = (unsigned char)(t->goff || t->item[i].off);
+	if (t->item[i].off && c->wfade < 128) {
+		c->wfade = 128;
+		c->wbg = t->bg;
+		c->ink = wsk__fade(c, t->ink);
+		c->accent = wsk__fade(c, t->accent);
+		c->trough = wsk__fade(c, t->trough);
+		c->selfill = wsk__fade(c, t->selfill);
+	}
 #ifndef WSK_NO_SCROLL
 	if (t->overflow == WSK_SCROLL) {
 		int x0 = t->ax, y0 = t->ay, x1 = t->ax + t->aw, y1 = t->ay + t->ah;
@@ -3460,7 +3487,7 @@ static inline void wsk__marks(wsk_sink_t *s, const wsk_tree_t *t,
 	wsk__corner(s, r.x,        r.y + r.h,  a, -a);
 	wsk__corner(s, r.x + r.w,  r.y + r.h, -a, -a);
 	wsk__s(s, "\" stroke=\"");
-	wsk__col(s, (w->ink != WSK_INHERIT) ? w->ink : t->ink);
+	wsk__col(s, (w->ink != WSK_INHERIT) ? wsk__fade(t, w->ink) : t->ink);
 	wsk__s(s, "\" stroke-width=\"2\"/>");
 }
 
@@ -3732,7 +3759,7 @@ static inline void wsk__field(wsk_sink_t *s, const wsk_tree_t *t,
 	int x = r.x + WSK_FIELD_PAD;
 	int show = (w->mark == WSK_MARK_CARET);
 	int top = r.y + (r.h - t->font) / 2;
-	unsigned int ink = (w->ink != WSK_INHERIT) ? w->ink : t->ink;
+	unsigned int ink = (w->ink != WSK_INHERIT) ? wsk__fade(t, w->ink) : t->ink;
 
 	/* the text and its caret, whole or not at all (§5e) */
 	if (!wsk__shows(t, r.x, r.x + r.w, top)) return;
@@ -3747,7 +3774,7 @@ static inline void wsk__field(wsk_sink_t *s, const wsk_tree_t *t,
 		int sp = 0;
 		while (sp < n && txt[from + sp] == ' ') sp++;
 		if (sp < n)
-			wsk__textel(s, 1, x + sp * wsk_advance(t->font), wsk_baseline_of(top, t->font), w->ink,
+			wsk__textel(s, 1, x + sp * wsk_advance(t->font), wsk_baseline_of(top, t->font), wsk__fade(t, w->ink),
 			            txt + from + sp, n - sp);
 	}
 
@@ -3943,9 +3970,9 @@ static inline void wsk__inked(wsk_sink_t *s, const wsk_tree_t *t, const wsk_widg
 		if (ik[mid].at + ik[mid].len <= from) lo = mid + 1; else hi = mid;
 	}
 	while (pos < stop) {
-		unsigned int ink = w->ink;
+		unsigned int ink = wsk__fade(t, w->ink);
 		int e, p;
-		if (lo < ni && ik[lo].at <= pos) { e = ik[lo].at + ik[lo].len; ink = ik[lo].ink; lo++; }
+		if (lo < ni && ik[lo].at <= pos) { e = ik[lo].at + ik[lo].len; ink = wsk__fade(t, ik[lo].ink); lo++; }
 		else e = (lo < ni) ? ik[lo].at : stop;
 		if (e > stop) e = stop;
 		for (p = pos; p < e && txt[p] == ' '; p++) ;
@@ -4109,7 +4136,7 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 			else
 #endif
 			if (n > 0)
-				wsk__rowtext(s, t, xf, y, w->ink, txt, at, from, n, tw);
+				wsk__rowtext(s, t, xf, y, wsk__fade(t, w->ink), txt, at, from, n, tw);
 		}
 		if (next > len) break;
 		at = next;
@@ -4126,7 +4153,7 @@ static inline void wsk__memo(wsk_sink_t *s, const wsk_tree_t *t,
 			c.w = WSK_CARET_W;
 			c.h = (short)(t->font - t->font / 4);
 			if (c.h < 4) c.h = 4;
-			wsk__box(s, 0, c, (w->ink != WSK_INHERIT) ? w->ink : t->ink);
+			wsk__box(s, 0, c, (w->ink != WSK_INHERIT) ? wsk__fade(t, w->ink) : t->ink);
 		}
 	}
 }
@@ -4255,7 +4282,7 @@ static inline void wsk__run(const wsk_doc_t *d, const wsk_tree_t *t,
 
 	if (a.y >= d->y1 || a.y + a.h <= d->y0) return;   /* not in these rows */
 	if (!wsk__shows(t, a.x, x1, top)) return;
-	wsk__textel(s, 1, a.x, wsk_baseline_of(top, t->font), w->ink, x + from, to - from);
+	wsk__textel(s, 1, a.x, wsk_baseline_of(top, t->font), wsk__fade(t, w->ink), x + from, to - from);
 }
 
 static inline void wsk__runs(const wsk_doc_t *d, const wsk_tree_t *t, int i,
@@ -4381,7 +4408,7 @@ static void wsk__stack(const wsk_doc_t *d, const wsk_tree_t *t, int i,
 static inline void wsk__ring(wsk_sink_t *s, const wsk_tree_t *t,
                              const wsk_widget_t *w, wsk_rect_t r)
 {
-	unsigned int ink = (w->ink != WSK_INHERIT) ? w->ink : t->ink;
+	unsigned int ink = (w->ink != WSK_INHERIT) ? wsk__fade(t, w->ink) : t->ink;
 	wsk_rect_t e;
 	if (r.w < 12 || r.h < 12) return;
 	e.x = (short)(r.x + 2); e.y = (short)(r.y + 2); e.w = (short)(r.w - 4); e.h = 2;
@@ -4421,7 +4448,7 @@ static inline void wsk__check(wsk_sink_t *s, const wsk_tree_t *t,
 	/* a border in the ink, then the trough inside it: a trough-coloured box
 	   alone was all but invisible on the scene, which the first picture
 	   showed and no test could have */
-	wsk__box(s, t->ids ? w->id : 0, box, (w->ink != WSK_INHERIT) ? w->ink : t->ink);
+	wsk__box(s, t->ids ? w->id : 0, box, (w->ink != WSK_INHERIT) ? wsk__fade(t, w->ink) : t->ink);
 	{
 		wsk_rect_t in = box;
 		in.x = (short)(in.x + 2); in.y = (short)(in.y + 2);
@@ -4431,12 +4458,12 @@ static inline void wsk__check(wsk_sink_t *s, const wsk_tree_t *t,
 	if (wsk__ticked(t, w)) {
 		box.x = (short)(box.x + b / 4); box.y = (short)(box.y + b / 4);
 		box.w = (short)(b - b / 2);     box.h = (short)(b - b / 2);
-		wsk__box(s, 0, box, (w->fill != WSK_INHERIT) ? w->fill : t->accent);
+		wsk__box(s, 0, box, (w->fill != WSK_INHERIT) ? wsk__fade(t, w->fill) : t->accent);
 	}
 	len = wsk__len(w->text);
 	if (len > 0)
 		wsk__textel(s, 1, r.x + t->pad + b + b / 2, wsk_baseline_of(top, t->font),
-		            w->ink, w->text, len);
+		            wsk__fade(t, w->ink), w->text, len);
 #ifndef WSK_NO_INPUT
 	if ((const void *)w == t->focus) wsk__ring(s, t, w, r);
 #endif
@@ -4526,6 +4553,129 @@ static void wsk__world(const wsk_doc_t *d, const wsk_tree_t *t, wsk_sink_t *s)
 }
 #endif
 
+/* Widget i of tree t, drawn (the body of wsk__items, one widget). */
+static inline void wsk__item(const wsk_doc_t *d, const wsk_tree_t *t, int i, wsk_sink_t *s)
+{
+	const wsk_widget_t *w = &t->item[i];
+	wsk_rect_t r = wsk_rect(t, i), v = r;
+	if (!wsk__cut(t, &v)) return;                    /* scrolled out of view */
+	if (v.y >= d->y1 || v.y + v.h <= d->y0) return;  /* not in these rows */
+#ifndef WSK_NO_SCROLL
+	if (t->caps & WSK_CAP_CLIP) v = r;                  /* the clip cuts it (§5r) */
+#endif
+	/* The box is drawn cut (v); everything else from the widget's own
+	   rectangle (r), whole or not at all. */
+#ifndef WSK_NO_NEST
+	if (w->kind == WSK_STACK) { wsk__stack(d, t, i, v, s); return; }
+#endif
+#if !defined(WSK_NO_TEXT) && !defined(WSK_NO_WRAP)
+	if (w->kind == WSK_TEXT && t->overflow == WSK_WRAP) { wsk__runs(d, t, i, s); return; }
+#endif
+#ifndef WSK_NO_SPLIT
+	/* a divider is its bar, and nothing on it (§5x rule 2) -- here,
+	   before the selection's `} else`, which the box below hangs on */
+	if (w->kind == WSK_DIVIDER) { wsk__rect(s, t, w, v); return; }
+#endif
+#ifndef WSK_NO_INPUT
+	/* the chosen item of a selecting stack, in its own fill (§5m) -- a
+	   text item too, which a chooser's rows are (§5ae): leaving it out
+	   left a choice moved by the arrows nowhere to be seen */
+	if (t->select && i == t->sel &&
+	    (w->kind == WSK_BUTTON || w->kind == WSK_LABEL || w->kind == WSK_TEXT)) {
+		wsk__box(s, t->ids ? w->id : 0, v, t->selfill);
+		if (w->kind != WSK_BUTTON) { wsk__text(s, t, w, wsk__say(t, t, i), r); return; }
+	} else
+#endif
+#ifdef WSK_NO_FIELD
+	if (w->kind == WSK_BUTTON) wsk__rect(s, t, w, v);
+#else
+	if (w->kind == WSK_BUTTON || w->kind == WSK_FIELD
+#ifndef WSK_NO_MEMO
+	    || wsk__lined(w->kind)
+#endif
+	    ) wsk__rect(s, t, w, v);
+#endif
+#ifndef WSK_NO_CHECK
+	if (w->kind == WSK_CHECK) { wsk__check(s, t, w, r); return; }
+#endif
+#ifndef WSK_NO_IMAGE
+	/* an image is drawn whole or not at all, as text is: cutting its
+	   rectangle would squash the picture rather than crop it -- unless
+	   the host clips, when the clip crops it (§5r) */
+	if (w->kind == WSK_IMAGE) {
+		if ((t->caps & WSK_CAP_CLIP) || (v.w == r.w && v.h == r.h)) {
+			wsk__s(s, "<image href=\"");
+			wsk__s(s, wsk__href(t, w));
+			wsk__s(s, "\" x=\""); wsk__n(s, r.x);
+			wsk__s(s, "\" y=\""); wsk__n(s, r.y);
+			wsk__s(s, "\" width=\""); wsk__n(s, r.w);
+			wsk__s(s, "\" height=\""); wsk__n(s, r.h);
+			wsk__s(s, "\"/>");
+		}
+		return;
+	}
+#endif
+#ifndef WSK_NO_INPUT
+	if ((const void *)w == t->focus && w->kind == WSK_BUTTON &&
+	    (t->axis == WSK_COL ? v.h == r.h : v.w == r.w))
+		wsk__ring(s, t, w, r);
+#endif
+#ifndef WSK_NO_MARKS
+	if ((w->mark == WSK_MARK_CORNERS
+#ifndef WSK_NO_INPUT
+	     || (const void *)w == t->held
+#endif
+	    ) && (t->axis == WSK_COL ? v.h == r.h : v.w == r.w)
+#ifndef WSK_NO_NEST
+	    && wsk__seen(t, r.x, r.y, r.x + r.w, r.y + r.h)
+#endif
+	    )
+		wsk__marks(s, t, w, r);
+#endif
+#ifndef WSK_NO_FIELD
+	if (w->kind == WSK_FIELD) wsk__field(s, t, w, r);
+	else
+#endif
+#ifndef WSK_NO_MEMO
+	if (wsk__lined(w->kind)) wsk__memo(s, t, w, r, d->y0, d->y1);
+	else
+#endif
+	wsk__text(s, t, w, wsk__say(t, t, i), r);
+}
+
+/* ...and a part that is off, through its faded copy: out of line, so the
+   copy is on the stack only while one is drawn -- the drawing loop's frame
+   is under RV-9's rasteriser at every level of nesting (CLAUDE.md) */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static void wsk__item_off(const wsk_doc_t *d, const wsk_tree_t *t, int i, wsk_sink_t *s)
+{
+	wsk_tree_t c;
+	int g;
+	{
+		/* a byte at a time: c = *t is memcpy to gcc at -Os, which a module
+		   cannot link, and wsk__tcopy is not in every profile */
+		unsigned char *o = (unsigned char *)&c;
+		const unsigned char *f = (const unsigned char *)t;
+		for (unsigned k = 0; k < sizeof c; k++) {
+			o[k] = f[k];
+#if defined(__GNUC__)
+			__asm__ volatile ("" ::: "memory");
+#endif
+		}
+	}
+	c.wfade = 128;
+	c.wbg = t->bg;
+	c.ink = wsk__fade(&c, t->ink);
+	c.accent = wsk__fade(&c, t->accent);
+	c.trough = wsk__fade(&c, t->trough);
+	c.selfill = wsk__fade(&c, t->selfill);
+	g = wsk__look(s, d, &c);
+	wsk__item(d, &c, i, s);
+	if (g) wsk__s(s, "</g>");
+}
+
 static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
                               wsk_sink_t *s)
 {
@@ -4533,91 +4683,12 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 	if (t->overflow == WSK_WORLD && !t->wone) { wsk__world(d, t, s); return; }
 #endif
 	for (int i = 0; i < t->n; i++) {
-		const wsk_widget_t *w = &t->item[i];
-		wsk_rect_t r = wsk_rect(t, i), v = r;
-		if (!wsk__cut(t, &v)) continue;                    /* scrolled out of view */
-		if (v.y >= d->y1 || v.y + v.h <= d->y0) continue;  /* not in these rows */
-#ifndef WSK_NO_SCROLL
-		if (t->caps & WSK_CAP_CLIP) v = r;                  /* the clip cuts it (§5r) */
-#endif
-		/* The box is drawn cut (v); everything else from the widget's own
-		   rectangle (r), whole or not at all. */
-#ifndef WSK_NO_NEST
-		if (w->kind == WSK_STACK) { wsk__stack(d, t, i, v, s); continue; }
-#endif
-#if !defined(WSK_NO_TEXT) && !defined(WSK_NO_WRAP)
-		if (w->kind == WSK_TEXT && t->overflow == WSK_WRAP) { wsk__runs(d, t, i, s); continue; }
-#endif
-#ifndef WSK_NO_SPLIT
-		/* a divider is its bar, and nothing on it (§5x rule 2) -- here,
-		   before the selection's `} else`, which the box below hangs on */
-		if (w->kind == WSK_DIVIDER) { wsk__rect(s, t, w, v); continue; }
-#endif
-#ifndef WSK_NO_INPUT
-		/* the chosen item of a selecting stack, in its own fill (§5m) -- a
-		   text item too, which a chooser's rows are (§5ae): leaving it out
-		   left a choice moved by the arrows nowhere to be seen */
-		if (t->select && i == t->sel &&
-		    (w->kind == WSK_BUTTON || w->kind == WSK_LABEL || w->kind == WSK_TEXT)) {
-			wsk__box(s, t->ids ? w->id : 0, v, t->selfill);
-			if (w->kind != WSK_BUTTON) { wsk__text(s, t, w, wsk__say(t, t, i), r); continue; }
-		} else
-#endif
-#ifdef WSK_NO_FIELD
-		if (w->kind == WSK_BUTTON) wsk__rect(s, t, w, v);
-#else
-		if (w->kind == WSK_BUTTON || w->kind == WSK_FIELD
-#ifndef WSK_NO_MEMO
-		    || wsk__lined(w->kind)
-#endif
-		    ) wsk__rect(s, t, w, v);
-#endif
-#ifndef WSK_NO_CHECK
-		if (w->kind == WSK_CHECK) { wsk__check(s, t, w, r); continue; }
-#endif
-#ifndef WSK_NO_IMAGE
-		/* an image is drawn whole or not at all, as text is: cutting its
-		   rectangle would squash the picture rather than crop it -- unless
-		   the host clips, when the clip crops it (§5r) */
-		if (w->kind == WSK_IMAGE) {
-			if ((t->caps & WSK_CAP_CLIP) || (v.w == r.w && v.h == r.h)) {
-				wsk__s(s, "<image href=\"");
-				wsk__s(s, wsk__href(t, w));
-				wsk__s(s, "\" x=\""); wsk__n(s, r.x);
-				wsk__s(s, "\" y=\""); wsk__n(s, r.y);
-				wsk__s(s, "\" width=\""); wsk__n(s, r.w);
-				wsk__s(s, "\" height=\""); wsk__n(s, r.h);
-				wsk__s(s, "\"/>");
-			}
-			continue;
-		}
-#endif
-#ifndef WSK_NO_INPUT
-		if ((const void *)w == t->focus && w->kind == WSK_BUTTON &&
-		    (t->axis == WSK_COL ? v.h == r.h : v.w == r.w))
-			wsk__ring(s, t, w, r);
-#endif
-#ifndef WSK_NO_MARKS
-		if ((w->mark == WSK_MARK_CORNERS
-#ifndef WSK_NO_INPUT
-		     || (const void *)w == t->held
-#endif
-		    ) && (t->axis == WSK_COL ? v.h == r.h : v.w == r.w)
-#ifndef WSK_NO_NEST
-		    && wsk__seen(t, r.x, r.y, r.x + r.w, r.y + r.h)
-#endif
-		    )
-			wsk__marks(s, t, w, r);
-#endif
-#ifndef WSK_NO_FIELD
-		if (w->kind == WSK_FIELD) wsk__field(s, t, w, r);
-		else
-#endif
-#ifndef WSK_NO_MEMO
-		if (wsk__lined(w->kind)) wsk__memo(s, t, w, r, d->y0, d->y1);
-		else
-#endif
-		wsk__text(s, t, w, wsk__say(t, t, i), r);
+		/* a part that is off (§5an) is drawn through a copy of its tree
+		   faded half way to the background -- its fill and ink, and text
+		   that takes the tree's ink, in a group carrying the faded ink --
+		   so faint by lightness, still its own colour (D24) */
+		if (t->item[i].off && t->wfade < 128) wsk__item_off(d, t, i, s);
+		else wsk__item(d, t, i, s);
 	}
 }
 
@@ -5460,12 +5531,13 @@ static inline int wsk__fields(const wsk_tree_t *t, const wsk_tree_t *orig,
 		    ))
 			whole = 1;
 #endif
-		/* focusable (§5m rule 4): an editable field, a button, a check */
-		if (b != 0 || w->kind == WSK_BUTTON || whole
+		/* focusable (§5m rule 4): an editable field, a button, a check --
+		   and not off (§5an), so Tab passes it */
+		if ((b != 0 || w->kind == WSK_BUTTON || whole
 #ifndef WSK_NO_CHECK
 		    || w->kind == WSK_CHECK
 #endif
-		    ) {
+		    ) && !t->goff && !w->off) {
 			if ((const void *)w == want || (want == 0 && count == nth)) {
 				wsk_rect_t r = wsk_rect(t, i);
 				if (!wsk__cut(t, &r)) r.h = 0;        /* out of view */
@@ -5488,6 +5560,25 @@ static inline int wsk__fields(const wsk_tree_t *t, const wsk_tree_t *orig,
 	return count;
 }
 
+/* Whether widget w, wherever it is under t, is off -- itself, or under a
+   stack that is (§5an): 1 or 0, or -1 if it is not there. */
+static inline int wsk__offw(const wsk_tree_t *t, const void *w, int depth)
+{
+	for (int i = 0; i < t->n; i++) {
+		const wsk_widget_t *x = &t->item[i];
+		if ((const void *)x == w) return (t->goff || x->off) ? 1 : 0;
+#ifndef WSK_NO_NEST
+		if (x->kind == WSK_STACK && depth + 1 < WSK_DEPTH_MAX) {
+			wsk_tree_t c;
+			int o;
+			if (wsk__child(t, i, &c) && (o = wsk__offw(&c, w, depth + 1)) >= 0) return o;
+		}
+#endif
+	}
+	(void)depth;
+	return -1;
+}
+
 /*
  * Where the keys work (§5ae): an open dialog -- laid out in c, *orig its
  * caller's tree -- or else the window itself. Tab, focus and a list's keys
@@ -5506,6 +5597,20 @@ static inline const wsk_tree_t *wsk__keys_in(const wsk_tree_t *r, wsk_tree_t *c,
 #endif
 	*orig = r;
 	return r;
+}
+
+/* Whether the focused part is off now (§5an) -- it may have gone off since
+   it took the keys: then they are not its. Out of line: four callers. */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static int wsk__focus_off(const wsk_tree_t *r)
+{
+	wsk_tree_t c;
+	const wsk_tree_t *orig, *k;
+	if (r->focus == 0) return 0;
+	k = wsk__keys_in(r, &c, &orig);
+	return wsk__offw(k, r->focus, 0) == 1 || (k != r && wsk__offw(r, r->focus, 0) == 1);
 }
 
 #if !defined(WSK_NO_LISTKEYS) && !defined(WSK_NO_NEST)
@@ -5860,6 +5965,7 @@ static inline int wsk_ui_focus(wsk_ui_t *ui, const char *key, int *y0, int *y1)
 	wsk_rect_t r;
 
 	if (i < 0) return WSK_E_NOTFOUND;
+	if (at.goff || at.item[i].off) return WSK_E_NOTFOUND;   /* off: not focusable (§5an) */
 	b = wsk__fbuf(&at, &at.item[i]);
 #if !defined(WSK_NO_LISTKEYS)
 	/* a list or a world takes focus too, as one stop (§5z) */
@@ -6756,6 +6862,9 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		wsk_tree_t at;
 		wsk_rect_t rect = { 0, 0, 0, 0 };
 		int word = -1, k = wsk__ui_hit(r, x, y, &in, &rect, &word, &at, &lay);
+		/* a part that is off is pressed as nothing (§5an): no held mark, no
+		   click, no focus -- while a drag begun there still scrolls */
+		if (k >= 0 && (lay->goff || lay->item[k].off)) k = -1;
 		ui->down = 1;
 		ui->dragging = 0;
 		ui->x0 = (short)x;
@@ -7162,12 +7271,12 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	/* the focused list's or world's keys (§5z) */
 	else if ((ev->kind == WSK_EV_KEY || ev->kind == WSK_EV_TEXT) && r->focus != 0 &&
 	         ui->focus_b == 0 && ((const wsk_widget_t *)r->focus)->kind == WSK_STACK &&
-	         wsk__stackkeys(ui, ev, note, max, &n, &lo, &hi))
+	         !wsk__focus_off(r) && wsk__stackkeys(ui, ev, note, max, &n, &lo, &hi))
 		used = 1;
 #endif
 	/* ENTER on a focused button is its click, and on a check its toggle. */
 	else if (ev->kind == WSK_EV_KEY && ev->key == WSK_KEY_ENTER && r->focus != 0 &&
-	         ui->focus_b == 0) {
+	         ui->focus_b == 0 && !wsk__focus_off(r)) {
 		wsk__focus_now(ui);
 		n = wsk__note(note, max, n, WSK_NOTE_CLICK, ui->focus_in, ui->focus_item, -1);
 #ifndef WSK_NO_CHECK
@@ -7179,7 +7288,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		}
 #endif
 	}
-	else if ((ev->kind == WSK_EV_TEXT || ev->kind == WSK_EV_KEY) && ui->focus_b != 0) {
+	else if ((ev->kind == WSK_EV_TEXT || ev->kind == WSK_EV_KEY) && ui->focus_b != 0 && !wsk__focus_off(r)) {
 		wsk_buf_t *b;
 		int edit = 0, moved = 0, memo = 0, key = ev->key, sel = 0, s0 = 0;
 #ifndef WSK_NO_TEXTSEL

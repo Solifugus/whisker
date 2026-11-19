@@ -2246,6 +2246,45 @@ int main(void)
 		shot("markers.ppm");
 	}
 
+	/*
+	 * A part that is off (§5an) at the pixels: Save and Open, the second off
+	 * -- its box the accent half way to the ground, its text the same, by
+	 * lightness and not by hue (D24).
+	 */
+	{
+		static wsk_widget_t W[2];
+		wsk_tree_t root, at, f;
+		wsk_sink_t s;
+		wsk_rect_t on, off;
+		int lo, hi, which = 0, a_on, a_off, f_off;
+		unsigned int faint;
+
+		memset(W, 0, sizeof W);
+		W[0].kind = WSK_BUTTON; snprintf(W[0].id, WSK_ID_MAX, "save"); snprintf(W[0].text, WSK_TEXT_MAX, "Save"); W[0].weight = 1;
+		W[1].kind = WSK_BUTTON; snprintf(W[1].id, WSK_ID_MAX, "open"); snprintf(W[1].text, WSK_TEXT_MAX, "Open"); W[1].weight = 1;
+		W[1].off = 1;
+		wsk_init(&root, WSK_ROW, PW, PH);
+		root.bg = 0x10203au; root.font = 16; root.item = W; root.n = 2;
+		printf("\n  a part that is off (§5an)\n");
+		ok(wsk_check(&root, &which) == WSK_OK, "Save, and Open off, check");
+		on = wsk_rect(&at, wsk__lookup(&root, "save", &at, 0));
+		off = wsk_rect(&at, wsk__lookup(&root, "open", &at, 0));
+		f = root; f.wfade = 128; f.wbg = root.bg;
+		faint = wsk__fade(&f, root.accent);
+		s.put = to_window; s.ctx = &dev;
+		{ uint32_t v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); }
+		s.len = 0;
+		ok(wsk_render(&root, &s, 4096) > 0, "drawn, in one document under 4 KB");
+		a_on = span(on, pix565(root.accent), &lo, &hi);
+		a_off = span(off, pix565(root.accent), &lo, &hi);
+		f_off = span(off, pix565(faint), &lo, &hi);
+		printf("    the accent: %d pixels in Save, %d in Open; the faint accent in Open: %d; text bright in Save %d, in Open %d\n",
+		       a_on, a_off, f_off, bright(on), bright(off));
+		ok(a_on > on.w * on.h / 2 && a_off == 0 && f_off > off.w * off.h / 2 && bright(on) > 10 && bright(off) == 0,
+		   "Save in the accent with bright text; Open in the faint accent, none of the full one, its text not bright");
+		shot("off.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

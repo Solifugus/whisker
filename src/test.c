@@ -6840,6 +6840,153 @@ int main(void)
 #undef PG
 	}
 
+	printf("\n-- §5an  a part that is off\n");
+	{
+		static wsk_widget_t W[6], IN[2], ROWS[12];
+		char fa[32] = "", fb[32] = "", fc[32] = "", doc[16384], want[160];
+		unsigned char st[2] = { 0, 0 };
+		wsk_buf_t bufs[3];
+		wsk_tree_t r, k[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		wsk_rect_t rb, rc, rf;
+		int y0, y1, n, which = 0;
+		unsigned int faint_accent, faint_ink;
+
+		memset(W, 0, sizeof W); memset(IN, 0, sizeof IN);
+		W[0].kind = WSK_BUTTON; snprintf(W[0].id, WSK_ID_MAX, "save"); snprintf(W[0].text, WSK_TEXT_MAX, "Save"); W[0].size = 30;
+		W[1].kind = WSK_CHECK;  snprintf(W[1].id, WSK_ID_MAX, "keep"); snprintf(W[1].text, WSK_TEXT_MAX, "Keep"); W[1].size = 30; W[1].sub = 0;
+		W[2].kind = WSK_FIELD;  snprintf(W[2].id, WSK_ID_MAX, "fa"); W[2].sub = 0; W[2].size = 30;
+		W[3].kind = WSK_FIELD;  snprintf(W[3].id, WSK_ID_MAX, "fb"); W[3].sub = 1; W[3].size = 30;
+		W[4].kind = WSK_FIELD;  snprintf(W[4].id, WSK_ID_MAX, "fc"); W[4].sub = 2; W[4].size = 30;
+		W[5].kind = WSK_STACK;  snprintf(W[5].id, WSK_ID_MAX, "box"); W[5].sub = 0; W[5].size = 40;
+		IN[0].kind = WSK_BUTTON; snprintf(IN[0].id, WSK_ID_MAX, "inner"); snprintf(IN[0].text, WSK_TEXT_MAX, "Go"); IN[0].weight = 1;
+		IN[1].kind = WSK_LABEL;  snprintf(IN[1].id, WSK_ID_MAX, "note"); snprintf(IN[1].text, WSK_TEXT_MAX, "note"); IN[1].weight = 1;
+		for (int i = 0; i < 12; i++) {
+			ROWS[i].kind = WSK_LABEL; ROWS[i].size = 30;
+			snprintf(ROWS[i].id, WSK_ID_MAX, "r%d", i); snprintf(ROWS[i].text, WSK_TEXT_MAX, "row %d", i);
+		}
+		memset(bufs, 0, sizeof bufs);
+		bufs[0].b = fa; bufs[0].cap = sizeof fa;
+		bufs[1].b = fb; bufs[1].cap = sizeof fb;
+		bufs[2].b = fc; bufs[2].cap = sizeof fc;
+		wsk_init(&r, WSK_COL, 400, 400);
+		r.pad = 4; r.gap = 4;
+		r.item = W; r.n = 6; r.buf = bufs; r.bufs = 3; r.state = st; r.states = 2;
+		r.nest = k; r.nests = 2;
+		wsk_nest_init(&k[0], &r, WSK_ROW); k[0].item = IN; k[0].n = 2;
+		wsk_nest_init(&k[1], &r, WSK_COL); k[1].item = ROWS; k[1].n = 12; k[1].select = 1;
+		k[1].overflow = WSK_SCROLL; k[1].pad = 0; k[1].gap = 0;
+		{
+			wsk_tree_t f;
+			f = r; f.wfade = 128; f.wbg = r.bg;
+			faint_accent = wsk__fade(&f, r.accent);
+			faint_ink = wsk__fade(&f, r.ink);
+		}
+		wsk_ui_init(&ui, &r);
+		rb = rect_of(&r, "save"); rc = rect_of(&r, "keep"); rf = rect_of(&r, "fa");
+#define OFF_TAP(R) (memset(&ev, 0, sizeof ev), ev.kind = WSK_EV_DOWN, ev.x = (short)((R).x + 5), ev.y = (short)((R).y + 5), ev.d = 1, \
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1), ev.kind = WSK_EV_UP, n += wsk_feed(&ui, &ev, nt, 8, &y0, &y1))
+
+		/* drawn faint: by lightness, its own colour */
+		render_into(&r, doc, sizeof doc, 16384);
+		snprintf(want, sizeof want, "fill=\"#%06x\"", faint_accent);
+		{
+			char grp[96];
+			snprintf(grp, sizeof grp, "<g font-size=\"%d\" fill=\"#%06x\">", r.font, faint_ink);
+			ok(!has(doc, want) && !has(doc, grp), "CONTROL: nothing off -- no faint colour, no faint group");
+		}
+		W[0].off = 1;
+		render_into(&r, doc, sizeof doc, 16384);
+		snprintf(want, sizeof want, "<g font-size=\"%d\" fill=\"#%06x\">", r.font, faint_ink);
+		ok(has(doc, want), "Save off: drawn in a group whose ink is the tree's, half way to the ground");
+		snprintf(want, sizeof want, "width=\"%d\" height=\"%d\" fill=\"#%06x\"", rb.w, rb.h, faint_accent);
+		ok(has(doc, want), "and its box the accent half way to the ground -- the same hue, lighter or darker, not another");
+		W[0].off = 0;
+
+		/* pressed as nothing */
+		W[0].off = 1;
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_DOWN; ev.x = (short)(rb.x + 5); ev.y = (short)(rb.y + 5); ev.d = 1;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(r.held == 0, "Save off, pressed: no held mark");
+		ev.kind = WSK_EV_UP; n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 0, "and released: no CLICK");
+		W[0].off = 0;
+		OFF_TAP(rb);
+		ok(n >= 1 && nt[0].kind == WSK_NOTE_CLICK, "CONTROL: Save on again: CLICK");
+		W[1].off = 1;
+		OFF_TAP(rc);
+		ok(n == 0 && st[0] == 0, "Keep off, tapped: no CHANGE, not ticked");
+		W[1].off = 0;
+		OFF_TAP(rc);
+		ok(st[0] == 1, "CONTROL: Keep on: ticked");
+		ok(wsk_hit(&r, rb.x + 5, rb.y + 5) == 0 && (W[0].off = 1, wsk_hit(&r, rb.x + 5, rb.y + 5) == 0),
+		   "wsk_hit names Save off as on -- it is there; only the toolkit will not press it");
+		W[0].off = 0;
+
+		/* focus, typing, Tab */
+		W[2].off = 1;
+		OFF_TAP(rf);
+		ok(r.focus == 0, "the field fa off, tapped: not focused");
+		ok(wsk_ui_focus(&ui, "fa", &y0, &y1) == WSK_E_NOTFOUND, "and a program cannot focus it: WSK_E_NOTFOUND");
+		W[2].off = 0;
+		ok(wsk_ui_focus(&ui, "fa", &y0, &y1) == WSK_OK, "CONTROL: on, it can");
+		W[2].off = 1;                               /* off while it has the keys */
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_TEXT; ev.text[0] = 'x';
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].len == 0, "turned off while it has the keys: typing does not reach it");
+		W[2].off = 0;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].len == 1, "CONTROL: on again, it does");
+		W[3].off = 1;
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_TAB;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(r.focus == &W[4], "Tab from fa with fb off: to fc, past it");
+		W[3].off = 0;
+		wsk_ui_focus(&ui, "fa", &y0, &y1);
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(r.focus == &W[3], "CONTROL: fb on: Tab goes to it");
+
+		/* a stack that is off: everything under it */
+		W[5].off = 1;
+		render_into(&r, doc, sizeof doc, 16384);
+		{
+			wsk_rect_t gi = rect_of(&r, "inner");
+			snprintf(want, sizeof want, "width=\"%d\" height=\"%d\" fill=\"#%06x\"", gi.w, gi.h, faint_accent);
+			ok(has(doc, want), "the stack \"box\" off: the button inside it faint too");
+			ui.down = 0;
+			OFF_TAP(gi);
+			ok(n == 0 && r.held == 0, "and pressed: nothing -- off goes down the branch");
+			W[5].off = 0;
+			OFF_TAP(gi);
+			ok(n >= 1 && nt[0].kind == WSK_NOTE_CLICK, "CONTROL: the stack on: the button inside clicks");
+		}
+
+		/* a list: a row off is not chosen, but a drag begun on it scrolls */
+		W[5].sub = 1; W[5].size = 90;                  /* the stack widget shows the list now */
+		{
+			wsk_rect_t r3 = rect_of(&r, "r1");
+			ROWS[1].off = 1;
+			k[1].sel = WSK_NONE;
+			OFF_TAP(r3);
+			ok(k[1].sel == WSK_NONE && n == 0, "a list row off, tapped: not chosen, nothing said");
+			memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_DOWN; ev.x = (short)(r3.x + 5); ev.y = (short)(r3.y + 5); ev.d = 1;
+			wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+			ev.kind = WSK_EV_MOVE; ev.y = (short)(r3.y + 5 - 40);
+			n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+			ok(n >= 1 && nt[0].kind == WSK_NOTE_SCROLL && k[1].scroll > 0, "but a drag begun on it scrolls its list");
+			ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+			ROWS[1].off = 0;
+			k[1].scroll = 0;
+			OFF_TAP(rect_of(&r, "r1"));
+			ok(k[1].sel == 1, "CONTROL: the row on: chosen");
+		}
+		which = 0;
+		ok(wsk_check(&r, &which) == WSK_OK, "and the window checks throughout");
+#undef OFF_TAP
+	}
+
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);
 	return fails != 0;
 }

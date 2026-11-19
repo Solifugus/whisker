@@ -340,6 +340,8 @@ int main(int argc, char **argv)
 	signal(SIGTERM, on_term);
 	signal(SIGINT, on_term);
 	signal(SIGPIPE, SIG_IGN);
+	signal(SIGUSR1, SIG_IGN);   /* a test's screenshot asked before the window opens: not
+	                               a kill (its default) -- the window's own handler takes over */
 	if (script) fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK);
 
 	if (listening) {

@@ -386,6 +386,14 @@ directly**.
   client's frame equals the editor's own window to the byte; detach,
   return, both unsaved edits there; each viewer's keys reach only their
   seat; a forged generation dropped.
+- **§5an — a part that is off** (2026-11-18, gBASIC's `enabled`): a
+  byte `off` in the widget's padding (still 64 bytes); off goes down a
+  branch; drawn faint by lightness through a faded copy of its tree (the
+  fade, once the world's, now every profile's); pressed as nothing, a
+  drag still scrolls; Tab passes it; a focused part turned off takes no
+  keys. **`wsk_clone` must copy every field** — it missed the new byte
+  and cloned widgets came out randomly off; the byte-identical
+  comparison caught it. +944 bytes default, +1,152 panel.
 - **§5am — the wire on one stream** (2026-11-18): a connection opening
   `WHISKER 1 v=… caps=…` is a seat on that connection, lines both ways
   (`docs/wire.md` §8) — nothing else speaks for it, a POST with its very
@@ -513,7 +521,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,250 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,276 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 123 — every demo program started — including the

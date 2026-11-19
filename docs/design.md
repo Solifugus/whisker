@@ -3513,6 +3513,96 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5an. A part that is off — `enabled` (2026-11-18), written before its code
+
+The first of `ui-backend-gap.md`'s small gaps: gBASIC's `enabled` — Qt's
+`setEnabled(false)` — on any part. whisker has no way to say "this is here
+but not now": a Save button that cannot save yet, a field locked until a
+box is ticked. Chosen first of the six because every form has one and
+because it touches the most paths (drawing, the pointer, Tab, keys), so
+the others build on it.
+
+1. **`off`, a byte on the widget** — in the padding after `weight`, so a
+   widget is still 64 bytes and every panel in flash the same. A program
+   that changes it at run time keeps its widgets in RAM, as a retained
+   model does; a panel in flash says it once.
+2. **Off goes down a branch**: a stack widget that is off makes
+   everything under it off, as Qt's does — a form disabled is one byte.
+   whisker carries it into the copies it lays children out in, as it
+   carries a header or a clip.
+3. **Drawn faint, by lightness and not by hue alone (D24)**: its fill
+   and its ink each halved toward the tree's background, so a faint
+   button is still the button's colour, only nearer the ground — the
+   palette audit's rule holds, and nothing new needs a colour.
+4. **Not pressed, not focused, not typed into**: a press on it gives no
+   held mark, no click, no focus — and a drag that starts there still
+   scrolls the list it is in; Tab passes over it; Enter does not press
+   it; a check does not toggle; a field or memo that is off takes no
+   keys, even if it held the focus when it went off. `wsk_hit` still
+   names it — it is there, and a tooltip may say why it is off.
+5. **Byte for byte as before** for every widget with `off` 0 — every
+   earlier output is the control.
+
+Done when: a button, a check, a field, a memo and a list row drawn faint
+(rectangles and text, by their colours); a press and release on each:
+nothing — no held mark, no CLICK, no CHANGE, no focus — with the same on
+the widget turned back on as the control; a disabled stack's children
+all faint and all inert; Tab past a disabled field to the next;
+typing into a focused field after it was turned off: refused; a drag
+begun on a disabled row still scrolling its list; `wsk_hit` naming it;
+the bytes measured; the picture through RV-9's rasteriser.
+
+**What it came to** (2026-11-18): as written — and a defect it would have
+shipped, caught by the byte-identical comparison.
+
+- **`wsk_clone` copied a widget field by field, and not the new byte**,
+  so a cloned widget was off by whatever the stack held: five earlier
+  outputs came out with faint groups no one asked for (the profile
+  documents, the field pictures). Every RV-9 module clones its panel
+  into RAM, so a board would have shown random disabled parts. Fixed;
+  the 47 earlier outputs are byte-identical again.
+- **The fade is every profile's now** — `wfade`, `wbg` and `wsk__fade`
+  were the world's (§5q) and are moved out of `WSK_NO_WORLD`; a child
+  copy carries the fade in every build, and the widget's own explicit
+  colours pass through it at the dozen places they are drawn (a no-op
+  with no fade). An off part is drawn through a faded copy of its tree,
+  in a group carrying the faded ink, by an out-of-line function — its
+  tree copy byte by byte, since `c = *t` is a `memcpy` to gcc at `-Os`
+  and the module link refused it.
+- **Input**: a press on an off part is a press on nothing (a drag still
+  finds its scroller); Tab's walker passes over off parts; Enter, a
+  list's keys and typing ask `wsk__focus_off`, which finds the focused
+  widget from the root (an open dialog first); `wsk_ui_focus` refuses
+  an off part. A right-click on one still says MENU, and hover and
+  `wsk_hit` name it: it is there.
+
+**Measured** (`module_nest`, RISC-V `-Os`): **+944 bytes at the default,
++1,152 at `WSK_PANEL`** (which had no fade at all before). Stack: each
+level of nesting costs 16 bytes more on the ordinary path (`wsk__items`
+32, `wsk__item` 320, against 336 before); where an off part is being
+drawn, that level costs 256 more for its faded tree — the deepest chain
+the analysis reports, 2,528 against 2,256, is that path. No libc, no
+`.data`.
+
+**26 checks** (1,250 → 1,276): drawn — a group in the faint ink and the
+box in the faint accent, and with nothing off, neither (the control);
+Save off, pressed and released: no held mark, no CLICK, and on again a
+CLICK; a check off: no CHANGE, on: ticked; `wsk_hit` naming it either
+way; a field off: not focused by a tap, refused by `wsk_ui_focus`, and
+on again focusable; **turned off while it has the keys: typing does not
+reach it**, on again it does; Tab past an off field to the next, and to
+it when on; a stack off: the button inside faint and inert, and on, it
+clicks; a list row off: not chosen, nothing said, **while a drag begun
+on it still scrolls**; on, chosen; the window checking throughout. In the
+picture (`off.ppm`): Save in the accent with bright text, Open in the
+faint accent with none of the full one and no bright text — looked at.
+
+Found on the way, in §5am's test: a screenshot asked of the client
+before its window opened met `SIGUSR1`'s default, which kills — one run
+in three. The client ignores the signal until its window's handler
+takes over, and the tests ask again until the file comes (five runs
+clean).
+
 ## 5am. The wire on one stream — SSH by itself, a screen that says what it draws, a program that dials (2026-11-18), written before its code
 
 §5al's first increment needs a tunnel set up by hand, and the wire's HTTP

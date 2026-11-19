@@ -106,9 +106,13 @@ class Client:
         return None
 
     def snap(self):
+        """asked again until the file comes: a client asked before its window
+        opens ignores the signal"""
         before = os.path.getmtime(self.shot) if os.path.exists(self.shot) else 0
-        self.p.send_signal(signal.SIGUSR1)
-        until(lambda: os.path.exists(self.shot) and os.path.getmtime(self.shot) != before, 3)
+        end = time.time() + 6
+        while time.time() < end and not (os.path.exists(self.shot) and os.path.getmtime(self.shot) != before):
+            self.p.send_signal(signal.SIGUSR1)
+            time.sleep(0.3)
         time.sleep(0.2)
         return text(self.shot)
 
