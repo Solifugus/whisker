@@ -85,7 +85,7 @@ try:
     c.request("GET", "/")
     r = c.getresponse()
     page = r.read().decode()
-    ok(r.status == 200 and "<canvas" in page and "EventSource('/events')" in page,
+    ok(r.status == 200 and "<canvas" in page and "EventSource('/events'" in page,
        "the page is served: a canvas, and a subscription to /events")
     # §5ak: whisker's icon, an inline SVG that parses
     import re as _re, urllib.parse as _up, xml.etree.ElementTree as _et

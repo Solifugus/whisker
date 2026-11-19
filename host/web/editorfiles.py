@@ -21,6 +21,7 @@ app = subprocess.Popen([BIN, SRC], env={**os.environ, 'WHISKER_PORT': str(PORT)}
 said = []
 threading.Thread(target=lambda: [said.append(l) for l in app.stdout], daemon=True).start()
 docs = []
+seat = []                              # the editor serves seats (§5al): posts name this one
 def stream():
     s = socket.create_connection(('127.0.0.1', PORT))
     s.sendall(b'GET /events HTTP/1.1\r\n\r\n')
@@ -30,13 +31,17 @@ def stream():
         except Exception: return
         if not d: return
         buf += d
+        if buf.startswith(b'HTTP/') and b'\r\n\r\n' in buf:   # the response's headers, once
+            buf = buf.split(b'\r\n\r\n', 1)[1]
         while b'\n\n' in buf:
             m, buf = buf.split(b'\n\n', 1)
+            if m.startswith(b'data: S ') and not seat: seat.extend(m[8:].decode().split())
             docs.append(m)
 def post(body):
     c = socket.create_connection(('127.0.0.1', PORT))
     b = body.encode()
-    c.sendall(b'POST /ev HTTP/1.1\r\nContent-Length: %d\r\n\r\n' % len(b) + b)
+    q = ('?s=%s&g=%s' % (seat[0], seat[1])).encode() if seat else b''
+    c.sendall(b'POST /ev%s HTTP/1.1\r\nContent-Length: %d\r\n\r\n' % (q, len(b)) + b)
     try: c.recv(100)
     except Exception: pass
     c.close()

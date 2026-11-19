@@ -106,6 +106,15 @@ void wh_on(int win);
 void wh_seats(int on);
 void wh_to(int seat);
 
+/*
+ * Who a seat says it is (§5al): the name its viewer gave when it connected
+ * -- letters, digits, '-', '_' and '.', at most 63 -- or "" if it gave none.
+ * A CLAIM, kept so that a viewer who comes back finds what was theirs (their
+ * caret, their view); never proof of who someone is, so never a reason to
+ * let them do anything. whisker reads none of it; it is the program's.
+ */
+const char *wh_who(int seat);
+
 /* What this host can draw beyond /w0, as whisker's WSK_CAP_* bits (§5r): a
    program puts it in its root's `caps`. The host says; whisker never guesses.
    The same numbers as whisker's, so the host need not include whisker. */

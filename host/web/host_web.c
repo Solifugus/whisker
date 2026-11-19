@@ -137,7 +137,11 @@ static const char PAGE[] =
 /* a hidden tab's timers are throttled, so its seat goes quiet and is
    dropped; seated again while hidden it would only be dropped again --
    so it stays away until it is looked at */
-"function connect(){es=new EventSource('/events');\n"
+/* who this page says it is (§5al): a name kept for the tab -- a reload comes
+   back as the same viewer, two tabs are two -- so a program that keeps a
+   viewer's caret and view (the code editor) finds them again */
+"let vid='';try{vid=sessionStorage.getItem('whisker-viewer')||'';if(!vid){vid='page-'+Math.random().toString(36).slice(2,12);sessionStorage.setItem('whisker-viewer',vid);}}catch(x){}\n"
+"function connect(){es=new EventSource('/events'+(vid?'?v='+vid:''));\n"
 /* a stream (re)opened is sent every window still open: a panel from
    before it is one whose closing this page may have missed */
 "es.onopen=()=>{for(const n of Object.keys(V))if(+n)unpanel(+n);};\n"
@@ -250,6 +254,7 @@ typedef struct {
 	unsigned gen;            /* which joining of this seat: its posts must say it */
 	long last;               /* when it was last heard from, in ms */
 	char req[8192];          /* a paste comes in one: room for a few KB */
+	char who[64];            /* who its viewer says it is, from ?v= (§5al), or "" */
 	int  got;
 } client_t;
 
@@ -326,6 +331,7 @@ static void drop(int i)
 	S.c[i].sub = 0;
 	S.c[i].got = 0;
 	S.c[i].w = S.c[i].h = 0;
+	S.c[i].who[0] = '\0';
 }
 
 /* The clipboard's text, kept: the host's copy of what the page has. */
@@ -421,12 +427,12 @@ static void respond(int i)
 {
 	client_t *c = &S.c[i];
 	char *end = strstr(c->req, "\r\n\r\n");
-	char method[8], path[64];
+	char method[8], path[160];
 	int len = 0, head;
 	const char *cl;
 
 	if (end == 0) return;                   /* headers not all here yet */
-	if (sscanf(c->req, "%7s %63s", method, path) != 2) { drop(i); return; }
+	if (sscanf(c->req, "%7s %159s", method, path) != 2) { drop(i); return; }
 	head = (int)(end + 4 - c->req);
 	if ((cl = strstr(c->req, "Content-Length:")) != 0 || (cl = strstr(c->req, "content-length:")) != 0) {
 		/* a length that does not fit what is left of the buffer is a lie,
@@ -462,7 +468,7 @@ static void respond(int i)
 		}
 		send_str(c->fd, "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n");
 		drop(i);
-	} else if (strcmp(path, "/events") == 0) {
+	} else if (strncmp(path, "/events", 7) == 0 && (path[7] == '\0' || path[7] == '?')) {
 		static const char H[] = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
 		                        "Cache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n";
 		wh_event_t e;
@@ -480,6 +486,20 @@ static void respond(int i)
 			S.c[i].fd = -1; S.c[i].sub = 0; S.c[i].got = 0; S.c[i].w = S.c[i].h = 0;
 			i = j;
 			c = &S.c[j];
+		}
+		{
+			/* who its viewer says it is (§5al): a name kept to find what was
+			   theirs, never proof of anything -- the characters of a name,
+			   and anything else ends it */
+			const char *v = strstr(path, "?v=");
+			int k = 0;
+			if (v == 0) v = strstr(path, "&v=");
+			if (v != 0)
+				for (v += 3; k < (int)sizeof c->who - 1 &&
+				     ((*v >= 'a' && *v <= 'z') || (*v >= 'A' && *v <= 'Z') || (*v >= '0' && *v <= '9') ||
+				      *v == '-' || *v == '_' || *v == '.'); v++)
+					c->who[k++] = *v;
+			c->who[k] = '\0';
 		}
 		c->gen = ++S.gen;
 		send_all(c->fd, H, (int)sizeof H - 1);
@@ -603,14 +623,25 @@ int wh_open(int w, int h, int scale, const char *title)
 	setsockopt(S.lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
 	memset(&a, 0, sizeof a);
 	a.sin_family = AF_INET;
-	a.sin_addr.s_addr = htonl(INADDR_ANY);
+	/* this machine only, unless told (§5al, D25): plain HTTP carries no
+	   secret, so a screen elsewhere comes through an SSH tunnel -- or the
+	   person opens the network on purpose, WHISKER_LISTEN=0.0.0.0 */
+	{
+		const char *at = getenv("WHISKER_LISTEN");
+		if (at == NULL || inet_pton(AF_INET, at, &a.sin_addr) != 1) a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	}
 	a.sin_port = htons((uint16_t)(port ? atoi(port) : 8090));
 	if (bind(S.lfd, (struct sockaddr *)&a, sizeof a) < 0 || listen(S.lfd, 8) < 0) {
 		perror("whisker-web: bind");
 		return -1;
 	}
-	fprintf(stderr, "whisker-web: %s, %dx%d, at http://<this machine>:%d/\n",
-	        title ? title : "whisker", w, h, port ? atoi(port) : 8090);
+	{
+		char ip[32];
+		inet_ntop(AF_INET, &a.sin_addr, ip, sizeof ip);
+		fprintf(stderr, "whisker-web: %s, %dx%d, at http://%s:%d/%s\n", title ? title : "whisker", w, h,
+		        ip, port ? atoi(port) : 8090,
+		        a.sin_addr.s_addr == htonl(INADDR_LOOPBACK) ? "  (this machine only: WHISKER_LISTEN=0.0.0.0 opens the network)" : "");
+	}
 	S.open = 1;
 	S.win[0].open = 1; S.win[0].w = w; S.win[0].h = h;   /* window 0, wh_open's (§5af) */
 	return 0;
@@ -691,7 +722,22 @@ static int aimed(int i)
 /* A browser draws UTF-8, images and clip paths (§5r), and decodes entities,
    so text may hold < > & (§5v). Not opacity yet: the page composites by
    rows onto a canvas, and nothing whisker draws uses it. */
-int wh_caps(void) { return WH_CAP_UTF8 | WH_CAP_IMAGE | WH_CAP_CLIP | WH_CAP_ENTITY; }
+int wh_caps(void)
+{
+	/* until a screen says what it draws (§5al step 4), WHISKER_CAPS may say
+	   it for all of them -- a native client drawing with RV-9's rasteriser
+	   draws what the SDL window does, entities only (16) */
+	const char *c = getenv("WHISKER_CAPS");
+	if (c != NULL) return atoi(c) & (WH_CAP_UTF8 | WH_CAP_IMAGE | WH_CAP_CLIP | WH_CAP_OPACITY | WH_CAP_ENTITY);
+	return WH_CAP_UTF8 | WH_CAP_IMAGE | WH_CAP_CLIP | WH_CAP_ENTITY;
+}
+
+/* Who seat `seat` says it is (§5al): its ?v=, or "". */
+const char *wh_who(int seat)
+{
+	if (seat < 0 || seat >= WH_SEATS || S.c[seat].fd < 0 || !S.c[seat].sub) return "";
+	return S.c[seat].who;
+}
 
 /* Collect a document; at "</svg>" send it, with its rows, to every page. */
 void wh_write(const void *bytes, int n)

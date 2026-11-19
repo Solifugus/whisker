@@ -172,6 +172,28 @@ static void icon_make(void)
 		}
 }
 
+/*
+ * For tests only: with WHISKER_SHOT set to a file, SIGUSR1 writes window 0's
+ * pixels there as a PPM at the next poll -- how the remote client is shown
+ * to draw what the program's own window draws (§5al). Unset, nothing.
+ */
+#include <signal.h>
+static volatile sig_atomic_t S_shoot;
+static void on_shoot(int sig) { (void)sig; S_shoot = 1; }
+static void shoot(void)
+{
+	const char *p = getenv("WHISKER_SHOT");
+	FILE *f = (p != NULL && SW[0].open) ? fopen(p, "wb") : NULL;
+	S_shoot = 0;
+	if (f == NULL) return;
+	fprintf(f, "P6\n%d %d\n255\n", SW[0].w, SW[0].h);
+	for (int i = 0; i < SW[0].w * SW[0].h; i++) {
+		uint16_t v = SW[0].fb[i];
+		fputc((v >> 11) << 3, f); fputc(((v >> 5) & 63) << 2, f); fputc((v & 31) << 3, f);
+	}
+	fclose(f);
+}
+
 /* ---- the contract ---- */
 
 /* Window i, made: its SDL window, renderer, texture, pixels and device.
@@ -246,6 +268,7 @@ int wh_open(int w, int h, int scale, const char *title)
 	   the program's file name -- unless the person set one (§5ak) */
 	setenv("SDL_VIDEO_X11_WMCLASS", "whisker", 0);
 	icon_make();
+	if (getenv("WHISKER_SHOT") != NULL) signal(SIGUSR1, on_shoot);
 	if (SDL_Init(SDL_INIT_VIDEO) != 0) {
 		fprintf(stderr, "whisker-host: SDL: %s\n", SDL_GetError());
 		return -1;
@@ -334,6 +357,9 @@ void wh_write(const void *bytes, int n)
 static int seat_join;
 void wh_seats(int on) { if (on) seat_join = 1; }
 void wh_to(int seat) { (void)seat; }
+const char *wh_who(int seat) { (void)seat; return ""; }   /* the one person at this window */
+
+
 
 /* A point in the window the event came from, in its device pixels. */
 static int point_of(int wx, int wy, wh_event_t *out)
@@ -370,6 +396,7 @@ int wh_poll(wh_event_t *out)
 {
 	SDL_Event e;
 
+	if (S_shoot) shoot();
 	out->kind = WH_NOTHING;
 	out->seat = 0;
 	out->finger = 0;

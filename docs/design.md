@@ -3566,6 +3566,95 @@ the code editor running in another process, typed into and scrolled;
 its pixels equal to the editor's own window's; the browser still a
 client, the token carried.
 
+**Revised the same day, with Matthew** (the architecture page,
+`docs/architecture.html`): **SSH first**, as the lock and the tunnel —
+never the user list; **either side may dial**; a program **runs once and
+each connection is a seat** (attach, not launch); **detaching keeps it
+running**; who a viewer is, the program's (D24, D25). So the token waits
+behind SSH: on a network a page is opened on purpose (`WHISKER_LISTEN`).
+
+### What the first increment came to (2026-11-18)
+
+Matthew: *"Document the browser wire protocol, then show the existing
+editor through the native client over an SSH tunnel. Keep the application
+process running when the viewer detaches. Reconnect and verify the unsaved
+edit is still there. For the two-viewer test, verify that each viewer's
+input reaches only its assigned seat. Specify separately whether caret,
+scroll position, and focus follow a returning viewer or start fresh."*
+
+- **The wire**, `docs/wire.md`: every request, every stream message and
+  every event line, as the browser host speaks them — checked against its
+  code — with seats, windows, the clipboard, and what is not there yet.
+- **`whisker-client`** (`host/linux/client.c`, `run.sh --client
+  [host:]port [viewer]`): the desktop host's own window and RV-9's
+  rasteriser, a socket behind them instead of a program. It reads the
+  stream, draws each document into the right window's rows, opens and
+  closes windows, takes copies, and posts its input in batches, `Y` every
+  two seconds; closing it **detaches**. 70 KB.
+- **A viewer's name**, `?v=` on the stream and **`wh_who(seat)`** in the
+  host contract: a claim the program may use to give back what was a
+  viewer's, never to grant anything. The page keeps one per tab
+  (`sessionStorage`); the SDL host has one seat and answers "".
+- **The browser host listens on this machine only** unless
+  `WHISKER_LISTEN` says otherwise — so **a phone now needs
+  `WHISKER_LISTEN=0.0.0.0`** — and takes `WHISKER_CAPS` (§5al step 4's
+  stopgap) for screens that draw less than a browser.
+- **The code editor serves a seat per viewer.** Shared: the text, its
+  colours, breakpoints, the output pane, the file and its encoding, and
+  **undo** (Ctrl-Z undoes the last edit, whoever made it). Each viewer's
+  own: a window tree, a toolkit, caret and selection, view, divider,
+  file dialog and status line. An edit by one moves every other viewer's
+  caret and view with the text — and the kept caret and view of viewers
+  who are away. One file dialog's chatter goes to stdout, not to
+  everyone's Output. In its own SDL window there is one seat, 0.
+
+**A returning viewer — each specified separately**, by the name they
+connect under:
+
+| | follows them, or fresh? | |
+|---|---|---|
+| **caret** | **follows** | where they left it, **moved by others' edits while they were away** (an insertion before it moves it on; a deletion around it brings it to the deletion's start), always between characters, clamped to the text |
+| **selection** | fresh | dropped: a span chosen an hour ago is rarely what a person means to act on |
+| **scroll position** | **follows** | the line that was at the top, **moved by lines others added or removed above it**, clamped; if the caret is then out of sight, the view moves only enough to show it |
+| **focus** | **fresh** | the code has the keys; **a dialog or menu they left open is gone** — the folder it showed may have changed, and coming back into half a dialog is confusing |
+| the document | — | is the program's, not the viewer's: **unsaved edits are there for everyone**, whoever comes back and whenever |
+
+A viewer with no name, or a new one, starts fresh in everything.
+
+**Checked through real OpenSSH** (`host/web/remote.py`, 27, in the Linux
+suite, 109): a private `sshd` on `127.0.0.1` with throwaway keys — nothing
+of the person's touched — the editor served on this machine only (and
+**refused from the network address**), a tunnel by key, clients through
+it as "alice" and "bob":
+
+- alice's first frame **equals the editor's own SDL window, every one of
+  1,843,216 bytes** — the same documents into the same rasteriser;
+- alice types `QQQ`, Enter, Page Down, opens the file dialog, and closes
+  her client: **the editor goes on running**, keeping caret 308 and line
+  20 at the top;
+- bob joins and puts a line `BB` at the very top;
+- alice comes back: **caret 311 (+3, bob's `BB\n`) and line 21 at the top
+  (+1)**, drawn so; **no dialog**, and what she types goes into the code
+  at her caret; Ctrl-Home shows **both unsaved edits**, hers and bob's;
+- **two viewers**: alice's Down moves her caret and **bob's window is
+  sent nothing**; bob's Down moves his and alice's is sent nothing (the
+  control); bob types and alice's window is redrawn — the document is
+  both of theirs — with her caret where it was; **a post naming bob's
+  seat with the wrong generation is dropped**;
+- both detach; the editor still runs.
+
+Found on the way: the test itself, twice — the served editor was given
+a different path from the SDL one, and the Output pane prints the path,
+so the frames differed for that alone; and a comment pasted into a line
+had silenced the editor's stdout. And two older tests (`docsize.py`,
+`editorfiles.py`) spoke the seatless protocol — posts naming no seat,
+which a seated program rightly drops — and missed the `S` message glued
+to the response's headers; both now read their seat and post with it.
+
+**Not done**: the program dialling a screen (`WHISKER_DISPLAY`); a
+screen saying what it draws (step 4); a token for pages; Windows and
+macOS; saved connections in the client (it is given its address).
+
 ## 5ak. Page Up and Page Down, and a desktop window that behaves (2026-11-17), written before its code
 
 Matthew, using the SDL window: *"every time I open it, it's opened but

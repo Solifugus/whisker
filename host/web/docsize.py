@@ -26,8 +26,9 @@ try:
     s.sendall(b'GET /events HTTP/1.1\r\n\r\n')
     s.settimeout(0.3)
     buf = b''
+    seat = None                                        # the editor serves seats (§5al): posts name one
     def drain():
-        global buf
+        global buf, seat
         t = time.time()
         while time.time() - t < 0.3:
             try: d = s.recv(65536)
@@ -35,15 +36,21 @@ try:
             if not d: break
             buf += d
         out = []
+        if buf.startswith(b'HTTP/') and b'\r\n\r\n' in buf:     # the response's headers, once
+            buf = buf.split(b'\r\n\r\n', 1)[1]
         while b'\n\n' in buf:
             m, buf = buf.split(b'\n\n', 1)
+            if m.startswith(b'data: S '):
+                seat = m[8:].decode().split()
+                continue
             p = m[6:].split(b' ', 4)
             if len(p) == 5 and p[0].isdigit(): out.append(len(p[4]))
         return out
     def post(body):
         c = socket.create_connection(('127.0.0.1', PORT))
         b = body.encode()
-        c.sendall(b'POST /ev HTTP/1.1\r\nContent-Length: %d\r\n\r\n' % len(b) + b)
+        q = ('?s=%s&g=%s' % (seat[0], seat[1])).encode() if seat else b''
+        c.sendall(b'POST /ev%s HTTP/1.1\r\nContent-Length: %d\r\n\r\n' % (q, len(b)) + b)
         try: c.recv(100)
         except Exception: pass
         c.close()

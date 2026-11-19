@@ -1,0 +1,139 @@
+# The wire — how a whisker program and a screen talk
+
+**Written 2026-11-18** (design §5al, D25), from `host/web/host_web.c` as it
+is: the protocol the browser host has spoken since §5k, with seats (§5ab),
+windows (§5af) and the clipboard (§5s), now named as a contract. Its two
+readers are the page the browser host serves and `whisker-client`
+(`host/linux/client.c`); any other screen reads the same. The browser host's
+suites are its tests, and `host/web/remote.py` runs it through SSH.
+
+A program never sees any of this: it calls the host contract
+(`host/linux/host.h`) and the browser host speaks the wire for it.
+
+---
+
+## 1. The connection
+
+Plain **HTTP/1.1 over TCP**. The program listens; screens connect.
+
+- **Where**: `127.0.0.1` — this machine only — unless `WHISKER_LISTEN`
+  names an address (`0.0.0.0` for every interface). Port `WHISKER_PORT`,
+  else 8090. **Plain HTTP carries no secret**, so a screen on another
+  machine comes through an **SSH tunnel** (`ssh -N -L 8090:localhost:8090
+  you@there`), which encrypts and decides who may connect at all.
+- **What a screen draws**: the program is told by `wh_caps()`. Until a
+  screen says for itself (§5al step 4), the host claims a browser's —
+  UTF-8, images, clip paths, entities — or `WHISKER_CAPS` (a number, the
+  `WH_CAP_*` bits) for all of them; a `whisker-client` draws what RV-9's
+  rasteriser draws: `WHISKER_CAPS=16`, entities only.
+
+| request | what it is |
+|---|---|
+| `GET /` | the page: a canvas and the script that reads the stream |
+| `GET /static/<name>` | an image a document names (§5r): `.svg .png .jpg .gif`, a plain name, from `WHISKER_STATIC` or `./static` |
+| `GET /events[?v=<viewer>]` | **the stream**: the program's messages to this screen, as Server-Sent Events, for as long as the screen stays |
+| `POST /ev[?s=<seat>&g=<gen>][&w=<window>]` | **events**: this screen's input, lines in the body; answered `204`, connection closed |
+
+A request is at most 8 KB. Anything else is `404`; a stream when sixteen
+are open is `503`.
+
+## 2. The stream: program → screen
+
+`Content-Type: text/event-stream`. Each message is one line,
+`data: <message>`, then a blank line. A document's own line breaks are
+sent as spaces, so a message is always one line.
+
+| message | meaning |
+|---|---|
+| `S <seat> <gen>` | **you are seat `<seat>`**, this joining of it `<gen>` — sent first, and only when the program serves seats (`wh_seats(1)`). Every post must carry both. |
+| `O <win> <w> <h> <title>` | **a window opened** (§5af): number 1–7, `w`×`h` device pixels, its title to the end of the line |
+| `Q <win>` | a window closed |
+| `C <text>` | **copy this to the clipboard** (§5s), escaped (§4) |
+| `<y0> <y1> <w> <h> <svg…>` | **a document for window 0**: repaint rows `y0`..`y1` (half-open) of a `w`×`h` picture with it — or all of it when `y1 <= y0`. A complete SVG every time, never a fragment: it carries the backing for the rows it repaints (§3 of the design) |
+| `w<win> <y0> <y1> <w> <h> <svg…>` | the same, for window `win` |
+
+**On joining**, in order: `S` (seats only); an `O` for every window already
+open; then, for a program **without** seats, every document since the last
+whole one, so a late screen sees what the others see. A program **with**
+seats is told the screen joined (`WH_JOIN`) and draws it whole itself.
+
+**Repainting rows** is the screen's job, exactly as RV-9's `/w0` does it: draw
+the document, and copy only rows `y0`..`y1` onto what is already there.
+Documents arrive in order and must be applied in order.
+
+## 3. Events: screen → program
+
+`POST /ev`, a body of lines — any number, applied in order. The query names
+the screen: `s` and `g` from its `S` message (a program serving seats drops
+a post that names no seat, or a seat with another joining's `g`), and `w` for
+a window other than 0.
+
+| line | event (`host.h`) |
+|---|---|
+| `D <x> <y> <mods> <clicks> <finger>` | **press** (`WH_PRESS`). `mods`: 256 Shift, 2048 a finger not a mouse; `clicks` the platform's count (2 a double-click); `finger` 0 the mouse, else 1–255 |
+| `M <x> <y> <finger>` | moved while pressed |
+| `U <x> <y> <finger>` | released |
+| `H <x> <y>` | **hover** (§5aa): moved with nothing pressed; `-1 -1` left the window |
+| `R <x> <y>` | asked for a context menu: a right-click, a long press |
+| `W <x> <y> <d>` | wheel: `d` pixels, positive toward the end |
+| `K <key>` | **a key**: one of `WH_KEY_*` — 1 Left, 2 Right, 3 Home, 4 End, 5 Backspace, 6 Delete, 7 Enter, 8 Tab, 9 Shift-Tab, 10 Escape, 11 Up, 12 Down, 13 Menu, 14 Page Up, 15 Page Down — or a **chord**, a printable character lower-case; either with modifiers added: 256 Shift, 512 Ctrl, 1024 Alt. Ctrl-S is `K 627` |
+| `T <text>` | typed text, UTF-8, up to 7 bytes, to the end of the line |
+| `P <text>` | **pasted** text, escaped (§4): kept as the clipboard, then Ctrl-V |
+| `X` | draw everything again (`WH_EXPOSE`) |
+| `C` | a window's close button (`WH_CLOSE`), with `w` — never window 0 here |
+| `Y` | still here (seats): every 2 s; **6 s of silence and the seat is gone** |
+| `G` | gone for good: the page is closing (seats) |
+| `Z <w> <h>` | this screen's size in pixels, 160..4096 (seats) |
+
+A point outside the screen is dropped (a hover's `-1 -1` aside). A finger's
+number is the screen's, so it is folded into 1–255 and never becomes 0.
+
+## 4. Text in messages
+
+`C` and `P` carry text that may hold line breaks: `\n` stands for a line
+break and `\\` for a backslash; a carriage return is dropped. `T` and titles
+end at the line's end.
+
+## 5. Seats, and who is who
+
+A program that calls `wh_seats(1)` serves **seats**: each stream is one, up
+to 16 at once, and the program hears `WH_JOIN` and `WH_GONE` with the seat's
+number and sends a document to one seat with `wh_to(seat)`. A seat's number
+is a slot and is reused; its **generation** (`g`) is not, so a post from a
+screen that lost its seat cannot speak for the next one to hold the number.
+
+**`?v=<viewer>`** on the stream is the name the screen gives itself —
+letters, digits, `-`, `_` and `.`, at most 63 — and the program reads it
+with **`wh_who(seat)`**. It is a **claim, not a proof**: a program uses it
+to give a viewer back what was theirs (the code editor keeps their caret
+and view), never to decide what they may do. Who may connect at all is the
+transport's — SSH — and who a person is, is the program's (D24, D25; the
+architecture's "who owns what"). The page sends a name kept for its tab
+(`sessionStorage`): a reload returns as the same viewer, two tabs are two.
+`whisker-client` sends the name it is given.
+
+A program that does **not** serve seats sees every screen as one: every
+document goes to every screen, every screen's input to seat 0.
+
+## 6. What a screen must do, in short
+
+1. Open `GET /events`, with `?v=` if it has a name; read messages.
+2. On `S`, keep the seat and generation; post with them.
+3. Apply documents in order, repainting only their rows, per window.
+4. Open and close windows on `O` and `Q`; put `C`'s text on its clipboard.
+5. Post its input as lines; batch what it has; `Y` every 2 s if seated.
+6. To detach, close the stream. The program goes on.
+
+## 7. Not yet
+
+- **No encryption, no secret in the protocol itself**: SSH provides both
+  for a remote screen; a browser on the network has only
+  `WHISKER_LISTEN`'s choice to open it. A token for pages (design §5al
+  step 2) and TLS are to come.
+- **A screen does not say what it can draw** — the host claims it for all
+  (`WHISKER_CAPS`), §5al step 4.
+- **No compression**; a document is at most what the program sends —
+  RV-9's own window takes 4,096 bytes, and programs that can exceed it draw
+  in bands (`host/linux/fit.h`).
+- **The program does not dial a screen** yet (`WHISKER_DISPLAY`, §5al): a
+  screen connects to the program.

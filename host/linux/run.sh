@@ -10,6 +10,7 @@
 #   ./run.sh --floor         a conference floor: whisker's world (§5q)
 #   ./run.sh --dock          docked panes: drag one by its caption (§5ag)
 #   ./run.sh --tabs          notes in tabs (§5ah)
+#   ./run.sh --client [host:]port [viewer]   a program served elsewhere (§5al)
 #   ./run.sh --test          the contract, headless, with no person
 #
 # The pixels come from RV-9's own rasteriser, built from its tree through the
@@ -82,6 +83,19 @@ if [[ "${1:-}" == "--test" ]]; then
 	"$OUT/listertest" || exit 1
 	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/textfiletest" "$HERE/textfiletest.c" "${INC[@]}"
 	"$OUT/textfiletest" || exit 1
+	# §5al: the code editor served, shown by whisker-client through a real
+	# SSH tunnel (a private sshd on 127.0.0.1, throwaway keys) -- detach,
+	# come back, two viewers
+	if command -v ssh >/dev/null && [[ -x /usr/sbin/sshd ]] && command -v python3 >/dev/null; then
+		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-client" \
+			"$HERE/client.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+			"${INC[@]}" $(pkg-config --cflags --libs sdl2)
+		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-code-web" \
+			"$HERE/code.c" "$HERE/../web/host_web.c" "${INC[@]}"
+		python3 "$HERE/../web/remote.py" "$OUT/whisker-code-web" "$OUT/whisker-client" "$OUT/whisker-code" || exit 1
+	else
+		echo "      no ssh, sshd or python3: the remote check was skipped"
+	fi
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/selftest" \
 		"$HERE/selftest.c" "$OUT/raster.c" "$OUT/font.c" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
@@ -115,6 +129,14 @@ if [[ "${1:-}" == "--tabs" ]]; then
 		"$HERE/tabs.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec "$OUT/whisker-tabs"
+fi
+
+if [[ "${1:-}" == "--client" ]]; then
+	shift
+	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-client" \
+		"$HERE/client.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
+	exec "$OUT/whisker-client" "$@"
 fi
 
 if [[ "${1:-}" == "--code" ]]; then

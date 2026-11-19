@@ -370,13 +370,22 @@ directly**.
   Ctrl-W, Ctrl-N** (Matthew's Ctrl-W closed the browser tab): a program
   binding one gives an Alt chord too; Chrome checks cannot see this.
   **Matthew, after: works well in both hosts.**
-- **§5al — running remotely, designed** (2026-11-17, **D25**: *both* —
-  a program's own window, and a client that shows a program running
-  elsewhere, "like Xorg or RDP but better"). The browser host's protocol
-  is the wire; a native `whisker-client` reads it, tested by giving the
-  same pixels as the program's own window. **The browser host listens on
-  every interface with no secret — fix that first** (a token, this
-  machine by default). Not built yet.
+- **§5al — running remotely** (D25: *both* a program's own window and a
+  client, "like Xorg or RDP but better"; SSH first, attach not launch,
+  detach keeps running — `docs/architecture.html`). **Built 2026-11-18**:
+  the wire written down (`docs/wire.md`); **`whisker-client`**
+  (`host/linux/client.c`, `run.sh --client [host:]port [viewer]`) — the
+  SDL window and RV-9's rasteriser behind a socket; **`wh_who(seat)`**, a
+  viewer's name from `?v=`, a claim never a credential; the browser host
+  **on 127.0.0.1 unless `WHISKER_LISTEN`** (a phone now needs
+  `WHISKER_LISTEN=0.0.0.0`) and `WHISKER_CAPS`; **the code editor a seat
+  per viewer** over one document. A returning viewer: **caret and scroll
+  follow** (moved by others' edits meanwhile), **selection and focus
+  start fresh** (a dialog left open is gone). `host/web/remote.py` runs
+  it all through **real OpenSSH** (a private sshd, throwaway keys): the
+  client's frame equals the editor's own window to the byte; detach,
+  return, both unsaved edits there; each viewer's keys reach only their
+  seat; a forged generation dropped.
 - **§5ak — Page Up/Down, and a window that behaves** (2026-11-17,
   Matthew: no focus on opening, the X default icon, no Page Up/Down):
   `WSK_KEY_PAGEUP`/`PAGEDOWN` — a memo moves caret and view a page
@@ -496,7 +505,7 @@ twice; it needs over 11.7 KB). Design §9.4.
 `src/run.sh --module` is the whole of it: **1,250 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 82 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 109 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
