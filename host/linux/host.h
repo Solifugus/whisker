@@ -122,6 +122,13 @@ enum { WH_CAP_UTF8 = 1, WH_CAP_IMAGE = 2, WH_CAP_CLIP = 4, WH_CAP_OPACITY = 8,
        WH_CAP_ENTITY = 16 };     /* decodes &lt; &gt; &amp; (§5v) */
 int  wh_caps(void);
 
+/* What ONE seat's screen draws (§5am): a browser, a native client, a board
+   differ, and a program with seats draws each its own -- this, not wh_caps,
+   which is what every screen at once can draw (a program that sends them
+   all the same picture). A screen that says nothing is taken at the host's
+   word. SDL's one screen is wh_caps(). */
+int  wh_seat_caps(int seat);
+
 /* Open a window of this many device pixels, shown at `scale` times size.
    Returns 0, or -1 with a reason on stderr. Like opening /w0. */
 int  wh_open(int w, int h, int scale, const char *title);

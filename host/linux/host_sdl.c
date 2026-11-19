@@ -358,6 +358,7 @@ static int seat_join;
 void wh_seats(int on) { if (on) seat_join = 1; }
 void wh_to(int seat) { (void)seat; }
 const char *wh_who(int seat) { (void)seat; return ""; }   /* the one person at this window */
+int wh_seat_caps(int seat) { (void)seat; return wh_caps(); }
 
 
 

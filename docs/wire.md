@@ -1,6 +1,6 @@
 # The wire — how a whisker program and a screen talk
 
-**Written 2026-11-18** (design §5al, D25), from `host/web/host_web.c` as it
+**Written 2026-11-18** (design §5al, §5am, D25), from `host/web/host_web.c` as it
 is: the protocol the browser host has spoken since §5k, with seats (§5ab),
 windows (§5af) and the clipboard (§5s), now named as a contract. Its two
 readers are the page the browser host serves and `whisker-client`
@@ -21,17 +21,20 @@ Plain **HTTP/1.1 over TCP**. The program listens; screens connect.
   else 8090. **Plain HTTP carries no secret**, so a screen on another
   machine comes through an **SSH tunnel** (`ssh -N -L 8090:localhost:8090
   you@there`), which encrypts and decides who may connect at all.
-- **What a screen draws**: the program is told by `wh_caps()`. Until a
-  screen says for itself (§5al step 4), the host claims a browser's —
-  UTF-8, images, clip paths, entities — or `WHISKER_CAPS` (a number, the
-  `WH_CAP_*` bits) for all of them; a `whisker-client` draws what RV-9's
-  rasteriser draws: `WHISKER_CAPS=16`, entities only.
+- **What a screen draws** it says itself (§5am): `caps=` in a duplex
+  connection's first line (§8), `?c=` on a stream — the `WH_CAP_*` bits:
+  1 UTF-8, 2 images, 4 clip paths, 8 opacity, 16 entities. A screen that
+  says nothing is taken for a browser (1|2|4|16). The program asks
+  `wh_seat_caps(seat)` for one screen and `wh_caps()` for what every
+  screen here draws. `WHISKER_CAPS`, if set, is a ceiling over all of
+  them.
 
 | request | what it is |
 |---|---|
 | `GET /` | the page: a canvas and the script that reads the stream |
 | `GET /static/<name>` | an image a document names (§5r): `.svg .png .jpg .gif`, a plain name, from `WHISKER_STATIC` or `./static` |
-| `GET /events[?v=<viewer>]` | **the stream**: the program's messages to this screen, as Server-Sent Events, for as long as the screen stays |
+| `GET /events[?v=<viewer>][&c=<caps>]` | **the stream**: the program's messages to this screen, as Server-Sent Events, for as long as the screen stays |
+| `WHISKER 1 …` | not HTTP at all: **the wire on one connection**, both ways (§8) |
 | `POST /ev[?s=<seat>&g=<gen>][&w=<window>]` | **events**: this screen's input, lines in the body; answered `204`, connection closed |
 
 A request is at most 8 KB. Anything else is `404`; a stream when sixteen
@@ -117,6 +120,9 @@ document goes to every screen, every screen's input to seat 0.
 
 ## 6. What a screen must do, in short
 
+(On an HTTP stream; on one stream, §8, it is simpler: first line, then
+lines.)
+
 1. Open `GET /events`, with `?v=` if it has a name; read messages.
 2. On `S`, keep the seat and generation; post with them.
 3. Apply documents in order, repainting only their rows, per window.
@@ -130,10 +136,42 @@ document goes to every screen, every screen's input to seat 0.
   for a remote screen; a browser on the network has only
   `WHISKER_LISTEN`'s choice to open it. A token for pages (design §5al
   step 2) and TLS are to come.
-- **A screen does not say what it can draw** — the host claims it for all
-  (`WHISKER_CAPS`), §5al step 4.
 - **No compression**; a document is at most what the program sends —
   RV-9's own window takes 4,096 bytes, and programs that can exceed it draw
   in bands (`host/linux/fit.h`).
-- **The program does not dial a screen** yet (`WHISKER_DISPLAY`, §5al): a
-  screen connects to the program.
+- **An SSH server without forwarding** (RV-9's) cannot carry `ssh -W`; a
+  relay run as the session's command would — named, not built.
+- **The client keeps no saved places** yet: it is given its address.
+
+## 8. The wire on one stream (§5am)
+
+The same messages, on **one two-way byte stream** — a TCP connection to
+the program's port, or anything that carries bytes both ways: **OpenSSH's
+`ssh -W 127.0.0.1:<port> you@host`**, which joins a session's own input and
+output to a port on the far side, so SSH carries the wire with no tunnel
+and nothing installed.
+
+- **The screen speaks first**, one line:
+  `WHISKER 1[ v=<viewer>][ caps=<n>]` — who it says it is (§5) and what it
+  draws (§1).
+- **Then both send lines**, `
+` ends each. The program: every message of
+  §2, as it is — no `data: `, no blank line. The screen: every event line
+  of §3, for window 0 as it is, for window `n` prefixed `w<n> `.
+- **The connection is the seat**: no `s`, no `g`; the program serving
+  seats sends `S <seat> <gen>` as on a stream, for the screen's own use.
+  **Nothing else can speak for it**: a POST naming a duplex seat is
+  dropped, its generation right or not. `Y` is not needed — the
+  connection closing is the seat going.
+- A program refusing a screen (sixteen already) says one line, `E <why>`,
+  and closes.
+
+**Either side may dial.** A screen dials a program's port — `whisker-client
+[host:]port`, or `--ssh you@host [port]`. Or **a program dials a screen**:
+`WHISKER_DISPLAY=<host>:<port>` makes it connect out, as well as listen, to
+a screen waiting with `whisker-client --listen [<host>:]<port>` (9100 by
+default), which answers with its `WHISKER` line; from there it is a seat
+like any other. Across machines: `ssh -R 9100:127.0.0.1:9100 you@server`,
+then on the server `WHISKER_DISPLAY=127.0.0.1:9100 program`. **The display
+going away leaves the program running**, and it dials again every three
+seconds while it is away — a display that comes back gets it back.

@@ -354,7 +354,7 @@ static int seat_init(int i)
 	st->win.str = st->chstrs; st->win.strs = 2 + WSK_CH_MAX;
 	for (int k = 0; k < 4; k++) wsk_nest_init(&st->chtrees[k], &st->win, WSK_COL);
 	st->win.sizes = st->sizes;
-	st->win.caps = (unsigned char)wh_caps();
+	st->win.caps = (unsigned char)wh_seat_caps(i);   /* what THIS viewer's screen draws (§5am) */
 	st->win.talign = WSK_ALIGN_START;
 	views();
 	wsk_ui_init(&st->ui, &st->win);

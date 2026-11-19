@@ -386,6 +386,17 @@ directly**.
   client's frame equals the editor's own window to the byte; detach,
   return, both unsaved edits there; each viewer's keys reach only their
   seat; a forged generation dropped.
+- **§5am — the wire on one stream** (2026-11-18): a connection opening
+  `WHISKER 1 v=… caps=…` is a seat on that connection, lines both ways
+  (`docs/wire.md` §8) — nothing else speaks for it, a POST with its very
+  generation dropped. So **`whisker-client --ssh you@host [port]`** is
+  OpenSSH's own `ssh -W`, no tunnel; a screen **says what it draws**
+  (`wh_seat_caps(seat)`; `wh_caps()` = every screen's) and the editor
+  gives each seat its own — a page sent é, the client a marker, at once;
+  **`WHISKER_DISPLAY`** makes a program dial a `whisker-client --listen`
+  (several programs, a lobby window), re-dialling every 3 s while the
+  display is away. `host/web/duplex.py` (14) through real OpenSSH,
+  `ssh -R` included.
 - **§5ak — Page Up/Down, and a window that behaves** (2026-11-17,
   Matthew: no focus on opening, the X default icon, no Page Up/Down):
   `WSK_KEY_PAGEUP`/`PAGEDOWN` — a memo moves caret and view a page
@@ -505,7 +516,7 @@ twice; it needs over 11.7 KB). Design §9.4.
 `src/run.sh --module` is the whole of it: **1,250 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 109 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 123 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),

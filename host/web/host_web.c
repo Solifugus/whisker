@@ -46,6 +46,7 @@
 #include "host.h"
 
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <poll.h>
@@ -255,6 +256,9 @@ typedef struct {
 	long last;               /* when it was last heard from, in ms */
 	char req[8192];          /* a paste comes in one: room for a few KB */
 	char who[64];            /* who its viewer says it is, from ?v= (§5al), or "" */
+	int  caps;               /* what its screen says it draws (§5am), or -1: it did not say */
+	int  duplex;             /* the wire on this one connection, both ways (§5am) */
+	int  dialled;            /* the connection this program made to its display (§5am) */
 	int  got;
 } client_t;
 
@@ -274,6 +278,8 @@ static struct {
 	int       wlast;         /* the window last opened: the next takes the next
 	                            number free after it, not the lowest */
 	struct { int open, w, h; char title[64]; } win[8];   /* 0 is wh_open's */
+	char      display[256];  /* WHISKER_DISPLAY, a screen to dial (§5am), or "" */
+	long      dlast;         /* when it was last dialled */
 	char     *clip;          /* the clipboard: the last copied or pasted */
 	int       clen;
 } S;
@@ -332,6 +338,30 @@ static void drop(int i)
 	S.c[i].got = 0;
 	S.c[i].w = S.c[i].h = 0;
 	S.c[i].who[0] = '\0';
+	S.c[i].caps = -1;
+	S.c[i].duplex = 0;
+	S.c[i].dialled = 0;
+}
+
+/*
+ * One or more messages, "data: X\n\n" as an HTTP stream carries them, to a
+ * screen: as they are, or on a duplex connection as plain lines, "X\n"
+ * (§5am) -- the same messages, without the event stream's dress.
+ */
+static int emit(int i, const char *m, int n)
+{
+	int fd = S.c[i].fd;
+	if (!S.c[i].duplex) return send_all(fd, m, n);
+	while (n > 0) {
+		int e = 6;
+		if (n < 8 || memcmp(m, "data: ", 6) != 0) return -1;
+		while (e + 1 < n && !(m[e] == '\n' && m[e + 1] == '\n')) e++;
+		if (e + 1 >= n) return -1;
+		if (send_all(fd, m + 6, e - 6) < 0 || send_all(fd, "\n", 1) < 0) return -1;
+		m += e + 2;
+		n -= e + 2;
+	}
+	return 0;
 }
 
 /* The clipboard's text, kept: the host's copy of what the page has. */
@@ -423,6 +453,105 @@ static void event_line(const char *l, int seat, int win)
 	push(&e);
 }
 
+/* The characters of a viewer's name (§5al), from `v` to the first that is
+   not one: never proof of anything, only a name to find what was theirs. */
+static void name_of(char *who, int cap, const char *v)
+{
+	int k = 0;
+	if (v != 0)
+		for (; k < cap - 1 && ((*v >= 'a' && *v <= 'z') || (*v >= 'A' && *v <= 'Z') ||
+		                       (*v >= '0' && *v <= '9') || *v == '-' || *v == '_' || *v == '.'); v++)
+			who[k++] = *v;
+	who[k] = '\0';
+}
+
+/*
+ * Connection i becomes a screen: moved to a seat's slot below WH_SEATS
+ * (none free: refused), named, told its seat, sent the windows open -- and
+ * a seatless program's picture so far -- and the program told it is here.
+ * `q` holds its name ("v=") and `caps` what it draws, -1 unsaid; `head` is
+ * the HTTP response for a stream, or 0 for a duplex connection (§5am),
+ * whose seat is the connection and whose messages are plain lines.
+ */
+static int subscribe(int i, const char *q, int caps, const char *head)
+{
+	client_t *c = &S.c[i];
+	wh_event_t e;
+	char sn[48];
+	const char *v;
+	int j;
+	for (j = 0; j < WH_SEATS && S.c[j].fd >= 0; j++) ;
+	if (j == WH_SEATS) {
+		if (head) send_str(c->fd, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+		else send_str(c->fd, "E no room: sixteen screens already\n");
+		drop(i);
+		return -1;
+	}
+	if (j != i) {
+		S.c[j] = *c;
+		S.c[i].fd = -1; S.c[i].sub = 0; S.c[i].got = 0; S.c[i].w = S.c[i].h = 0;
+		S.c[i].caps = -1; S.c[i].duplex = 0; S.c[i].dialled = 0;
+		i = j;
+		c = &S.c[j];
+	}
+	v = strstr(q, "?v=");
+	if (v == 0) v = strstr(q, "&v=");
+	if (v == 0) v = strstr(q, " v=");
+	name_of(c->who, (int)sizeof c->who, v ? v + 3 : 0);
+	c->caps = (caps >= 0) ? caps : -1;
+	c->duplex = (head == 0);
+	c->gen = ++S.gen;
+	if (head) send_all(c->fd, head, (int)strlen(head));
+	if (S.seats)                            /* its seat, and which joining of it */
+		emit(i, sn, snprintf(sn, sizeof sn, "data: S %d %u\n\n", i, c->gen));
+	for (int k = 1; k < 8; k++)             /* the windows already open (§5af) */
+		if (S.win[k].open) {
+			char o[128];
+			emit(i, o, snprintf(o, sizeof o, "data: O %d %d %d %s\n\n",
+			                    k, S.win[k].w, S.win[k].h, S.win[k].title));
+		}
+	if (!S.seats && S.llen > 0) emit(i, S.log, S.llen);
+	c->sub = 1;
+	if (head) c->got = 0;
+	c->last = now_ms();
+	memset(&e, 0, sizeof e);
+	e.kind = S.seats ? WH_JOIN : WH_EXPOSE;
+	e.seat = i;
+	push(&e);
+	for (int k = 1; !S.seats && k < 8; k++)  /* and each drawn again for it */
+		if (S.win[k].open) { e.win = k; push(&e); }
+	return i;
+}
+
+/* A duplex screen's lines (§5am): each an event line of the wire's, for
+   window 0 or, prefixed "w<n> ", window n; the connection is the seat. */
+static void lines_of(int i)
+{
+	client_t *c = &S.c[i];
+	char *p = c->req, *nl;
+	c->last = now_ms();
+	while ((nl = memchr(p, '\n', (size_t)(c->got - (p - c->req)))) != 0) {
+		int win = 0;
+		char *l = p;
+		*nl = '\0';
+		if (nl > l && nl[-1] == '\r') nl[-1] = '\0';
+		if (l[0] == 'w' && l[1] >= '0' && l[1] <= '9') {
+			win = atoi(l + 1);
+			l = strchr(l, ' ');
+			l = l ? l + 1 : nl;
+		}
+		p = nl + 1;
+		if (win >= 0 && win < 8 && S.win[win].open && *l != '\0') {
+			if (l[0] == 'G' && l[1] == '\0') { drop(i); return; }
+			event_line(l, S.seats ? i : 0, win);
+		}
+		if (S.c[i].fd < 0) return;
+	}
+	c->got -= (int)(p - c->req);
+	memmove(c->req, p, (size_t)c->got);
+	c->req[c->got] = '\0';
+}
+
 static void respond(int i)
 {
 	client_t *c = &S.c[i];
@@ -457,7 +586,8 @@ static void respond(int i)
 		   not serving them, every page is the one screen, 0 */
 		if (!S.seats) seat = 0;
 		else if (seat < 0 || seat >= WH_SEATS || S.c[seat].fd < 0 || !S.c[seat].sub ||
-		         S.c[seat].gen != gen) p = stop;
+		         S.c[seat].gen != gen || S.c[seat].duplex) p = stop;   /* a duplex seat speaks
+		                                                                    only on its own line (§5am) */
 		else if (S.seats) S.c[seat].last = now_ms();     /* heard from */
 		while (p < stop) {
 			char *nl = strchr(p, '\n');
@@ -471,56 +601,9 @@ static void respond(int i)
 	} else if (strncmp(path, "/events", 7) == 0 && (path[7] == '\0' || path[7] == '?')) {
 		static const char H[] = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
 		                        "Cache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n";
-		wh_event_t e;
-		char sn[48];
-		int j;
-		/* a stream moves to a seat's slot, below WH_SEATS; none free, no room */
-		for (j = 0; j < WH_SEATS && S.c[j].fd >= 0; j++) ;
-		if (j == WH_SEATS) {
-			send_str(c->fd, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-			drop(i);
-			return;
-		}
-		if (j != i) {
-			S.c[j] = *c;
-			S.c[i].fd = -1; S.c[i].sub = 0; S.c[i].got = 0; S.c[i].w = S.c[i].h = 0;
-			i = j;
-			c = &S.c[j];
-		}
-		{
-			/* who its viewer says it is (§5al): a name kept to find what was
-			   theirs, never proof of anything -- the characters of a name,
-			   and anything else ends it */
-			const char *v = strstr(path, "?v=");
-			int k = 0;
-			if (v == 0) v = strstr(path, "&v=");
-			if (v != 0)
-				for (v += 3; k < (int)sizeof c->who - 1 &&
-				     ((*v >= 'a' && *v <= 'z') || (*v >= 'A' && *v <= 'Z') || (*v >= '0' && *v <= '9') ||
-				      *v == '-' || *v == '_' || *v == '.'); v++)
-					c->who[k++] = *v;
-			c->who[k] = '\0';
-		}
-		c->gen = ++S.gen;
-		send_all(c->fd, H, (int)sizeof H - 1);
-		if (S.seats)                            /* its seat, and which joining of it */
-			send_all(c->fd, sn, snprintf(sn, sizeof sn, "data: S %d %u\n\n", i, c->gen));
-		for (int k = 1; k < 8; k++)             /* the windows already open (§5af) */
-			if (S.win[k].open) {
-				char o[128];
-				send_all(c->fd, o, snprintf(o, sizeof o, "data: O %d %d %d %s\n\n",
-				                            k, S.win[k].w, S.win[k].h, S.win[k].title));
-			}
-		if (!S.seats && S.llen > 0) send_all(c->fd, S.log, S.llen);
-		c->sub = 1;
-		c->got = 0;
-		c->last = now_ms();
-		memset(&e, 0, sizeof e);
-		e.kind = S.seats ? WH_JOIN : WH_EXPOSE;
-		e.seat = i;
-		push(&e);
-		for (int k = 1; !S.seats && k < 8; k++)  /* and each drawn again for it */
-			if (S.win[k].open) { e.win = k; push(&e); }
+		const char *cq = strstr(path, "?c=");
+		if (cq == 0) cq = strstr(path, "&c=");
+		subscribe(i, path, cq ? atoi(cq + 3) : -1, H);
 	} else if (strncmp(path, "/static/", 8) == 0) {
 		/* Files a page's images name (§5r): from WHISKER_STATIC, or ./static,
 		   by a plain name -- no '/', no "..", nothing above the folder. */
@@ -574,7 +657,41 @@ static void service(int ms)
 	if (S.seats) {
 		long t = now_ms();
 		for (int i = 0; i < MAXC; i++)
-			if (S.c[i].fd >= 0 && S.c[i].sub && t - S.c[i].last > 6000) drop(i);
+			if (S.c[i].fd >= 0 && S.c[i].sub && !S.c[i].duplex && t - S.c[i].last > 6000) drop(i);
+	}
+	/* a display this program dials (§5am): again every three seconds while
+	   it is not there -- gone, it may come back */
+	if (S.display[0] != '\0' && now_ms() - S.dlast >= 3000) {
+		int there = 0;
+		for (int i = 0; i < MAXC; i++) if (S.c[i].fd >= 0 && S.c[i].dialled) there = 1;
+		S.dlast = now_ms();
+		if (!there) {
+			char host[256], *colon;
+			struct addrinfo hints, *ai = 0, *a;
+			int fd = -1, i;
+			snprintf(host, sizeof host, "%s", S.display);
+			colon = strrchr(host, ':');
+			if (colon != 0) {
+				*colon = '\0';
+				memset(&hints, 0, sizeof hints);
+				hints.ai_family = AF_UNSPEC;
+				hints.ai_socktype = SOCK_STREAM;
+				if (getaddrinfo(host[0] ? host : "127.0.0.1", colon + 1, &hints, &ai) == 0) {
+					for (a = ai; a != 0 && fd < 0; a = a->ai_next) {
+						fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+						if (fd >= 0 && connect(fd, a->ai_addr, a->ai_addrlen) != 0) { close(fd); fd = -1; }
+					}
+					freeaddrinfo(ai);
+				}
+			}
+			for (i = WH_SEATS; fd >= 0 && i < MAXC && S.c[i].fd >= 0; i++) ;
+			if (fd >= 0 && i < MAXC) {          /* the screen speaks first: its WHISKER line */
+				struct timeval tv = { 1, 0 };
+				setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+				S.c[i].fd = fd; S.c[i].sub = 0; S.c[i].got = 0; S.c[i].dialled = 1;
+				S.c[i].caps = -1; S.c[i].duplex = 0; S.c[i].who[0] = '\0';
+			} else if (fd >= 0) close(fd);
+		}
 	}
 	p[n].fd = S.lfd; p[n].events = POLLIN; idx[n] = -1; n++;
 	for (int i = 0; i < MAXC; i++)
@@ -590,7 +707,7 @@ static void service(int ms)
 			/* a new request starts above the seats; a stream moves down */
 			for (i = WH_SEATS; i < MAXC && S.c[i].fd >= 0; i++) ;
 			if (i == MAXC) close(fd);
-			else { S.c[i].fd = fd; S.c[i].sub = 0; S.c[i].got = 0; }
+			else { S.c[i].fd = fd; S.c[i].sub = 0; S.c[i].got = 0; S.c[i].caps = -1; S.c[i].duplex = 0; S.c[i].dialled = 0; S.c[i].who[0] = '\0'; }
 		}
 	}
 	for (int k = 1; k < n; k++) {
@@ -600,9 +717,27 @@ static void service(int ms)
 		if (!(p[k].revents & (POLLIN | POLLHUP | POLLERR))) continue;
 		r = recv(c->fd, c->req + c->got, sizeof c->req - 1 - (size_t)c->got, 0);
 		if (r <= 0) { drop(i); continue; }
-		if (c->sub) continue;                /* a subscriber says nothing more */
+		if (c->sub && !c->duplex) continue;  /* a stream's screen says nothing more on it */
 		c->got += (int)r;
 		c->req[c->got] = '\0';
+		if (c->duplex) { lines_of(i); continue; }
+		if (c->got >= 8 && memcmp(c->req, "WHISKER ", 8) == 0) {
+			/* the wire on one connection (§5am): its first line says who and
+			   what it draws -- "WHISKER 1 v=<name> caps=<n>" -- then lines */
+			char *nl = memchr(c->req, '\n', (size_t)c->got), first[200];
+			const char *cp;
+			int rest, j;
+			if (nl == 0) { if (c->got >= (int)sizeof c->req - 1) drop(i); continue; }
+			snprintf(first, sizeof first, "%.*s", (int)(nl - c->req), c->req);
+			cp = strstr(first, " caps=");
+			rest = c->got - (int)(nl + 1 - c->req);
+			memmove(c->req, nl + 1, (size_t)rest);
+			c->got = rest;
+			c->req[rest] = '\0';
+			j = subscribe(i, first, cp ? atoi(cp + 6) : -1, 0);
+			if (j >= 0 && S.c[j].got > 0) lines_of(j);
+			continue;
+		}
 		respond(i);
 		if (S.c[i].fd >= 0 && S.c[i].got >= (int)sizeof c->req - 1) drop(i);
 	}
@@ -644,6 +779,14 @@ int wh_open(int w, int h, int scale, const char *title)
 	}
 	S.open = 1;
 	S.win[0].open = 1; S.win[0].w = w; S.win[0].h = h;   /* window 0, wh_open's (§5af) */
+	{
+		/* a screen to dial as well (§5am): whisker-client --listen, here or
+		   through ssh -R; dialled at the first poll, again if it goes */
+		const char *d = getenv("WHISKER_DISPLAY");
+		if (d != 0) snprintf(S.display, sizeof S.display, "%s", d);
+		S.dlast = -100000;
+		if (S.display[0]) fprintf(stderr, "whisker-web: showing on %s as well\n", S.display);
+	}
 	return 0;
 }
 
@@ -659,7 +802,7 @@ void wh_seats(int on)
 			wh_event_t e;
 			char sn[48];
 			S.c[i].last = now_ms();
-			send_all(S.c[i].fd, sn, snprintf(sn, sizeof sn, "data: S %d %u\n\n", i, S.c[i].gen));
+			emit(i, sn, snprintf(sn, sizeof sn, "data: S %d %u\n\n", i, S.c[i].gen));
 			memset(&e, 0, sizeof e);
 			e.kind = WH_JOIN;
 			e.seat = i;
@@ -673,7 +816,7 @@ void wh_to(int seat) { S.to = seat; }
 static void to_all(const char *m, int n)
 {
 	for (int i = 0; i < MAXC; i++)
-		if (S.c[i].fd >= 0 && S.c[i].sub && send_all(S.c[i].fd, m, n) < 0) drop(i);
+		if (S.c[i].fd >= 0 && S.c[i].sub && emit(i, m, n) < 0) drop(i);
 }
 
 /* Windows (§5af): each a panel in the page, opened on every page there is
@@ -722,14 +865,32 @@ static int aimed(int i)
 /* A browser draws UTF-8, images and clip paths (§5r), and decodes entities,
    so text may hold < > & (§5v). Not opacity yet: the page composites by
    rows onto a canvas, and nothing whisker draws uses it. */
+/* What a screen that says nothing is taken to draw: a browser's -- under
+   WHISKER_CAPS, a ceiling for every screen if it is set (§5al's stopgap). */
+static int caps_ceiling(void)
+{
+	const char *c = getenv("WHISKER_CAPS");
+	int all = WH_CAP_UTF8 | WH_CAP_IMAGE | WH_CAP_CLIP | WH_CAP_OPACITY | WH_CAP_ENTITY;
+	return (c != NULL) ? (atoi(c) & all) : all;
+}
+static int caps_browser(void) { return (WH_CAP_UTF8 | WH_CAP_IMAGE | WH_CAP_CLIP | WH_CAP_ENTITY) & caps_ceiling(); }
+
+/* What seat `seat`'s screen draws (§5am): what it said, or a browser's. */
+int wh_seat_caps(int seat)
+{
+	if (seat < 0 || seat >= WH_SEATS || S.c[seat].fd < 0 || !S.c[seat].sub || S.c[seat].caps < 0)
+		return caps_browser();
+	return S.c[seat].caps & caps_ceiling();
+}
+
+/* What every screen here draws -- for a program that sends them all the
+   same picture; with none here, a browser's. */
 int wh_caps(void)
 {
-	/* until a screen says what it draws (§5al step 4), WHISKER_CAPS may say
-	   it for all of them -- a native client drawing with RV-9's rasteriser
-	   draws what the SDL window does, entities only (16) */
-	const char *c = getenv("WHISKER_CAPS");
-	if (c != NULL) return atoi(c) & (WH_CAP_UTF8 | WH_CAP_IMAGE | WH_CAP_CLIP | WH_CAP_OPACITY | WH_CAP_ENTITY);
-	return WH_CAP_UTF8 | WH_CAP_IMAGE | WH_CAP_CLIP | WH_CAP_ENTITY;
+	int all = caps_browser();
+	for (int i = 0; i < WH_SEATS; i++)
+		if (S.c[i].fd >= 0 && S.c[i].sub) all &= wh_seat_caps(i);
+	return all;
 }
 
 /* Who seat `seat` says it is (§5al): its ?v=, or "". */
@@ -778,7 +939,7 @@ void wh_write(const void *bytes, int n)
 				memcpy(m + hn, S.doc, (size_t)S.dlen);
 				memcpy(m + hn + S.dlen, "\n\n", 2);
 				for (int i = 0; i < MAXC; i++)
-					if (aimed(i) && send_all(S.c[i].fd, m, mn) < 0) drop(i);
+					if (aimed(i) && emit(i, m, mn) < 0) drop(i);
 				free(m);
 			}
 			S.dlen = 0;
@@ -793,7 +954,7 @@ void wh_write(const void *bytes, int n)
 		memcpy(S.log + S.llen + hn, S.doc, (size_t)S.dlen);
 		memcpy(S.log + S.llen + hn + S.dlen, "\n\n", 2);
 		for (int i = 0; i < MAXC; i++)
-			if (aimed(i) && send_all(S.c[i].fd, S.log + S.llen, mn) < 0) drop(i);
+			if (aimed(i) && emit(i, S.log + S.llen, mn) < 0) drop(i);
 		S.llen += mn;
 	}
 	S.dlen = 0;
@@ -830,7 +991,7 @@ int wh_copy(const char *s, int n)
 	}
 	m[k++] = '\n'; m[k++] = '\n';
 	for (int i = 0; i < MAXC; i++)
-		if (aimed(i) && send_all(S.c[i].fd, m, k) < 0) drop(i);
+		if (aimed(i) && emit(i, m, k) < 0) drop(i);
 	free(m);
 	return 0;
 }

@@ -235,8 +235,8 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line)
               <line x1="580" y1="141" x2="636" y2="321" class="hotline"/>
               <line x1="580" y1="265" x2="636" y2="209"/>
             </g>
-            <text x="455" y="384" text-anchor="middle" font-size="12" opacity=".8">either side may dial: a client opens a saved place,</text>
-            <text x="455" y="402" text-anchor="middle" font-size="12" opacity=".8">or a program is told WHISKER_DISPLAY and shows there</text>
+            <text x="455" y="384" text-anchor="middle" font-size="12" opacity=".8">either side may dial: whisker-client --ssh you@host,</text>
+            <text x="455" y="402" text-anchor="middle" font-size="12" opacity=".8">or a program told WHISKER_DISPLAY shows itself there</text>
           </g>
         </svg>
       </div>
@@ -276,7 +276,8 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line)
     <ul>
       <li><span class="chip built">built</span> whisker, its three helper headers, the desktop window, the RV-9 modules, the browser host with seats and several windows.</li>
       <li><span class="chip built">built</span> the remote client (§5al, D25): the wire written down (<code>docs/wire.md</code>), <code>whisker-client</code>, the browser host on this machine only unless asked, and the code editor a seat per viewer. Tested through real SSH: the client's pixels equal the editor's own window, a viewer detaches and comes back to their caret and view, and each viewer's input reaches only their seat.</li>
-      <li><span class="chip designed">designed</span> the program dialling a screen (<code>WHISKER_DISPLAY</code>), a screen saying what it can draw, a token for pages, saved connections in the client.</li>
+      <li><span class="chip built">built</span> the wire on one stream (§5am): <code>whisker-client --ssh you@host</code> with nothing but OpenSSH's own <code>-W</code>; each screen saying what it can draw, so a browser and the native client get each their own picture of one document; a program dialling a screen with <code>WHISKER_DISPLAY</code>, through <code>ssh -R</code>, and dialling again when the screen comes back.</li>
+      <li><span class="chip designed">designed</span> a token for pages on a network, saved connections in the client, a relay for SSH servers without forwarding (RV-9's).</li>
       <li><span class="chip designed">designed</span> gBASIC's whisker backend (<code>ui-backend-gap.md</code>), waiting on gBASIC's contract suites.</li>
       <li><span class="chip open">open</span> a whisker desktop, which grows from a client that can hold windows from many programs; R9's window description; Windows and macOS builds; a desktop font beyond ASCII (D23).</li>
     </ul>

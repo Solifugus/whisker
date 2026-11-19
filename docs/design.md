@@ -3513,6 +3513,91 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5am. The wire on one stream — SSH by itself, a screen that says what it draws, a program that dials (2026-11-18), written before its code
+
+§5al's first increment needs a tunnel set up by hand, and the wire's HTTP
+shape is why: a stream one way and a short POST per batch the other, so
+SSH must forward a *port*. Matthew chose **SSH first, both directions**;
+this makes both easy.
+
+1. **The wire on one two-way stream** (`docs/wire.md` §8). A screen
+   opens a byte stream to the program and sends one line first:
+   `WHISKER 1 v=<viewer> caps=<n>`; after it, both sides send **lines**
+   — the program its stream messages exactly as §2 (no `data: `, no blank
+   line), the screen its event lines exactly as §3, prefixed `w<n> ` for
+   a window other than 0. **The connection is the seat**: no `s`, no
+   `g`, nothing to forge. The browser host takes it on its own port, told
+   apart from HTTP by that first word; a browser keeps HTTP.
+2. **SSH carries it with nothing installed**: `ssh -W 127.0.0.1:<port>
+   you@host` is OpenSSH's own stdio forwarding — the session's input and
+   output joined to a port on the far side. So **`whisker-client --ssh
+   you@host [port] [viewer]`** runs that and speaks the wire on its
+   pipes: one command, no tunnel, no port opened anywhere but on the far
+   machine's loopback. (An SSH server without forwarding — RV-9's — would
+   need a relay run as the session's command; named, not built.)
+3. **A screen says what it draws**: `caps=` in the first line, or `?c=`
+   on an HTTP stream. The host keeps it per seat; **`wh_seat_caps(seat)`**
+   in the contract answers it (or the host's own claim, for a screen that
+   says nothing), and `wh_caps()` becomes **what every connected screen
+   can draw** — for a program without seats. `WHISKER_CAPS`, §5al's
+   stopgap, stays only as a ceiling. The code editor gives each seat its
+   screen's capabilities: **a browser and the native client on one
+   document, one drawing é and the other a marker for it.**
+4. **A program dials a screen**: `WHISKER_DISPLAY=host:port` — the
+   program, besides listening, connects out to that screen, which answers
+   with its first line, and from there it is a seat like any other.
+   `whisker-client --listen [port]` is a screen that waits for programs,
+   **several at once**, each its own windows — the seat of a whisker
+   desktop. Across machines it is SSH's reverse forwarding: `ssh -R
+   9100:127.0.0.1:9100 you@server`, then on the server
+   `WHISKER_DISPLAY=127.0.0.1:9100 program`. **The display going away
+   leaves the program running**, and it dials again every three seconds,
+   so a display that comes back gets it back — a viewer returning, by
+   another door.
+
+Done when: the duplex line, its window prefix, and a seat per
+connection; a forged `s=`/`g=` meaningless there (the control: the
+connection is the seat); `whisker-client --ssh` showing the editor
+through a real OpenSSH session with no tunnel, its pixels the editor's
+own; two screens on one editor declaring different capabilities, a file
+with é — the browser's seat sent é, the client's sent a marker, and
+neither sent the other's; a program with `WHISKER_DISPLAY` appearing in
+a `--listen` client through a real reverse tunnel; the client closed and
+the program still running; the client back and the program back in it.
+
+**What it came to** (2026-11-18): as written. `docs/wire.md` §8 is the
+contract. In the browser host every message to a screen now goes through
+one emitter that writes either form; a connection that opens with
+`WHISKER ` is taken off the HTTP path and made a seat by the same code
+that makes a stream one; its lines are events with an optional `w<n> `.
+`wh_seat_caps(seat)` joins the contract; `wh_caps()` is now what every
+screen here draws. The dialling is in the host's poll: every three
+seconds, if no connection it made is alive, it connects to
+`WHISKER_DISPLAY` and waits for the screen's first line. **The code
+editor gives each seat its own screen's capabilities.**
+
+`whisker-client` was rewritten around one stream: a socket it dials, the
+pipes of an `ssh -W` it runs (with `WHISKER_SSH_OPTS` for the session's
+options), or sockets programs dial to it under `--listen` — up to eight
+programs at once, each its own windows, beside a small window of the
+client's own that whisker draws: where it listens, how many it shows. It
+no longer speaks HTTP at all; §5al's 27 checks pass on it unchanged.
+
+**Checked through real OpenSSH** (`host/web/duplex.py`, 14; the Linux
+suite 123): `--ssh` shows the editor with nothing but `ssh -W`, **its
+frame the editor's own window's to the byte**; a page-like screen and the
+native client on one file holding `café` — **the page sent the é, the
+client a marker and never the é**, at once; **a POST naming the client's
+seat with its very generation is dropped** (taken out, the check fails:
+run), and its own line moves it; a program with `WHISKER_DISPLAY` reaches
+a `--listen` client through **`ssh -R`**; the client closed, the program
+runs on; the client back, **the program dials again within three seconds
+and is shown again**.
+
+**Not done**: a relay for an SSH server without forwarding (RV-9's); the
+client's saved places; a token for pages on a network; the program's
+window title for its first window (the client titles it itself).
+
 ## 5al. Running remotely — a client for any whisker program (2026-11-17), written before its code
 
 D25: a program keeps its own window, **and** a client can show it from
