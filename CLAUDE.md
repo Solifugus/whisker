@@ -405,6 +405,15 @@ directly**.
   whole. **Hint**: the widget's own text, ink half way to the well
   (5.29:1, now in the palette gate), while the buffer is empty — a
   field or memo, with a buffer or refused. +688 default, +700 panel.
+- **§5ap — striped rows and read only** (2026-11-18): `stripe` on a
+  stack (1 odd items, 2 even — for a slice starting odd), the fill
+  derived (bg an eighth to the ink, gated), never over a choice or an
+  item's own fill; `WSK_READONLY` in `flags` on a field or memo with a
+  buffer — focused, moved, selected, copied, and every changing key
+  used and doing nothing; `wsk_ui_paste` refuses it. **`wsk_init` must
+  set every new tree field** (it missed `stripe`; five checks caught
+  it). +128 default, +160 panel. **That closes `ui-backend-gap.md`
+  §8's small gaps.**
 - **§5am — the wire on one stream** (2026-11-18): a connection opening
   `WHISKER 1 v=… caps=…` is a seat on that connection, lines both ways
   (`docs/wire.md` §8) — nothing else speaks for it, a POST with its very
@@ -532,7 +541,7 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,314 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,338 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 123 — every demo program started — including the

@@ -2356,6 +2356,49 @@ int main(void)
 		shot("form.ppm");
 	}
 
+	/*
+	 * Striped rows (§5ap) at the pixels: a list of five, the odd ones in the
+	 * stripe, row 3 chosen -- its choice's fill, not the stripe.
+	 */
+	{
+		static wsk_widget_t W[5];
+		wsk_tree_t root, at;
+		wsk_sink_t s;
+		wsk_rect_t row[5];
+		int lo, hi, which = 0, st[5], ch[5];
+		unsigned int stripe;
+
+		memset(W, 0, sizeof W);
+		for (int i = 0; i < 5; i++) {
+			W[i].kind = WSK_LABEL; W[i].size = 32;
+			snprintf(W[i].id, WSK_ID_MAX, "r%d", i); snprintf(W[i].text, WSK_TEXT_MAX, "row %d", i);
+		}
+		wsk_init(&root, WSK_COL, PW, PH);
+		root.bg = 0x102030u; root.font = 16; root.item = W; root.n = 5; root.pad = 6; root.gap = 0;
+		root.select = 1; root.sel = 3; root.stripe = 1; root.talign = WSK_ALIGN_START;
+		printf("\n  striped rows (§5ap)\n");
+		ok(wsk_check(&root, &which) == WSK_OK, "five rows, striped, row 3 chosen, check");
+		stripe = wsk__stripe(&root);
+		s.put = to_window; s.ctx = &dev;
+		{ uint32_t v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v); }
+		s.len = 0;
+		ok(wsk_render(&root, &s, 4096) > 0, "drawn, in one document under 4 KB");
+		for (int i = 0; i < 5; i++) {
+			snprintf(W[i].id, WSK_ID_MAX, "r%d", i);
+			row[i] = wsk_rect(&at, wsk__lookup(&root, W[i].id, &at, 0));
+			st[i] = span(row[i], pix565(stripe), &lo, &hi);
+			ch[i] = span(row[i], pix565(root.selfill), &lo, &hi);
+		}
+		printf("    stripe pixels by row %d %d %d %d %d; the choice's %d %d %d %d %d\n",
+		       st[0], st[1], st[2], st[3], st[4], ch[0], ch[1], ch[2], ch[3], ch[4]);
+		/* a glyph's antialiasing can land on the stripe's 565 value: a few
+		   pixels of text, never a row's box */
+		ok(st[1] > row[1].w * row[1].h / 2 && st[0] < 20 && st[2] < 20 && st[4] < 20,
+		   "row 1 in the stripe; rows 0, 2 and 4 not (a stray glyph pixel or two aside)");
+		ok(st[3] == 0 && ch[3] > row[3].w * row[3].h / 2, "row 3, odd and chosen: the choice's fill, no stripe");
+		shot("striped.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

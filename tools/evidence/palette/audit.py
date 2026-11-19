@@ -2,6 +2,7 @@
 # The default palette, held to two rules (decisions.md D24):
 #   - every fill whisker draws text on gives white ink 4.5:1 or more (WCAG AA);
 #   - a field's hint, the ink half way to the well, 4.5:1 on the well too;
+#   - a striped row's fill, derived from bg and ink, legible and not the choice;
 #   - every pair of colours that tells one state from another stays 10 delta-E
 #     apart (CIE76, Lab) for normal vision and under protanopia, deuteranopia
 #     and tritanopia, simulated at full severity (Machado, Oliveira and
@@ -55,7 +56,12 @@ for f in ("bg", "accent", "selfill", "trough"):
 half = sum((((P["ink"] >> s & 255) + (P["trough"] >> s & 255)) // 2) << s for s in (16, 8, 0))
 c = contrast(half, P["trough"])
 ok(c >= 4.5, f"palette: a hint (#{half:06x}) on the well {c:.2f}:1, at least 4.5")
-for a, b in [("selfill","accent"),("selfill","bg"),("accent","bg"),("trough","bg"),("selfill","trough"),("accent","trough")]:
+# a striped row (design §5ap): the background an eighth of the way to the
+# ink, as wsk__stripe derives it -- text on it, and never taken for the choice
+P["stripe"] = sum((((P["bg"] >> s & 255) * 7 + (P["ink"] >> s & 255)) // 8) << s for s in (16, 8, 0))
+c = contrast(P["ink"], P["stripe"])
+ok(c >= 4.5, f"palette: white ink on a stripe (#{P['stripe']:06x}) {c:.2f}:1, at least 4.5")
+for a, b in [("selfill","stripe"),("selfill","accent"),("selfill","bg"),("accent","bg"),("trough","bg"),("selfill","trough"),("accent","trough")]:
     worst = min((dE(P[a], P[b], M[m]), m) for m in M)
     ok(worst[0] >= 10, f"palette: {a} and {b} {worst[0]:.1f} delta-E apart at the least ({worst[1]}), at least 10")
 sys.exit(1 if fails else 0)

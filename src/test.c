@@ -7155,6 +7155,132 @@ int main(void)
 		ok(wsk_check(&r, &which) == WSK_OK, "and the window checks throughout");
 	}
 
+	printf("\n-- §5ap  striped rows, and a part that is read only\n");
+	{
+		static wsk_widget_t W[3], ROWS[6], CELLS[2];
+		char fm[64] = "one\ntwo", ff[32] = "fixed", clip[32] = "", doc[16384], want[160], col[16];
+		wsk_buf_t bufs[2];
+		wsk_tree_t r, k[2];
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		wsk_rect_t rr[6], rm;
+		int y0, y1, n, which = 0, odd, even;
+		unsigned int stripe;
+
+		memset(W, 0, sizeof W); memset(ROWS, 0, sizeof ROWS); memset(CELLS, 0, sizeof CELLS);
+		W[0].kind = WSK_STACK; snprintf(W[0].id, WSK_ID_MAX, "list"); W[0].sub = 0; W[0].size = 180;
+		W[1].kind = WSK_MEMO;  snprintf(W[1].id, WSK_ID_MAX, "memo"); W[1].sub = 0; W[1].size = 60; W[1].flags = WSK_READONLY;
+		W[2].kind = WSK_FIELD; snprintf(W[2].id, WSK_ID_MAX, "fld"); W[2].sub = 1; W[2].size = 30; W[2].flags = WSK_READONLY;
+		for (int i = 0; i < 6; i++) {
+			ROWS[i].kind = WSK_LABEL; ROWS[i].size = 30;
+			snprintf(ROWS[i].id, WSK_ID_MAX, "r%d", i); snprintf(ROWS[i].text, WSK_TEXT_MAX, "row %d", i);
+		}
+		ROWS[5].kind = WSK_STACK; ROWS[5].sub = 1;          /* a table's row: a stack of cells */
+		CELLS[0].kind = WSK_LABEL; snprintf(CELLS[0].text, WSK_TEXT_MAX, "a"); CELLS[0].weight = 1;
+		CELLS[1].kind = WSK_LABEL; snprintf(CELLS[1].text, WSK_TEXT_MAX, "b"); CELLS[1].weight = 1;
+		memset(bufs, 0, sizeof bufs);
+		bufs[0].b = fm; bufs[0].cap = sizeof fm; bufs[0].len = 7; bufs[0].tabkey = 1;
+		bufs[1].b = ff; bufs[1].cap = sizeof ff; bufs[1].len = 5;
+		wsk_init(&r, WSK_COL, 300, 320);
+		r.pad = 4; r.gap = 4;
+		r.item = W; r.n = 3; r.buf = bufs; r.bufs = 2; r.nest = k; r.nests = 2;
+		wsk_nest_init(&k[0], &r, WSK_COL); k[0].item = ROWS; k[0].n = 6; k[0].select = 1; k[0].pad = 0; k[0].gap = 0;
+		wsk_nest_init(&k[1], &r, WSK_ROW); k[1].item = CELLS; k[1].n = 2; k[1].pad = 0; k[1].gap = 0;
+		wsk_ui_init(&ui, &r);
+		ui.clip = clip; ui.clipcap = sizeof clip;
+		for (int i = 0; i < 6; i++) { snprintf(want, sizeof want, "r%d", i); rr[i] = rect_of(&r, want); }
+		rr[5] = rect_of(&r, "r4"); rr[5].y = (short)(rr[4].y + 30);
+		rm = rect_of(&r, "memo");
+		{
+			buf_t o; wsk_sink_t s;
+			o.b = col; o.cap = sizeof col; s.put = to_buf; s.ctx = &o; s.len = 0;
+			stripe = ((r.bg & 0xff) * 7 + (r.ink & 0xff)) / 8 | (((r.bg >> 8 & 0xff) * 7 + (r.ink >> 8 & 0xff)) / 8) << 8
+			       | (((r.bg >> 16 & 0xff) * 7 + (r.ink >> 16 & 0xff)) / 8) << 16;
+			wsk__col(&s, stripe); col[s.len] = '\0';
+		}
+#define STRIPED(I) (snprintf(want, sizeof want, "y=\"%d\" width=\"%d\" height=\"30\" fill=\"%s\"", rr[I].y, rr[I].w, col), has(doc, want))
+
+		/* stripes */
+		render_into(&r, doc, sizeof doc, 16384);
+		ok(!has(doc, col), "CONTROL: stripe 0 -- the stripe's colour nowhere");
+		k[0].stripe = 1;
+		render_into(&r, doc, sizeof doc, 16384);
+		odd = STRIPED(1) && STRIPED(3);
+		even = STRIPED(0) || STRIPED(2) || STRIPED(4);
+		ok(odd && !even, "stripe 1: rows 1 and 3 in the stripe -- the background an eighth to the ink -- and 0, 2, 4 not");
+		ok(STRIPED(5), "and row 5, a table's row of cells, striped behind them");
+		k[0].sel = 3;
+		render_into(&r, doc, sizeof doc, 16384);
+		ok(!STRIPED(3), "row 3 chosen: the choice's fill, never the stripe over or under it");
+		k[0].sel = WSK_NONE;
+		ROWS[1].fill = 0x335577u;
+		render_into(&r, doc, sizeof doc, 16384);
+		ok(!STRIPED(1) && STRIPED(3), "row 1 with a fill of its own: its own, not the stripe");
+		ROWS[1].fill = 0;
+		k[0].stripe = 2;
+		render_into(&r, doc, sizeof doc, 16384);
+		ok(STRIPED(0) && STRIPED(2) && STRIPED(4) && !STRIPED(1) && !STRIPED(3),
+		   "stripe 2: the even rows -- for a slice that starts at an odd one");
+		k[0].stripe = 3;
+		ok(wsk_check(&r, &which) == WSK_E_KIND, "stripe 3: refused -- odd, even or none");
+		k[0].stripe = 0;
+#undef STRIPED
+
+		/* read only */
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_DOWN; ev.x = (short)(rm.x + 10); ev.y = (short)(rm.y + 10); ev.d = 1;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(r.focus == &W[1], "a read-only memo, tapped: focused");
+		bufs[0].caret = 0; bufs[0].span = 0;
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_RIGHT;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ev.key = WSK_KEY_RIGHT | WSK_MOD_SHIFT;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1); wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].caret == 3 && bufs[0].span == -2, "Right, then Shift-Right twice: the caret moves, a selection grows");
+		ev.key = 'c' | WSK_MOD_CTRL;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_COPY && strcmp(clip, "ne") == 0, "Ctrl-C: COPY, \"ne\" -- read only is not secret");
+		{
+			static const int keys[] = { WSK_KEY_BACKSPACE, WSK_KEY_DELETE, WSK_KEY_ENTER, WSK_KEY_TAB,
+			                            'x' | WSK_MOD_CTRL, 'v' | WSK_MOD_CTRL, 'z' | WSK_MOD_CTRL, 'y' | WSK_MOD_CTRL,
+			                            WSK_KEY_BACKSPACE | WSK_MOD_CTRL, WSK_KEY_DELETE | WSK_MOD_CTRL };
+			int same = 1, said = 0;
+			for (unsigned j = 0; j < sizeof keys / sizeof keys[0]; j++) {
+				if (keys[j] == WSK_KEY_TAB) continue;          /* below: it walks */
+				ev.key = keys[j];
+				said += wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+				if (bufs[0].len != 7 || strcmp(fm, "one\ntwo") != 0) same = 0;
+			}
+			memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_TEXT; ev.text[0] = 'x';
+			said += wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+			if (bufs[0].len != 7) same = 0;
+			ok(same && said == 0, "typing, Backspace, Delete, Enter, Ctrl-X, -V, -Z, -Y, Ctrl-Backspace, Ctrl-Delete: "
+			   "the text as it was, and nothing said -- none of them the program's");
+		}
+		ok(wsk_ui_paste(&ui, "zz", 2, nt, 8, &y0, &y1) == WSK_E_KIND && bufs[0].len == 7, "wsk_ui_paste into it: refused");
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_TAB;
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].len == 7 && r.focus == &W[2], "Tab, though its buffer types tabs: walks to the next, as read only");
+		ev.key = WSK_KEY_ENTER;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_ENTER && bufs[1].len == 5, "a read-only field's Enter: still ENTER, nothing changed");
+		W[1].flags = 0;
+		wsk_ui_focus(&ui, "memo", &y0, &y1);
+		bufs[0].caret = 7; bufs[0].span = 0;
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_TEXT; ev.text[0] = 'x';
+		wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = 'v' | WSK_MOD_CTRL;
+		n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(bufs[0].len == 8 && n == 1 && nt[0].kind == WSK_NOTE_PASTE, "CONTROL: open, typing reaches it and Ctrl-V says PASTE");
+		ok(wsk_ui_paste(&ui, "zz", 2, nt, 8, &y0, &y1) > 0 && bufs[0].len == 10, "and wsk_ui_paste puts it in");
+		W[1].flags = WSK_READONLY;
+		W[2].kind = WSK_BUTTON;
+		ok(wsk_check(&r, &which) == WSK_E_KIND && which == 2, "read only on a button: refused");
+		W[2].kind = WSK_FIELD;
+		ok(wsk_check(&r, &which) == WSK_OK, "and the window checks with it on a field and a memo");
+	}
+
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);
 	return fails != 0;
 }

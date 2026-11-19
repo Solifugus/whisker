@@ -189,8 +189,10 @@ Design §6.1's four, as they stand:
    character drawn~~ (§5ai); ~~`enabled`~~ (§5an: `off`, drawn faint,
    never pressed, skipped by Tab, down a branch); ~~`secret`; `hint`;
    `default`~~ (§5ao: `flags` — stars never copied; the widget's text
-   faint while empty; Enter from a field CLICKs it, framed); `striped`;
-   a read-only memo. Each a whisker iteration with its
+   faint while empty; Enter from a field CLICKs it, framed); ~~`striped`;
+   a read-only memo~~ (§5ap: `stripe` on a stack, derived and gated;
+   `WSK_READONLY` — selected and copied, never changed). **All done,
+   2026-11-18.** Each a whisker iteration with its
    profile question (§7), none touching the board budgets.
 2. **whisker, larger**: `cells` with spans; submenus; raise and retitle
    in the host contract.

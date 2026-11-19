@@ -413,8 +413,11 @@ enum { WSK_MIDDLE = 0, WSK_ALIGN_START };
 enum {
 	WSK_DEFAULT = 1,             /* a button: the one Enter presses from a field */
 	WSK_SECRET  = 2,             /* a field: drawn as stars, never copied */
-	WSK_HINT    = 4              /* a field or memo with a buffer: its own text,
+	WSK_HINT    = 4,             /* a field or memo with a buffer: its own text,
 	                                faint, while the buffer is empty */
+	WSK_READONLY = 8             /* a field or memo with a buffer: focused,
+	                                moved in, selected, copied -- never changed
+	                                by a person (§5ap) */
 };
 
 typedef struct {
@@ -659,6 +662,10 @@ typedef struct wsk_tree {
 	unsigned char *state;
 	short         states;
 	unsigned char select;
+	unsigned char stripe;        /* 1 fills the odd items, 2 the even, in the
+	                                background an eighth of the way to the ink;
+	                                0 none (§5ap). A slice starting at an odd
+	                                row says 2, so stripes stay with rows */
 	short         sel;
 #ifndef WSK_NO_GRAB
 	unsigned char grab;          /* a press here that moves drags this tree (§5ag) */
@@ -1295,18 +1302,20 @@ static inline int wsk__flags_ok(const wsk_tree_t *t, const wsk_widget_t *w)
 	                          || wsk__lined(w->kind)
 #endif
 	                         );
-	if (f & ~(WSK_DEFAULT | WSK_SECRET | WSK_HINT)) return 0;
+	if (f & ~(WSK_DEFAULT | WSK_SECRET | WSK_HINT | WSK_READONLY)) return 0;
 #ifdef WSK_NO_INPUT
 	if (f & WSK_DEFAULT) return 0;
 #endif
 	if ((f & WSK_DEFAULT) && w->kind != WSK_BUTTON) return 0;
 	if ((f & WSK_SECRET) && w->kind != WSK_FIELD) return 0;
-	if ((f & WSK_HINT) && (!edit || t->buf == 0 || w->sub < 0 || w->sub >= t->bufs)) return 0;
+	if ((f & (WSK_HINT | WSK_READONLY)) && (!edit || t->buf == 0 || w->sub < 0 || w->sub >= t->bufs))
+		return 0;
 	return 1;
 }
 
 static inline int wsk__check1(const wsk_tree_t *t, int *which)
 {
+	if (t->stripe > 2) return WSK_E_KIND;     /* odd, even, or none (§5ap) */
 	for (int i = 0; i < t->n; i++) {
 		if (!wsk__text_ok(t->item[i].text, t->caps)) {
 			if (which != 0) *which = i;
@@ -1784,6 +1793,7 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 	t->state = 0;
 	t->states = 0;
 	t->select = 0;
+	t->stripe = 0;
 	t->sel = WSK_NONE;
 #ifndef WSK_NO_GRAB
 	t->grab = 0;
@@ -2298,6 +2308,24 @@ static inline unsigned int wsk__half(unsigned int a, unsigned int b)
 	unsigned int m = 0;
 	for (int sh = 0; sh < 24; sh += 8)
 		m |= ((((a >> sh) & 0xffu) + ((b >> sh) & 0xffu)) / 2u) << sh;
+	return m;
+}
+
+/* Whether item i of t is striped (§5ap), and the stripe: the tree's
+   background an eighth of the way to its ink, so it follows any theme. */
+static inline int wsk__striped(const wsk_tree_t *t, int i)
+{
+	return t->stripe != 0 && (i & 1) != t->stripe - 1;
+}
+
+#if defined(__GNUC__)
+__attribute__((unused))
+#endif
+static unsigned int wsk__stripe(const wsk_tree_t *t)      /* out of line: two callers */
+{
+	unsigned int m = 0;
+	for (int sh = 0; sh < 24; sh += 8)
+		m |= ((((t->bg >> sh) & 0xffu) * 7u + ((t->ink >> sh) & 0xffu)) / 8u) << sh;
 	return m;
 }
 
@@ -4458,6 +4486,7 @@ static void wsk__stack(const wsk_doc_t *d, const wsk_tree_t *t, int i,
 	else
 #endif
 	if (w->fill != WSK_INHERIT) wsk__box(s, 0, v, wsk__fade(t, w->fill));
+	else if (wsk__striped(t, i)) wsk__box(s, 0, v, wsk__stripe(t));   /* §5ap */
 #ifndef WSK_NO_SCROLL
 	{
 		int clip = wsk__clip_open(s, &c);
@@ -4658,6 +4687,15 @@ static inline void wsk__item(const wsk_doc_t *d, const wsk_tree_t *t, int i, wsk
 	   before the selection's `} else`, which the box below hangs on */
 	if (w->kind == WSK_DIVIDER) { wsk__rect(s, t, w, v); return; }
 #endif
+	/* a striped stack's every other item (§5ap): under a label's text,
+	   never over a choice or a fill of its own -- a button's box covers it */
+	if (wsk__striped(t, i) && w->fill == WSK_INHERIT && !(t->select && i == t->sel) &&
+	    (w->kind == WSK_LABEL || w->kind == WSK_TEXT
+#ifndef WSK_NO_CHECK
+	     || w->kind == WSK_CHECK
+#endif
+	    ))
+		wsk__box(s, 0, v, wsk__stripe(t));
 #ifndef WSK_NO_INPUT
 	/* the chosen item of a selecting stack, in its own fill (§5m) -- a
 	   text item too, which a chooser's rows are (§5ae): leaving it out
@@ -6141,6 +6179,7 @@ static inline int wsk_ui_paste(wsk_ui_t *ui, const char *text, int len,
 	if (ui->root->focus == 0) return WSK_E_NOTFOUND;
 	wsk__focus_now(ui);
 	if ((b = ui->focus_b) == 0) return WSK_E_NOTFOUND;
+	if (ui->focus_in->item[ui->focus_item].flags & WSK_READONLY) return WSK_E_KIND;   /* §5ap */
 #ifndef WSK_NO_MEMO
 	memo = wsk__lined(ui->focus_in->item[ui->focus_item].kind);
 #endif
@@ -6803,7 +6842,8 @@ static inline int wsk__types_tab(const wsk_ui_t *ui)
 {
 #if !defined(WSK_NO_TABCHAR) && !defined(WSK_NO_MEMO)
 	return ui->root->focus != 0 && ui->focus_b != 0 && ui->focus_b->tabkey && ui->focus_in != 0 &&
-	       wsk__lined(ui->focus_in->item[ui->focus_item].kind);
+	       wsk__lined(ui->focus_in->item[ui->focus_item].kind) &&
+	       !(ui->focus_in->item[ui->focus_item].flags & WSK_READONLY);   /* walks, read only (§5ap) */
 #else
 	(void)ui;
 	return 0;
@@ -7426,7 +7466,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	}
 	else if ((ev->kind == WSK_EV_TEXT || ev->kind == WSK_EV_KEY) && ui->focus_b != 0 && !wsk__focus_off(r)) {
 		wsk_buf_t *b;
-		int edit = 0, moved = 0, memo = 0, key = ev->key, sel = 0, s0 = 0, secret;
+		int edit = 0, moved = 0, memo = 0, key = ev->key, sel = 0, s0 = 0, secret, ro;
 #ifndef WSK_NO_TEXTSEL
 		int ext = 0, anchor, s1 = 0;
 #endif
@@ -7435,6 +7475,8 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		/* a secret is one word, and its text never leaves it (§5ao) */
 		secret = (ui->focus_in->item[ui->focus_item].flags & WSK_SECRET) != 0;
 		(void)secret;
+		/* read only: moved in, selected, copied, never changed (§5ap) */
+		ro = (ui->focus_in->item[ui->focus_item].flags & WSK_READONLY) != 0;
 #ifndef WSK_NO_MEMO
 		memo = wsk__lined(ui->focus_in->item[ui->focus_item].kind);
 #else
@@ -7456,7 +7498,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			   room for every one (§5j rule 3) -- in place of a selection */
 			int m = 0, ok;
 			while (m < (int)sizeof ev->text && ev->text[m] != '\0') m++;
-			ok = wsk__ok_n(ev->text, m, r->caps, memo);   /* a memo's, markers and all (§5aj) */
+			ok = wsk__ok_n(ev->text, m, r->caps, memo) && !ro;   /* a memo's, markers and all (§5aj) */
 			if (ok && m > 0 && b->len - sel + m < b->cap) {
 				int at = sel ? s0 : b->caret;
 				/* one character, replacing nothing: typing, which undo
@@ -7467,6 +7509,15 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 				edit = 1;
 			}
 		}
+		/* read only: every key that would change it is used and does
+		   nothing -- none of them the program's (§5ap) */
+		else if (ro && (key == WSK_KEY_BACKSPACE || key == WSK_KEY_DELETE ||
+		                (memo && key == WSK_KEY_ENTER) ||
+		                key == ('x' | WSK_MOD_CTRL) || key == ('v' | WSK_MOD_CTRL) ||
+		                key == ('z' | WSK_MOD_CTRL) || key == ('y' | WSK_MOD_CTRL) ||
+		                key == ('z' | WSK_MOD_CTRL | WSK_MOD_SHIFT) ||
+		                key == (WSK_KEY_BACKSPACE | WSK_MOD_CTRL) || key == (WSK_KEY_DELETE | WSK_MOD_CTRL)))
+			used = 1;
 #ifndef WSK_NO_UNDO
 		/* undo and redo (§5v), when the buffer keeps steps; else the
 		   chords are the program's */

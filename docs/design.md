@@ -3550,6 +3550,42 @@ editing key and typing leaving the buffer as it was, with an open memo
 the control; `wsk_ui_paste` refused; the flag refused on a button; the
 bytes; a picture of a striped list.
 
+**What it came to** (2026-11-18): as written, and every earlier output
+byte-identical.
+
+- **`wsk_init` must set every new tree field**: the first build left
+  `stripe` to whatever the caller's stack held, and five earlier checks
+  failed at once — trees refused as `stripe` 3, lists striped no one
+  asked for. §5an's `wsk_clone` lesson again, on the tree this time.
+- **The stripe is drawn in two places**: a stack row's box (a table's
+  row, behind its cells — where a row's own fill went) and, for a
+  label, text item or check, a box before its text; a button's own
+  box covers it, so a button in a striped list stays a button. Under a
+  choice, `selfill` alone.
+- **Read only** is one branch in the key handler, after typing: the
+  keys that would change the buffer are *used* and do nothing, so none
+  falls to the program as a chord; typing is refused where it is
+  checked; `wsk__types_tab` says no for a read-only memo, so Tab walks;
+  `wsk_ui_paste` answers `WSK_E_KIND`.
+
+**Measured** (`module_nest`, RISC-V `-Os`): **+128 bytes at the default,
++160 at `WSK_PANEL`**; the stack unchanged (2,544). The tree gains a
+byte in the padding after `select`.
+
+**24 checks** (1,314 → 1,338): 18 in `test.c` — no stripe anywhere with
+`stripe` 0 (the control); rows 1 and 3 striped and 0, 2, 4 not; a
+table's row striped behind its cells; a chosen odd row not striped; a
+row with its own fill keeping it; `stripe` 2 the even rows; 3 refused;
+a read-only memo focused by a tap, moved, selected, Ctrl-C a COPY;
+**ten editing keys and typing leaving the text as it was and saying
+nothing**, and the open memo's typing and PASTE the control;
+`wsk_ui_paste` refused, and open, accepted; Tab walking despite
+`tabkey`; a read-only field's Enter still ENTER; the flag refused on a
+button. The palette gate: white on the stripe 11.45:1, the stripe 52.8
+ΔE from the choice — both failing on a background the choice's colour
+(the control). In the picture (`striped.ppm`): row 1 in the stripe,
+rows 0, 2, 4 not, row 3 in the choice's fill — looked at.
+
 ## 5ao. A form's three small words — `default`, `secret`, `hint` (2026-11-18), written before its code
 
 The next three of `ui-backend-gap.md`'s gaps, together because each is a
