@@ -611,7 +611,7 @@ layout is compiled in cannot change without a reflash).
 6. `docs/rv9-review.md` — the questions as they were put. Historical; kept so
    question and answer stay separable.
 7. `~/development/Software-Development-Conventions.md` — the house conventions.
-7. For anything touching the substrate: `~/development/esp32/rv9` —
+8. For anything touching the substrate: `~/development/esp32/rv9` —
    `components/rv9_io/src/drv_svgwin.c` (its header states two design decisions
    whisker adopts), `raster.c`, `modules/flick/flick.c` (the only working example
    of a clipped repaint, and the source of the timing figures), RV-9's
