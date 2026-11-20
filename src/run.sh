@@ -164,6 +164,47 @@ if ${CC:-gcc} -O1 -Wall -Wextra -Werror -I"$HERE" -o /tmp/wsk_nosub /tmp/wsk_nos
 else
 	echo "FAIL  -DWSK_PANEL does not refuse a submenu button by name"; exit 1
 fi
+# the fifth read: without the menu's keys, Enter on a focused menu-bar
+# button that opens a menu closed the open one silently -- no CLOSE
+cat > /tmp/wsk_nomk.c <<'C'
+#include "whisker.h"
+#include <string.h>
+int main(void)
+{
+	static wsk_widget_t top[1], bar[2], m1[1], m2[1];
+	wsk_tree_t t, k[3];
+	wsk_ui_t ui;
+	wsk_event_t ev;
+	wsk_note_t nt[8];
+	int y0, y1, n, closes = 0;
+	memset(top, 0, sizeof top); memset(bar, 0, sizeof bar); memset(m1, 0, sizeof m1); memset(m2, 0, sizeof m2);
+	top[0].kind = WSK_STACK; top[0].sub = 0; top[0].size = 30;
+	bar[0].kind = bar[1].kind = WSK_BUTTON; bar[0].size = bar[1].size = 60;
+	bar[0].text[0] = 'F'; bar[1].text[0] = 'H';
+	bar[0].flags = bar[1].flags = WSK_SUBMENU; bar[0].sub = 1; bar[1].sub = 2;
+	m1[0].kind = m2[0].kind = WSK_BUTTON; m1[0].size = m2[0].size = 24; m1[0].text[0] = 'a'; m2[0].text[0] = 'b';
+	wsk_init(&t, WSK_COL, 300, 200);
+	t.pad = 0; t.gap = 0; t.item = top; t.n = 1; t.nest = k; t.nests = 3;
+	wsk_nest_init(&k[0], &t, WSK_ROW); k[0].item = bar; k[0].n = 2; k[0].pad = 0; k[0].gap = 0;
+	wsk_nest_init(&k[1], &t, WSK_COL); k[1].item = m1; k[1].n = 1;
+	wsk_nest_init(&k[2], &t, WSK_COL); k[2].item = m2; k[2].n = 1;
+	wsk_ui_init(&ui, &t);
+	memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_DOWN; ev.x = 30; ev.y = 15; ev.d = 1;
+	wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+	ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+	if (t.over != 1) return 2;                         /* the control: F's menu opened by a click */
+	t.focus = &bar[1];
+	memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_ENTER; ev.d = 1;
+	n = wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+	for (int i = 0; i < n; i++) closes += nt[i].kind == WSK_NOTE_CLOSE;
+	return !(t.over == 2 && closes == 1);
+}
+C
+if ${CC:-gcc} -O1 -Wall -Wextra -Werror -DWSK_NO_MENUKEYS -I"$HERE" -o /tmp/wsk_nomk /tmp/wsk_nomk.c && /tmp/wsk_nomk; then
+	echo "ok    -DWSK_NO_MENUKEYS: Enter on a focused bar button opening another menu -- that menu, and CLOSE for the first"
+else
+	echo "FAIL  -DWSK_NO_MENUKEYS: Enter swapped the open menu without CLOSE (fifth read)"; exit 1
+fi
 
 echo
 echo "-- the default palette: legible, and told apart in every kind of colour vision (D24)"

@@ -26,7 +26,10 @@ Plain **HTTP/1.1 over TCP**. The program listens; screens connect.
   stream, a post, an image — and a duplex screen says ` k=<key>` on its
   first line; without it a request is **`403`** and a duplex line gets
   `E key`, before anything else is read or sent. A display the program
-  dialled is not asked. On loopback with no key set, nothing is asked.
+  dialled is not asked — and a listening screen (`--listen`) never
+  sends its key to a program that dialled it, since anyone may dial.
+  Only the page's own paths carry the key; another site's image never
+  does. On loopback with no key set, nothing is asked.
   A key is not encryption. **Plain HTTP carries no secret**, so a screen on another
   machine comes through an **SSH tunnel** (`ssh -N -L 8090:localhost:8090
   you@there`), which encrypts and decides who may connect at all.

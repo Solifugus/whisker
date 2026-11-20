@@ -95,12 +95,15 @@ static int write_all(int fd, const char *b, int n)
 }
 
 /* The first line a screen sends (docs/wire.md §8): who, and what it draws
-   -- RV-9's rasteriser's: wh_caps, this desktop host's own answer. */
+   -- RV-9's rasteriser's: wh_caps, this desktop host's own answer. The key
+   goes only to a program this client dialled: one that dialled a listening
+   client is never asked for it, and would be given it by anyone. */
 static void hello(conn_t *c)
 {
 	char h[160];
+	int keyed = key[0] && !listening;
 	int n = snprintf(h, sizeof h, "WHISKER 1%s%s caps=%d%s%s\n", viewer[0] ? " v=" : "", viewer, wh_caps(),
-	                 key[0] ? " k=" : "", key);       /* the program's key, if it has one (§5as) */
+	                 keyed ? " k=" : "", keyed ? key : "");       /* the program's key, if it has one (§5as) */
 	write_all(c->wfd, h, n);
 }
 
@@ -210,6 +213,20 @@ static int main_window(conn_t *c, int w, int h)
 	return wh_window(w, h, title);
 }
 
+/* A title from the wire, made safe to show: a control character -- an
+   escape that would reach the terminal this client logs to -- or a byte
+   that is not part of a whole UTF-8 character becomes '?'. In place. */
+static void clean(char *t)
+{
+	for (unsigned char *p = (unsigned char *)t; *p != '\0'; ) {
+		int n = *p < 0x80 ? 1 : (*p & 0xE0) == 0xC0 ? 2 : (*p & 0xF0) == 0xE0 ? 3 : (*p & 0xF8) == 0xF0 ? 4 : 0;
+		int k = 1;
+		while (n > 1 && k < n && (p[k] & 0xC0) == 0x80) k++;
+		if (n == 0 || k < n || *p < 0x20 || *p == 0x7F || (n == 2 && *p < 0xC2)) { *p++ = '?'; continue; }
+		p += n;
+	}
+}
+
 /* One message from a program (docs/wire.md §2): a seat, a window, a copy,
    or a document to draw. */
 static void message(conn_t *c, char *m)
@@ -225,9 +242,11 @@ static void message(conn_t *c, char *m)
 	if (m[0] == 'O' && m[1] == ' ') {
 		int n, w, h, at = 0;
 		if (sscanf(m + 2, "%d %d %d %n", &n, &w, &h, &at) == 3 && n > 0 && n < 8) {
+			clean(m + 2 + at);
 			if (!opened || c->rwin[0] < 0) {   /* on joining, O comes before window 0's first document */
 				c->pend[n].w = w; c->pend[n].h = h;
 				snprintf(c->pend[n].title, sizeof c->pend[n].title, "%s", m + 2 + at);
+				clean(c->pend[n].title);       /* a cut inside a character */
 				return;
 			}
 			if (c->rwin[n] >= 0) wh_window_close(c->rwin[n]);
@@ -241,7 +260,9 @@ static void message(conn_t *c, char *m)
 		   one not open here yet keeps it for when it is */
 		int n, at = 0;
 		if (sscanf(m + 2, "%d %n", &n, &at) == 1 && n >= 0 && n < 8) {
+			clean(m + 2 + at);
 			snprintf(c->pend[n].title, sizeof c->pend[n].title, "%s", m + 2 + at);
+			clean(c->pend[n].title);           /* a cut inside a character */
 			if (c->rwin[n] >= 0) {
 				char t[340];
 				if (n == 0) snprintf(t, sizeof t, "whisker -- %s", m + 2 + at);
@@ -399,7 +420,13 @@ static int place_load(const char *name, char *words, size_t cap, char **av, int 
 	int n = -1;
 	if (places_path(path, sizeof path, 0) != 0 || (f = fopen(path, "r")) == NULL) return -1;
 	while (n < 0 && fgets(line, sizeof line, f) != NULL) {
-		char *t = strtok(line, " \t\n");
+		char *t;
+		if (strchr(line, '\n') == NULL && !feof(f)) {   /* longer than any saved: passed over whole */
+			int ch;
+			while ((ch = fgetc(f)) != EOF && ch != '\n') ;
+			continue;
+		}
+		t = strtok(line, " \t\n");
 		if (t == NULL || strcmp(t, name) != 0) continue;
 		n = 0;
 		words[0] = '\0';
@@ -421,7 +448,13 @@ static int place_save(const char *name, char **w, int n)
 {
 	char path[640], tmp[660], line[1024];
 	FILE *in, *out;
-	int fd;
+	int fd, start = 1;
+	size_t all = strlen(name) + 1;
+	for (int i = 0; i < n; i++) all += strlen(w[i]) + 1;
+	if (all >= sizeof line) {
+		fprintf(stderr, "whisker-client: a saved place is at most %d bytes\n", (int)sizeof line - 2);
+		return -1;
+	}
 	for (int i = 0; i < n; i++)
 		if (strpbrk(w[i], " \t\n\r") != NULL || w[i][0] == '\0') {
 			fprintf(stderr, "whisker-client: \"%s\" has a space in it, and a saved place keeps words\n", w[i]);
@@ -429,15 +462,22 @@ static int place_save(const char *name, char **w, int n)
 		}
 	if (places_path(path, sizeof path, 1) != 0) { fprintf(stderr, "whisker-client: no HOME to save in\n"); return -1; }
 	snprintf(tmp, sizeof tmp, "%s.new", path);
-	if ((fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600)) < 0 || (out = fdopen(fd, "w")) == NULL) {
+	/* made new, never one already there -- whose mode, or link, it would keep */
+	unlink(tmp);
+	if ((fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600)) < 0 || fchmod(fd, 0600) != 0 ||
+	    (out = fdopen(fd, "w")) == NULL) {
 		perror("whisker-client: places");
 		return -1;
 	}
 	if ((in = fopen(path, "r")) != NULL) {
+		int drop = 0;
 		while (fgets(line, sizeof line, in) != NULL) {
+			/* a line longer than the buffer comes in pieces: only the
+			   first says whose it is, and the rest go where it went */
 			size_t l = strlen(name);
-			if (strncmp(line, name, l) == 0 && (line[l] == ' ' || line[l] == '\t' || line[l] == '\n')) continue;
-			fputs(line, out);
+			if (start) drop = strncmp(line, name, l) == 0 && (line[l] == ' ' || line[l] == '\t' || line[l] == '\n');
+			start = strchr(line, '\n') != NULL;
+			if (!drop) fputs(line, out);
 		}
 		fclose(in);
 	}

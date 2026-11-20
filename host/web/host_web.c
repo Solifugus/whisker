@@ -88,7 +88,7 @@ static const char PAGE[] =
    cannot speak for whoever has the number now */
 /* the key this page was opened with (§5as), carried on everything it asks */
 "const KEY=new URLSearchParams(location.search).get('k')||'',KQ=KEY?'k='+encodeURIComponent(KEY):'';\n"
-"const keyed=u=>KQ?u+(u.includes('?')?'&':'?')+KQ:u;\n"
+"const keyed=u=>KQ&&u[0]=='/'&&u[1]!='/'?u+(u.includes('?')?'&':'?')+KQ:u;\n"
 "const url=(w)=>{const q=[];if(seat>=0)q.push('s='+seat,'g='+gen);if(w)q.push('w='+w);if(KQ)q.push(KQ);return '/ev'+(q.length?'?'+q.join('&'):'');};\n"
 /* whisker's advance is half the font size; make the browser's monospace
    agree -- and keep runs of spaces, which an SVG collapses and /w0 does not
@@ -514,24 +514,30 @@ static int keyed(const char *q)
 		size_t i;
 		if (p == q || (p[-1] != '?' && p[-1] != '&' && p[-1] != ' ')) continue;
 		for (i = 0; i < n && v[i] != '\0'; i++) d |= (unsigned char)(v[i] ^ S.key[i]);
-		if (i < n || (v[n] != '\0' && v[n] != '&' && v[n] != ' ')) d |= 1;
+		if (i < n || (v[n] != '\0' && v[n] != '&' && v[n] != ' ' && v[n] != '\r' && v[n] != '\n')) d |= 1;
 		if (d == 0) return 1;
 	}
 	return 0;
 }
 
-/* A title as a message carries it: one line, at most 63 bytes, cut
-   between characters, never empty. */
+/* A title as a message carries it: one line, at most 63 bytes, never
+   empty -- a control character a space, a byte not part of a whole UTF-8
+   character '?', and cut between characters. */
 static void title_of(char *t, const char *title)
 {
-	const char *src = (title && *title) ? title : "whisker";
+	const unsigned char *src = (const unsigned char *)((title && *title) ? title : "whisker");
 	int k = 0;
-	while (src[k] != '\0' && k < 63) {
-		t[k] = (src[k] == '\n' || src[k] == '\r') ? ' ' : src[k];
-		k++;
+	while (*src != '\0') {
+		int n = *src < 0x80 ? 1 : (*src & 0xE0) == 0xC0 && *src >= 0xC2 ? 2 : (*src & 0xF0) == 0xE0 ? 3 :
+		        (*src & 0xF8) == 0xF0 ? 4 : 0, j = 1;
+		while (n > 1 && j < n && (src[j] & 0xC0) == 0x80) j++;
+		if (n == 0 || j < n) n = -1;            /* not a whole character: one '?' */
+		if (k + (n < 0 ? 1 : n) > 63) break;
+		if (n < 0) { t[k++] = '?'; src++; continue; }
+		if (n == 1) t[k++] = (*src < 0x20 || *src == 0x7F) ? ' ' : (char)*src;
+		else for (int q = 0; q < n; q++) t[k++] = (char)src[q];
+		src += n;
 	}
-	/* stopped inside a character: back to its start */
-	while (k > 0 && (src[k] & 0xC0) == 0x80) k--;
 	t[k] = '\0';
 }
 
@@ -635,12 +641,12 @@ static void respond(int i)
 {
 	client_t *c = &S.c[i];
 	char *end = strstr(c->req, "\r\n\r\n");
-	char method[8], path[160];
+	char method[8], path[512];
 	int len = 0, head;
 	const char *cl;
 
 	if (end == 0) return;                   /* headers not all here yet */
-	if (sscanf(c->req, "%7s %159s", method, path) != 2) { drop(i); return; }
+	if (sscanf(c->req, "%7s %511s", method, path) != 2) { drop(i); return; }
 	head = (int)(end + 4 - c->req);
 	if ((cl = strstr(c->req, "Content-Length:")) != 0 || (cl = strstr(c->req, "content-length:")) != 0) {
 		/* a length that does not fit what is left of the buffer is a lie,
@@ -699,7 +705,7 @@ static void respond(int i)
 		                 : strstr(name, ".png") ? "image/png"
 		                 : (strstr(name, ".jpg") || strstr(name, ".jpeg")) ? "image/jpeg"
 		                 : strstr(name, ".gif") ? "image/gif" : 0;
-		char file[512], h[160];
+		char file[768], h[160];
 		FILE *f = 0;
 		long len = 0;
 		if (type != 0 && name[0] != '\0' && strchr(name, '/') == 0 && strstr(name, "..") == 0) {

@@ -1706,6 +1706,7 @@ int main(void)
 
 		wsk_init(&root, WSK_COL, 320, 400);
 		root.nest = ch; root.nests = WSK_DEPTH_MAX + 1;
+		memset(link, 0, sizeof link);   /* every byte: flags and off were the stack's (fifth read) */
 		for (int j = 0; j <= WSK_DEPTH_MAX; j++) {
 			link[j].kind = WSK_STACK; link[j].sub = (short)j;
 			link[j].size = 0; link[j].weight = 0; link[j].fill = 0;
@@ -7651,7 +7652,7 @@ int main(void)
 		wsk_ui_t ui;
 		wsk_note_t nt[8];
 		wsk_event_t ev;
-		wsk_tree_t *lk;
+		const wsk_olink_t *lk;
 		wsk_rect_t q;
 		char doc[16384];
 		int n, y0, y1, which = 0, closes;
@@ -7696,7 +7697,7 @@ int main(void)
 		ok(n == 0 && r.over == T_FILE && r.ox == 0 && r.oy == 30 && r.ow == 80 && r.oh == 80,
 		   "File clicked: no CLICK -- its menu opened below it, 0,30 80x80 (Recent's 48 + its arrow 16 + padding)");
 		n = CLICKAT(40, 70);
-		lk = &k[T_FILE];
+		lk = &r.olev[0];
 		ok(n == 0 && lk->over == T_RECENT && lk->ox == 80 && lk->oy == 54 && lk->ow == 56 && lk->oh == 56,
 		   "Recent clicked: no CLICK -- its menu beside it, 80,54 56x56, its first item level with Recent");
 		ok(y0 <= 54 && y1 >= 110, "and its rows repainted");
@@ -7715,13 +7716,13 @@ int main(void)
 		ok(n == 2 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[T_RECENT] && nt[0].item == 0 &&
 		   nt[1].kind == WSK_NOTE_CLOSE && nt[1].in == &k[T_FILE] && closes == 1,
 		   "a.bas chosen: CLICK on it, then one CLOSE, naming File's menu");
-		ok(r.over == WSK_NONE && k[T_FILE].over == WSK_NONE && k[T_FILE].ow == 0, "and every level closed, every link cleared");
+		ok(r.over == WSK_NONE && r.olev[0].over == WSK_NONE && r.olev[0].ow == 0, "and every level closed, every link cleared");
 		CLICKAT(30, 15);
 		ok(r.over == T_FILE && wsk__olevels(&r) == 1, "File again: its menu alone -- the submenu not reopened with it");
 
 		/* resting */
 		n = FEED(WSK_EV_HOVER, 40, 70, 0);
-		ok(wsk__olevels(&r) == 2 && k[T_FILE].over == T_RECENT, "resting on Recent: its menu opens");
+		ok(wsk__olevels(&r) == 2 && r.olev[0].over == T_RECENT, "resting on Recent: its menu opens");
 		n = FEED(WSK_EV_HOVER, 82, 56, 0);
 		ok(wsk__olevels(&r) == 2, "the pointer crossing to it, over its padding: it stays");
 		n = FEED(WSK_EV_HOVER, 40, 46, 0);
@@ -7739,7 +7740,7 @@ int main(void)
 		/* a press outside everything */
 		CLICKAT(30, 15); CLICKAT(40, 70);
 		n = FEED(WSK_EV_DOWN, 300, 200, 0);
-		ok(n == 1 && nt[0].kind == WSK_NOTE_CLOSE && r.over == WSK_NONE && k[T_FILE].over == WSK_NONE,
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLOSE && r.over == WSK_NONE && r.olev[0].over == WSK_NONE,
 		   "a press off both: one CLOSE, both closed");
 		n = FEED(WSK_EV_UP, 300, 200, 0);
 		ok(n == 0, "and nothing beneath clicked");
@@ -7749,15 +7750,15 @@ int main(void)
 		FEED(WSK_EV_KEY, 0, 0, WSK_KEY_DOWN); FEED(WSK_EV_KEY, 0, 0, WSK_KEY_DOWN);
 		ok(r.ohi == 1, "Down twice: Recent reached");
 		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_RIGHT);
-		ok(wsk__olevels(&r) == 2 && k[T_FILE].ohi == 0, "Right: its menu opens, a.bas reached");
+		ok(wsk__olevels(&r) == 2 && r.olev[0].ohi == 0, "Right: its menu opens, a.bas reached");
 		FEED(WSK_EV_KEY, 0, 0, WSK_KEY_DOWN);
-		ok(k[T_FILE].ohi == 1 && r.ohi == 1, "Down: b.bas -- the submenu's keys, the menu's highlight kept");
+		ok(r.olev[0].ohi == 1 && r.ohi == 1, "Down: b.bas -- the submenu's keys, the menu's highlight kept");
 		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_LEFT);
 		ok(wsk__olevels(&r) == 1 && r.ohi == 1 && n == 0, "Left: back to Recent, silently");
 		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_LEFT);
 		ok(wsk__olevels(&r) == 1 && r.over == T_FILE, "Left in the first menu: it stays");
 		FEED(WSK_EV_KEY, 0, 0, WSK_KEY_ENTER);
-		ok(wsk__olevels(&r) == 2 && k[T_FILE].ohi == 0, "Enter on Recent: opens it too");
+		ok(wsk__olevels(&r) == 2 && r.olev[0].ohi == 0, "Enter on Recent: opens it too");
 		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_ESCAPE);
 		ok(wsk__olevels(&r) == 1 && n == 0, "Escape: the submenu closes, nothing said");
 		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_ESCAPE);
@@ -7773,28 +7774,28 @@ int main(void)
 		q.x = 340; q.y = 0; q.w = 60; q.h = 30;
 		ok(wsk_over_open(&r, T_FILE, q) == WSK_OK && r.ox == 320, "File's menu from a button at the right edge: at 320");
 		q.x = 324; q.y = 58; q.w = 72; q.h = 24;
-		ok(wsk__over_place(&r, 2, T_RECENT, q, 1) == WSK_OK && k[T_FILE].ox == 264,
+		ok(wsk__over_place(&r, 2, T_RECENT, q, 1) == WSK_OK && r.olev[0].ox == 264,
 		   "its submenu: no room on the right, so left of it, at 264");
 		q.y = 280;
-		ok(wsk__over_place(&r, 2, T_RECENT, q, 1) == WSK_OK && k[T_FILE].oy == 244,
+		ok(wsk__over_place(&r, 2, T_RECENT, q, 1) == WSK_OK && r.olev[0].oy == 244,
 		   "from a button low down: moved up, 244, its bottom the screen's");
 		ok(wsk__over_place(&r, 3, T_FILE, q, 1) == WSK_E_KIND && wsk__olevels(&r) == 2,
 		   "File's menu opened from inside itself: refused, a cycle");
 		ok(wsk__over_place(&r, 5, T_RECENT, q, 1) == WSK_E_KIND, "a fifth level: refused");
 		wsk_over_close(&r);
-		ok(r.over == WSK_NONE && k[T_FILE].over == WSK_NONE, "closed: every link cleared");
+		ok(r.over == WSK_NONE && r.olev[0].over == WSK_NONE, "closed: every link cleared");
 
 		/* a drop-down in a dialog */
 		ok(wsk_ui_dialog(&ui, T_DLG, 200, 100, &y0, &y1) == WSK_OK, "a dialog with a Pick button");
 		q = rect_of(&r, "pick");
 		n = CLICKAT(q.x + 10, q.y + 10);
-		ok(n == 0 && wsk__olevels(&r) == 2 && k[T_DLG].ox == q.x && k[T_DLG].oy == q.y + q.h,
+		ok(n == 0 && wsk__olevels(&r) == 2 && r.olev[0].ox == q.x && r.olev[0].oy == q.y + q.h,
 		   "Pick: its menu below it, over the dialog");
 		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_ESCAPE);
 		ok(wsk__olevels(&r) == 1 && r.omodal && n == 1 && nt[0].kind == WSK_NOTE_CLOSE && nt[0].in == &k[T_RECENT],
 		   "Escape: the drop-down closes -- CLOSE, it was the first menu -- and the dialog stays");
 		CLICKAT(q.x + 10, q.y + 10);
-		n = CLICKAT(k[T_DLG].ox + 10, k[T_DLG].oy + 10);
+		n = CLICKAT(r.olev[0].ox + 10, r.olev[0].oy + 10);
 		ok(nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[T_RECENT] && wsk__olevels(&r) == 1 && r.over == T_DLG,
 		   "a.bas chosen from it: CLICK, it closes, the dialog stays");
 		CLICKAT(q.x + 10, q.y + 10);
@@ -7817,6 +7818,149 @@ int main(void)
 #undef FEED
 #undef CLICKAT
 #undef HAS_NOTE
+	}
+
+	printf("\n-- a fifth independent read: the library (after §5as)\n");
+	{
+		enum { T_BAR, T_FILE, T_RECENT, T_NEST, T_GRID, TREES };
+		static wsk_widget_t TOPW[2], BAR[2], FILEW[3], REC[2], ROWW[1], G[4];
+		static wsk_cell_t GC[4];
+		static char doc[16384];
+		wsk_tree_t r, w, k[TREES];
+		wsk_ui_t ui, uw;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		int n, y0, y1, which = 0;
+#define FEED5(U, K, X, Y, KEY) (memset(&ev, 0, sizeof ev), ev.kind = (K), ev.x = (short)(X), ev.y = (short)(Y), \
+                                ev.key = (unsigned short)(KEY), ev.d = 1, wsk_feed((U), &ev, nt, 8, &y0, &y1))
+#define CLICK5(U, X, Y) (FEED5(U, WSK_EV_DOWN, X, Y, 0), FEED5(U, WSK_EV_UP, X, Y, 0))
+
+		memset(TOPW, 0, sizeof TOPW); memset(BAR, 0, sizeof BAR); memset(FILEW, 0, sizeof FILEW);
+		memset(REC, 0, sizeof REC); memset(ROWW, 0, sizeof ROWW); memset(G, 0, sizeof G); memset(GC, 0, sizeof GC);
+		TOPW[0].kind = WSK_STACK; snprintf(TOPW[0].id, WSK_ID_MAX, "bar"); TOPW[0].sub = T_BAR; TOPW[0].size = 30;
+		TOPW[1].kind = WSK_LABEL; snprintf(TOPW[1].id, WSK_ID_MAX, "body"); TOPW[1].weight = 1;
+		BAR[0].kind = WSK_BUTTON; snprintf(BAR[0].id, WSK_ID_MAX, "file"); snprintf(BAR[0].text, WSK_TEXT_MAX, "File");
+		BAR[0].size = 60; BAR[0].flags = WSK_SUBMENU; BAR[0].sub = T_FILE;
+		BAR[1].kind = WSK_BUTTON; snprintf(BAR[1].id, WSK_ID_MAX, "edit"); snprintf(BAR[1].text, WSK_TEXT_MAX, "Edit");
+		BAR[1].size = 60;
+		snprintf(FILEW[0].id, WSK_ID_MAX, "new");    snprintf(FILEW[0].text, WSK_TEXT_MAX, "New");
+		snprintf(FILEW[1].id, WSK_ID_MAX, "recent"); snprintf(FILEW[1].text, WSK_TEXT_MAX, "recent");
+		snprintf(FILEW[2].id, WSK_ID_MAX, "quit");   snprintf(FILEW[2].text, WSK_TEXT_MAX, "Quit");
+		for (int i = 0; i < 3; i++) { FILEW[i].kind = WSK_BUTTON; FILEW[i].size = 24; }
+		FILEW[1].flags = WSK_SUBMENU; FILEW[1].sub = T_RECENT;
+		snprintf(REC[0].id, WSK_ID_MAX, "a.bas"); snprintf(REC[0].text, WSK_TEXT_MAX, "a.bas");
+		snprintf(REC[1].id, WSK_ID_MAX, "b.bas"); snprintf(REC[1].text, WSK_TEXT_MAX, "b.bas");
+		for (int i = 0; i < 2; i++) { REC[i].kind = WSK_BUTTON; REC[i].size = 24; }
+		wsk_init(&r, WSK_COL, 400, 300);
+		r.pad = 0; r.gap = 0; r.ids = 1;
+		r.item = TOPW; r.n = 2; r.nest = k; r.nests = TREES;
+		wsk_nest_init(&k[T_BAR], &r, WSK_ROW);    k[T_BAR].item = BAR; k[T_BAR].n = 2; k[T_BAR].pad = 0; k[T_BAR].gap = 0;
+		wsk_nest_init(&k[T_FILE], &r, WSK_COL);   k[T_FILE].item = FILEW; k[T_FILE].n = 3; k[T_FILE].pad = 4; k[T_FILE].gap = 0;
+		wsk_nest_init(&k[T_RECENT], &r, WSK_COL); k[T_RECENT].item = REC; k[T_RECENT].n = 2; k[T_RECENT].pad = 4; k[T_RECENT].gap = 0;
+		wsk_nest_init(&k[T_NEST], &r, WSK_ROW);   k[T_NEST].item = ROWW; k[T_NEST].n = 1; k[T_NEST].pad = 0; k[T_NEST].gap = 0;
+		wsk_nest_init(&k[T_GRID], &r, WSK_COL);   k[T_GRID].item = G; k[T_GRID].n = 4; k[T_GRID].pad = 4; k[T_GRID].gap = 2;
+		k[T_GRID].overflow = WSK_GRID; k[T_GRID].cells = GC;
+		for (int i = 0; i < 4; i++) {
+			static const char *const NM[4] = { "Cut", "Copy", "Paste", "Delete" };
+			G[i].kind = WSK_BUTTON; snprintf(G[i].id, WSK_ID_MAX, "g%d", i); snprintf(G[i].text, WSK_TEXT_MAX, "%s", NM[i]);
+			GC[i].row = (unsigned char)(i / 2); GC[i].col = (unsigned char)(i % 2); GC[i].tall = 24;
+		}
+		wsk_ui_init(&ui, &r);
+		/* a second window over the same trees, as wsk_dock_window builds one */
+		wsk_init(&w, WSK_COL, 300, 200);
+		w.pad = 0; w.gap = 0; w.ids = 1; w.item = TOPW; w.n = 2; w.nest = k; w.nests = TREES;
+		wsk_ui_init(&uw, &w);
+
+		/* 1. a submenu is its window's, not the shared menu tree's */
+		CLICK5(&ui, 30, 15); CLICK5(&ui, 40, 70);
+		ok(wsk__olevels(&r) == 2, "two windows sharing nest: the first opens File, then Recent -- two levels");
+		CLICK5(&uw, 30, 15);
+		ok(wsk__olevels(&w) == 1 && wsk_check(&w, 0) == WSK_OK,
+		   "the second opens its own File: one level -- the first's Recent not shown in it");
+		ok(wsk__olevels(&r) == 2, "CONTROL: and the first's Recent still open, in the first");
+		wsk_over_close(&w); wsk_over_close(&r);
+		CLICK5(&uw, 30, 15);
+		CLICK5(&ui, 30, 15); CLICK5(&ui, 40, 70);
+		n = render_into(&w, doc, sizeof doc, 16384);
+		ok(wsk__olevels(&w) == 1 && n > 0 && strstr(doc, "id=\"a.bas\"") == 0,
+		   "the other order -- the second's File open, the first opens Recent: the second draws no a.bas");
+		n = render_into(&r, doc, sizeof doc, 16384);
+		ok(n > 0 && strstr(doc, "id=\"a.bas\"") != 0, "CONTROL: the first draws it");
+		wsk_over_close(&w); wsk_over_close(&r);
+		{
+			wsk_tree_t z;
+			wsk_init(&z, WSK_COL, 400, 300);
+			z.item = TOPW; z.n = 2; z.nest = k; z.nests = TREES;
+			ok(wsk__over_place(&z, 1, T_FILE, wsk_rect(&r, 0), 0) == WSK_OK &&
+			   wsk__over_place(&z, 2, T_RECENT, wsk_rect(&r, 0), 1) == WSK_E_KIND,
+			   "a root with no toolkit: its menu opens, a submenu is refused -- nowhere to keep it");
+		}
+
+		/* 3. a grid opened as a menu is measured as a grid */
+		n = wsk_ui_open(&ui, T_GRID, "edit", &y0, &y1);
+		ok(n == WSK_OK && r.ow == wsk__nat_stack(&r, &k[T_GRID], WSK_ROW, 0, -1) &&
+		   r.oh == wsk__nat_stack(&r, &k[T_GRID], WSK_COL, 0, -1) && r.oh < 80,
+		   "a 2x2 grid of buttons opened as a menu: as wide and deep as the grid, not a column's 270 deep");
+		ok(wsk_check(&r, &which) == WSK_OK && render_into(&r, doc, sizeof doc, 16384) > 0,
+		   "and the window still checks and draws with it open");
+		wsk_over_close(&r);
+
+		/* 4. a submenu button in a row in a menu: ▸, as it opens beside */
+		ROWW[0] = FILEW[1]; ROWW[0].size = 0;
+		FILEW[1].kind = WSK_STACK; FILEW[1].flags = 0; FILEW[1].sub = T_NEST;
+		snprintf(FILEW[1].id, WSK_ID_MAX, "rowr");
+		CLICK5(&ui, 30, 15);
+		n = render_into(&r, doc, sizeof doc, 16384);
+		{
+			/* the arrow's three points: ▸ has two x the same, ▾ two y */
+			const char *a = 0;           /* the last: the bar's File has its own ▾ */
+			for (const char *q = doc; (q = strstr(q, "<path d=\"M")) != 0; q++) a = q;
+			int x0 = -1, ya = -1, x1 = -1, yb = -1, x2 = -1, yc = -1;
+			if (a != 0) sscanf(a, "<path d=\"M%d %dL%d %dL%d %dZ", &x0, &ya, &x1, &yb, &x2, &yc);
+			ok(a != 0 && x0 == x1 && ya != yb, "a submenu button in a row inside a menu draws ▸, not ▾");
+		}
+		FEED5(&ui, WSK_EV_HOVER, 40, 70, 0);
+		{
+			wsk_olink_t o;
+			ok(wsk__olink(&r, 2, &o) && o.ox == r.ox + r.ow, "CONTROL: and it opens beside");
+		}
+		wsk_over_close(&r);
+		FILEW[1] = ROWW[0]; FILEW[1].size = 24;
+
+		/* 2. a grid as a poster refuses a field, as a stack poster does */
+		{
+			static const wsk_widget_t WP[] = { { .kind = WSK_STACK, .id = "poster", .sub = 0 } };
+			static const wsk_widget_t GI[] = {
+				{ .kind = WSK_LABEL, .id = "l", .text = "Name" },
+				{ .kind = WSK_FIELD, .id = "f", .text = "x" },
+			};
+			static const wsk_widget_t SI[] = {
+				{ .kind = WSK_LABEL, .id = "l", .text = "Name", .size = 24 },
+				{ .kind = WSK_FIELD, .id = "f", .text = "x", .size = 24 },
+			};
+			static const wsk_widget_t LI[] = {
+				{ .kind = WSK_LABEL, .id = "l", .text = "Name" },
+				{ .kind = WSK_LABEL, .id = "m", .text = "x" },
+			};
+			static const wsk_cell_t C[] = { { .row = 0, .col = 0 }, { .row = 0, .col = 1 } };
+			wsk_place_t pl[1];
+			wsk_tree_t wd, kk[1];
+			memset(pl, 0, sizeof pl);
+			pl[0].x = 20; pl[0].y = 20; pl[0].w = 200; pl[0].h = 40; pl[0].scale = 256;
+			wsk_init(&wd, WSK_COL, 320, 200);
+			wd.ids = 1; wd.item = WP; wd.n = 1; wd.overflow = WSK_WORLD; wd.place = pl;
+			wd.nest = kk; wd.nests = 1;
+			wsk_nest_init(&kk[0], &wd, WSK_ROW);
+			kk[0].item = SI; kk[0].n = 2; kk[0].pad = 4; kk[0].gap = 4;
+			ok(wsk_check(&wd, &which) == WSK_E_KIND, "CONTROL: a row poster holding a field: refused");
+			kk[0].item = GI; kk[0].overflow = WSK_GRID; kk[0].cells = C;
+			which = -2;
+			ok(wsk_check(&wd, &which) == WSK_E_KIND && which == 1, "a grid poster holding a field: refused too, naming it");
+			kk[0].item = LI;
+			ok(wsk_check(&wd, 0) == WSK_OK, "CONTROL: the grid poster with a label there: checks");
+		}
+#undef FEED5
+#undef CLICK5
 	}
 
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);

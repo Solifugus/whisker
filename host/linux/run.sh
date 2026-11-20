@@ -101,6 +101,7 @@ if [[ "${1:-}" == "--test" ]]; then
 		# failed before its fix (clipboards, a dial, idle slots, long lines)
 		python3 "$HERE/../web/review4.py" "$OUT/whisker-code-web" "$OUT/whisker-client" || exit 1
 		python3 "$HERE/../web/keys.py" "$OUT/whisker-code-web" "$OUT/whisker-client" || exit 1   # §5as
+		python3 "$HERE/../web/review5.py" "$OUT/whisker-code-web" "$OUT/whisker-client" || exit 1   # the fifth read
 	else
 		echo "      no ssh, sshd or python3: the remote check was skipped"
 	fi

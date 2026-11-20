@@ -3513,6 +3513,77 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## A fifth independent read, 2026-11-20 — cells to remote polish
+
+Three iterations since the fourth (§5aq–§5as). The same two-reader
+shape, from `f4e39bb`: one on `whisker.h` and the chooser's change, one
+on the hosts and the client. **Five in the header (all confirmed by
+running), nine in the hosts (all confirmed)**. Each was fixed with a check
+that fails before its fix, except the two named last. **1,454 checks** (1,440);
+the Linux suite gains `host/web/review5.py` (18; 162 → 180). Every
+earlier output byte-identical.
+
+**The header**:
+
+- **Two windows sharing `nest` shared their submenus.** §5ar kept level
+  2's link in level 1's own tree, and a floated dock pane's window
+  (`wsk_dock_window`) shares every tree: one window's Recent opened in
+  the other at the first's place, unasked and never repainted, and
+  either one closing cut the other's. Levels past the first now live in
+  the root's toolkit (`ui.olev`, §5ar rule 3 as changed). The
+  menu trees hold nothing of what is open any more, so the reviewer's
+  "a program rebuilding an open menu's tree loses its submenu" went with it.
+- **A grid as a poster took a field**: the grid's check returned before
+  the poster's refusals (FIELD, MEMO, SOURCE). It makes them first.
+- **A grid opened as a menu was measured as a column**: 64 rows a
+  button, 270 deep for a 2×2 of 58 — and then the whole window
+  refused to draw (`WSK_E_FIT`). A menu's size asks a grid as a grid.
+- **A submenu button in a row inside a menu drew ▾** though it opens
+  beside: the menu's marker was on the overlay's copy only. Child copies
+  carry it.
+- **Without menu keys** (`-DWSK_NO_MENUKEYS`, submenus kept), Enter on a
+  focused bar button that opens another menu swapped the open one with
+  no CLOSE. It closes as menus do. Probed in `src/run.sh`, since
+  `test.c` builds at the default.
+- On the way: a §5f depth check had left a widget array on the stack
+  unzeroed; the tree's new pointer moved the stack layout, so the
+  check read garbage flags. It zeroes them now.
+
+**Cost**: default +120 bytes, `WSK_PANEL` +16, `WSK_MINIMAL` 0. The
+deepest default drawing chain is +16 bytes, with `wsk__overlay` kept
+inline in `wsk__doc`; out of line it was +80. A toolkit program's own
+frame grows by its `wsk_ui_t` (+36) and 4 bytes a tree.
+
+**The hosts**:
+
+- **A listening client gave its key to whoever dialled it.**
+  `whisker-client --listen` with `WHISKER_KEY` set sent ` k=<key>` in the
+  hello on every accepted connection. The key now goes only to a program
+  the client dialled; a dialled display is never asked for one (§5as).
+- **The page put its key on every image**: another site's, a
+  scheme-relative one, a `data:` URL (spoiling it). Only its own
+  server's paths are keyed now.
+- **A program's title reached the client's terminal raw**: ESC and BEL
+  in an `N` or `O` line were copied to stderr and the window. Control
+  characters and broken UTF-8 become `?` in the client. The host makes
+  every title whole UTF-8 with no control characters.
+- **A file name cut mid-character made the title invalid UTF-8**, and a
+  name over ~44 bytes cut " -- whisker source" off. The editor cuts
+  the name, between characters, to leave the rest whole.
+- **`--save` over a `places.new` already there kept its mode** (0644,
+  with a key in it) and followed a link. It is made new (`O_EXCL`,
+  `O_NOFOLLOW`) at 0600.
+- **A places line over 1,023 bytes came apart** on the next save, its
+  tail left as a stray place. Long lines are carried whole, a long one
+  is never read as a place, and a save that long is refused.
+- **A duplex hello in CRLF with the key last was refused**; and **an
+  image name over ~116 bytes lost its key** past the request's cut
+  (403). The path buffer is 512 bytes.
+- **Not fixed**: `whisker-client --key K office` dials `office` as a
+  port, though `office --key K` works. A lone service name (`http`)
+  reads as a place, where it used to be dialled as a port. Both are
+  argument order, written here rather than guessed at.
+
 ## 5as. Remote polish — a key for pages, saved places, a window's title (2026-11-19), written before its code
 
 What §5al and §5am left named and unbuilt, the three a person meets first
@@ -3645,6 +3716,13 @@ time** (§5l: "a submenu is a later question"). This is that question.
    already in the chain is refused (a menu that opens itself). The trees
    written are the caller's, in RAM, as a scroll is (§5i). **Closing
    clears every link it passes**, so a menu reopened opens alone.
+   ***Changed 2026-11-20 by the fifth read***: two roots sharing `nest`
+   (a floated dock pane's window) shared those links — one window's
+   submenu drew in the other. Levels 2 and on are **the root's own**
+   now: `wsk_olink_t olev[3]` in the toolkit's `wsk_ui_t`, which
+   `wsk_ui_init` points the root's `olev` at. Level 1 is the root's
+   fields as before; a root with no toolkit opens no submenu. The
+   struct gains a pointer (default only).
 4. **Drawing and hit**: levels in order after the root, each on its own
    backing, each with its own key ring; hit asks the deepest level
    first and nothing falls through, as §5l.

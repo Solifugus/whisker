@@ -435,10 +435,11 @@ directly**.
   `WSK_SUBMENU` (16) in a button's `flags` **opens tree `sub` itself** —
   beside it in a menu (right, else left, moved up), below it elsewhere,
   so a menu bar and a dialog's drop-down need no program code; ▸ or ▾
-  by which way. **A chain through fields every tree already has**: an
-  open menu's own tree's `over`/`ox`…`oh`/`ohi` name the menu open from
-  it (up to `WSK_OVER_MAX` 4; a link below the root counts only with
-  `ow` > 0; a cycle refused); **closing clears every link**. Resting
+  by which way. **A chain**: the root's `over`/`ox`…`oh`/`ohi` name
+  level 1, and levels 2–4 are **the root's too**, in `ui.olev` (since
+  the fifth read; it was the menu trees' own fields, which two windows
+  sharing `nest` shared) — a link past the first counts only with
+  `ow` > 0; a cycle refused; **closing clears every link**. Resting
   opens, resting on another item closes; Right/Enter open, Left back,
   Escape the deepest; one CLOSE when the chain's first menu closes.
   `wsk_over_rows` spans every level. 1,496 bytes default
@@ -458,6 +459,18 @@ directly**.
   editor is titled by its file, a second Ctrl-N raises its pad. **Save As
   now gives its name the keys, all chosen** (it never did — §5ae's tests
   clicked first); `chooser.ppm` rebaselined. `host/web/keys.py` (26).
+- **A fifth independent read, 2026-11-20** (design, after §5as): **two
+  windows sharing `nest` shared their submenus** — §5ar's chain lived in
+  the menu trees, and a floated dock pane's root shares them; levels 2+
+  are now the root's, `ui.olev` (`wsk_ui_init` sets `root->olev`; no
+  toolkit, no submenu). A grid poster took a field; a grid as a menu was
+  sized as a column and stopped the window drawing; ▾ on a nested
+  submenu button; no CLOSE under `WSK_NO_MENUKEYS`. Hosts: **a listening
+  client gave its key to anyone dialling it**; the page keyed other
+  sites' and `data:` images; titles' escapes reached the terminal;
+  titles cut mid-character; a `places.new` kept 0644; long places lines
+  split; CRLF hellos and long image names refused. 14 + 18 checks
+  (`host/web/review5.py`).
 - **§5am — the wire on one stream** (2026-11-18): a connection opening
   `WHISKER 1 v=… caps=…` is a seat on that connection, lines both ways
   (`docs/wire.md` §8) — nothing else speaks for it, a POST with its very
@@ -596,10 +609,10 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,440 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,454 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 162 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 180 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),

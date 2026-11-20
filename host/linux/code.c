@@ -151,7 +151,13 @@ static void retitle(void)
 {
 	const char *b = strrchr(path, '/');
 	char t[96];
-	snprintf(t, sizeof t, "%.60s -- whisker source", b ? b + 1 : path);
+	int n;
+	/* a title is 63 bytes on the wire: the name cut to leave the rest
+	   whole, and between characters */
+	b = b ? b + 1 : path;
+	n = (int)strlen(b);
+	if (n > 44) for (n = 44; n > 0 && (b[n] & 0xC0) == 0x80; n--) ;
+	snprintf(t, sizeof t, "%.*s -- whisker source", n, b);
 	wh_title(0, t);
 }
 static const int W = 1024, H = 600;
