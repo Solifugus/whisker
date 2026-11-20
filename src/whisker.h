@@ -119,6 +119,7 @@
  *     -DWSK_NO_TIP      tooltips: a rest, a hold, a key's focus (§5ac)
  *     -DWSK_NO_GRAB     a tree dragged by itself: GRAB, DRAG, DROP (§5ag)
  *     -DWSK_NO_GRID     cells: a grid whose parts may span (§5aq)
+ *     -DWSK_NO_SUBMENU  a button that opens a menu itself, beside one in a menu (§5ar)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -171,6 +172,9 @@
 #  endif
 #  ifndef WSK_NO_GRID
 #    define WSK_NO_GRID 1          /* a form's, and a board's keypad is rows (§5aq) */
+#  endif
+#  ifndef WSK_NO_SUBMENU
+#    define WSK_NO_SUBMENU 1       /* a touch panel's menu is one deep (§5ar) */
 #  endif
 #endif
 #ifdef WSK_MINIMAL
@@ -237,6 +241,10 @@
 
 #if defined(WSK_NO_NEST) && !defined(WSK_NO_OVER)
 #  define WSK_NO_OVER 1            /* an overlay is a tree in `nest` (§5l) */
+#endif
+#if (defined(WSK_NO_NEST) || defined(WSK_NO_OVER) || defined(WSK_NO_MARKS)) && !defined(WSK_NO_SUBMENU)
+#  define WSK_NO_SUBMENU 1         /* a menu is a tree in `nest`, and its arrow
+                                      is §5t's mark (§5ar) */
 #endif
 #if defined(WSK_NO_NEST) && !defined(WSK_NO_GRID)
 #  define WSK_NO_GRID 1            /* measured through nesting's arithmetic (§5aq) */
@@ -447,10 +455,19 @@ enum {
 	WSK_SECRET  = 2,             /* a field: drawn as stars, never copied */
 	WSK_HINT    = 4,             /* a field or memo with a buffer: its own text,
 	                                faint, while the buffer is empty */
-	WSK_READONLY = 8             /* a field or memo with a buffer: focused,
+	WSK_READONLY = 8,            /* a field or memo with a buffer: focused,
 	                                moved in, selected, copied -- never changed
 	                                by a person (§5ap) */
+	WSK_SUBMENU = 16             /* a button: opens tree `sub` itself -- beside
+	                                it in a menu, below it elsewhere (§5ar) */
 };
+
+/* How deep menus open from menus (§5ar): the root's overlay is the first. */
+#ifndef WSK_NO_SUBMENU
+#define WSK_OVER_MAX 4
+#else
+#define WSK_OVER_MAX 1
+#endif
 
 typedef struct {
 	unsigned char kind;
@@ -680,7 +697,8 @@ typedef struct wsk_tree {
 	 */
 	short         over;
 	short         ox, oy, ow, oh;
-	unsigned char omodal;        /* a dialog, not a menu: nothing off it answers (§5ae) */
+	unsigned char omodal;        /* a dialog, not a menu: nothing off it answers (§5ae);
+	                                2 in whisker's copy of a menu (§5ar) */
 #ifndef WSK_NO_MENUKEYS
 	short         ohi;           /* the overlay's button the keys have reached,
 	                                or WSK_NONE (§5y) */
@@ -1343,7 +1361,16 @@ static inline int wsk__flags_ok(const wsk_tree_t *t, const wsk_widget_t *w)
 	                          || wsk__lined(w->kind)
 #endif
 	                         );
-	if (f & ~(WSK_DEFAULT | WSK_SECRET | WSK_HINT | WSK_READONLY)) return 0;
+	if (f & ~(WSK_DEFAULT | WSK_SECRET | WSK_HINT | WSK_READONLY | WSK_SUBMENU)) return 0;
+#ifdef WSK_NO_SUBMENU
+	if (f & WSK_SUBMENU) return 0;
+#else
+	/* a button naming a tree there is, and never the default: Enter in a
+	   field would open a menu (§5ar) */
+	if ((f & WSK_SUBMENU) && (w->kind != WSK_BUTTON || (f & WSK_DEFAULT) ||
+	                          t->nest == 0 || w->sub < 0 || w->sub >= t->nests))
+		return 0;
+#endif
 #ifdef WSK_NO_INPUT
 	if (f & WSK_DEFAULT) return 0;
 #endif
@@ -2086,6 +2113,9 @@ static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
 #endif
 #ifndef WSK_NO_MARKS
 		if (w->mark >= WSK_MARK_SHUT) text += t->font;     /* a tree's mark (§5t) */
+#endif
+#ifndef WSK_NO_SUBMENU
+		if (w->flags & WSK_SUBMENU) text += t->font;       /* its arrow (§5ar) */
 #endif
 		return text + 2 * t->pad;
 	}
@@ -3024,6 +3054,8 @@ static inline int wsk__shared(const wsk_tree_t *t, int *which,
 
 #ifndef WSK_NO_OVER
 static inline int wsk__over_tree(const wsk_tree_t *t, wsk_tree_t *c);
+static inline const wsk_tree_t *wsk__olink(const wsk_tree_t *r, int k);
+static inline int wsk__over_lay(const wsk_tree_t *t, const wsk_tree_t *p, wsk_tree_t *c);
 #endif
 
 /* wsk_check, saying which tree as well as which widget. */
@@ -3040,17 +3072,28 @@ static inline int wsk_check_in(const wsk_tree_t *t, int *which,
 #ifndef WSK_NO_OVER
 	if (t->over != WSK_NONE) {
 		/* an overlay's place is whisker's arithmetic, but a caller may set
-		   it by hand, so it is checked: on the screen, and fitting */
+		   it by hand, so it is checked: on the screen, and fitting -- each
+		   level open (§5ar) */
 		int e = wsk__check_at(t, t, which, in, 0);
 		wsk_tree_t c;
 		if (e != WSK_OK) return e;
-		if (!wsk__over_tree(t, &c) || t->ox < 0 || t->oy < 0 ||
-		    t->ox + t->ow > t->w || t->oy + t->oh > t->h) {
+		if (!wsk__over_tree(t, &c)) {
 			if (which != 0) *which = -1;
 			if (in != 0) *in = t;
 			return WSK_E_KIND;
 		}
-		return wsk__check_at(&c, &t->nest[t->over], which, in, 1);
+		for (int k = 1; k <= WSK_OVER_MAX; k++) {
+			const wsk_tree_t *p = wsk__olink(t, k);
+			if (p == 0) break;
+			if (!wsk__over_lay(t, p, &c) || p->ox < 0 || p->oy < 0 ||
+			    p->ox + p->ow > t->w || p->oy + p->oh > t->h) {
+				if (which != 0) *which = -1;
+				if (in != 0) *in = t;
+				return WSK_E_KIND;
+			}
+			if ((e = wsk__check_at(&c, &t->nest[p->over], which, in, 1)) != WSK_OK) return e;
+		}
+		return WSK_OK;
 	}
 #endif
 	return wsk__check_at(t, t, which, in, 0);
@@ -3067,15 +3110,48 @@ static inline int wsk_check(const wsk_tree_t *t, int *which)
 /* ------------------------------------------------------------------ */
 
 /*
- * The open overlay, laid out: the caller's tree, with the root's device,
- * `nest`, strings, buffers and press, in the place wsk_over_open gave it.
+ * Submenus (§5ar rule 3): an open overlay's own tree names the menu open
+ * from it, in the fields the root names its overlay with -- so level 1
+ * hangs from the root, level 2 from level 1's tree, and the struct gains
+ * nothing. Below the root a link counts only with a width, so a tree
+ * zeroed by hand is never read as open.
+ */
+static inline int wsk__oopen(const wsk_tree_t *r, const wsk_tree_t *p)
+{
+	return p->over != WSK_NONE && r->nest != 0 && p->over >= 0 && p->over < r->nests &&
+	       (p == r || p->ow > 0);
+}
+
+/* The tree holding level k's link -- the root for 1, level k-1's own tree
+   after -- or 0 when level k is not open. */
+static inline const wsk_tree_t *wsk__olink(const wsk_tree_t *r, int k)
+{
+	const wsk_tree_t *p = r;
+	if (k < 1 || k > WSK_OVER_MAX) return 0;
+	for (int i = 1; i < k; i++) {
+		if (!wsk__oopen(r, p)) return 0;
+		p = &r->nest[p->over];
+	}
+	return wsk__oopen(r, p) ? p : 0;
+}
+
+/* How many levels are open. */
+static inline int wsk__olevels(const wsk_tree_t *r)
+{
+	int k = 0;
+	while (k < WSK_OVER_MAX && wsk__olink(r, k + 1) != 0) k++;
+	return k;
+}
+
+/*
+ * The overlay open from link p, laid out: the caller's tree, with the
+ * root's device, `nest`, strings, buffers and press, in the place p holds.
  * Nothing above it cuts it -- it is above everything.
  */
-static inline int wsk__over_tree(const wsk_tree_t *t, wsk_tree_t *c)
+static inline int wsk__over_lay(const wsk_tree_t *t, const wsk_tree_t *p, wsk_tree_t *c)
 {
-	if (t->over == WSK_NONE || t->nest == 0 || t->over < 0 || t->over >= t->nests)
-		return 0;
-	wsk__tcopy(c, &t->nest[t->over]);
+	if (!wsk__oopen(t, p)) return 0;
+	wsk__tcopy(c, &t->nest[p->over]);
 	c->w = t->w; c->h = t->h;
 	c->nest = t->nest; c->nests = t->nests;
 	c->str = t->str; c->strs = t->strs;
@@ -3084,17 +3160,63 @@ static inline int wsk__over_tree(const wsk_tree_t *t, wsk_tree_t *c)
 	c->state = t->state; c->states = t->states;
 	c->caps = t->caps;
 	c->ghead = 0;
-	c->ax = t->ox; c->ay = t->oy; c->aw = t->ow; c->ah = t->oh;
+	c->ax = p->ox; c->ay = p->oy; c->aw = p->ow; c->ah = p->oh;
 	c->clipped = 0;
 	c->over = WSK_NONE;
+	/* whisker's, in this copy: 2 says it is a menu -- not the root's
+	   dialog -- so a button in it that opens one draws ▸, beside (§5ar) */
+	c->omodal = (p == t && t->omodal) ? 0 : 2;
 	return 1;
 }
 
-/* Whether a point is on the open overlay -- which then answers for it. */
+/* The root's own overlay, level 1. */
+static inline int wsk__over_tree(const wsk_tree_t *t, wsk_tree_t *c)
+{
+	return wsk__over_lay(t, t, c);
+}
+
+/* Level k laid out, and the caller's own tree for it. */
+static inline int wsk__over_lvl(const wsk_tree_t *r, int k, wsk_tree_t *c,
+                                const wsk_tree_t **orig)
+{
+	const wsk_tree_t *p = wsk__olink(r, k);
+	if (p == 0 || !wsk__over_lay(r, p, c)) return 0;
+	if (orig != 0) *orig = &r->nest[p->over];
+	return k;
+}
+
+/* The deepest open level a point is on, 0 for none -- which answers for it. */
+static inline int wsk__over_pt(const wsk_tree_t *r, int x, int y)
+{
+	int at = 0;
+	for (int k = 1; k <= WSK_OVER_MAX; k++) {
+		const wsk_tree_t *p = wsk__olink(r, k);
+		if (p == 0) break;
+		if (x >= p->ox && x < p->ox + p->ow && y >= p->oy && y < p->oy + p->oh) at = k;
+	}
+	return at;
+}
+
 static inline int wsk__on_over(const wsk_tree_t *t, int x, int y)
 {
-	return t->over != WSK_NONE && x >= t->ox && x < t->ox + t->ow &&
-	       y >= t->oy && y < t->oy + t->oh;
+	return wsk__over_pt(t, x, y) > 0;
+}
+
+/* Close level k and every level open from it, clearing each link they
+   pass, so a menu reopened opens alone (rule 3). */
+static inline void wsk__over_shut(wsk_tree_t *r, int k)
+{
+	wsk_tree_t *p = (wsk_tree_t *)wsk__olink(r, k);
+	for (int i = k; p != 0 && i <= WSK_OVER_MAX; i++) {
+		wsk_tree_t *q = (wsk_tree_t *)&r->nest[p->over];
+		int more = wsk__oopen(r, q);
+		p->over = WSK_NONE;
+		if (p != r) p->ow = 0;
+#ifndef WSK_NO_MENUKEYS
+		p->ohi = WSK_NONE;
+#endif
+		p = more ? q : 0;
+	}
 }
 
 /* A tree's content along `axis`: as a stack's natural extent is (§5f rule
@@ -3111,22 +3233,32 @@ static inline int wsk__content(const wsk_tree_t *r, const wsk_tree_t *c, int axi
 }
 
 /*
- * Open tree `sub` over the root, hanging from `anchor` (§5l rule 1): as big
- * as its content and no narrower than the anchor; below it, or above it if
- * there is no room below; moved in from the right edge if it would cross it.
- * Taller than the screen is refused, WSK_E_FIT (D10) -- unless the tree
- * scrolls, when it is given the screen's height to scroll in.
+ * Open tree `sub` at level k (1 is the root's overlay): as big as its
+ * content; below `anchor` -- no narrower than it -- or, `beside`, right of
+ * the menu the anchor is in (§5ar rule 2). Level k and anything deeper
+ * close first.
  */
-static inline int wsk_over_open(wsk_tree_t *t, int sub, wsk_rect_t anchor)
+static inline int wsk__over_place(wsk_tree_t *t, int k, int sub, wsk_rect_t anchor,
+                                  int beside)
 {
-	const wsk_tree_t *c;
+	const wsk_tree_t *c, *q = 0;
+	wsk_tree_t *p = t;
 	int w, h, x, y;
 
-	if (t->nest == 0 || sub < 0 || sub >= t->nests) return WSK_E_KIND;
+	if (t->nest == 0 || sub < 0 || sub >= t->nests || k < 1 || k > WSK_OVER_MAX)
+		return WSK_E_KIND;
+	if (k > 1) {
+		/* level k hangs from level k-1's tree; a tree already open in the
+		   chain would open itself (§5ar rule 3) */
+		if ((q = wsk__olink(t, k - 1)) == 0) return WSK_E_KIND;
+		p = (wsk_tree_t *)&t->nest[q->over];
+		for (int i = 1; i < k; i++)
+			if (wsk__olink(t, i)->over == sub) return WSK_E_KIND;
+	}
 	c = &t->nest[sub];
 	w = wsk__content(t, c, WSK_ROW);
 	h = wsk__content(t, c, WSK_COL);
-	if (w < anchor.w) w = anchor.w;
+	if (!beside && w < anchor.w) w = anchor.w;
 	if (w > t->w) return WSK_E_FIT;
 	if (h > t->h) {
 #ifndef WSK_NO_SCROLL
@@ -3136,22 +3268,51 @@ static inline int wsk_over_open(wsk_tree_t *t, int sub, wsk_rect_t anchor)
 		return WSK_E_FIT;
 #endif
 	}
+	wsk__over_shut(t, k);
 #ifndef WSK_NO_MENUKEYS
-	t->ohi = WSK_NONE;                             /* opened with nothing reached */
+	p->ohi = WSK_NONE;                             /* opened with nothing reached */
 #endif
-	x = anchor.x;
-	y = anchor.y + anchor.h;
-	if (y + h > t->h) y = anchor.y - h;            /* no room below: above */
-	if (y < 0) y = t->h - h;                       /* nor above: as low as it fits */
-	if (x + w > t->w) x = t->w - w;
+#ifndef WSK_NO_SUBMENU
+	if (beside && q != 0) {
+		/* right of the menu it hangs from, its first item level with the
+		   button; with no room there, left of it; moved up to stay on (rule 2) */
+		x = q->ox + q->ow;
+		y = anchor.y - c->pad;
+		if (x + w > t->w) x = q->ox - w;
+		if (y + h > t->h) y = t->h - h;
+		if (y < 0) y = 0;
+	} else
+#endif
+	{
+		x = anchor.x;
+		y = anchor.y + anchor.h;
+		if (y + h > t->h) y = anchor.y - h;            /* no room below: above */
+		if (y < 0) y = t->h - h;                       /* nor above: as low as it fits */
+		if (x + w > t->w) x = t->w - w;
+	}
+	(void)beside;
 	if (x < 0) x = 0;
-	t->over = (short)sub;
-	t->ox = (short)x; t->oy = (short)y; t->ow = (short)w; t->oh = (short)h;
+	p->over = (short)sub;
+	p->ox = (short)x; p->oy = (short)y; p->ow = (short)w; p->oh = (short)h;
 	return WSK_OK;
+}
+
+/*
+ * Open tree `sub` over the root, hanging from `anchor` (§5l rule 1): as big
+ * as its content and no narrower than the anchor; below it, or above it if
+ * there is no room below; moved in from the right edge if it would cross it.
+ * Taller than the screen is refused, WSK_E_FIT (D10) -- unless the tree
+ * scrolls, when it is given the screen's height to scroll in. Whatever was
+ * open closes (§5ar).
+ */
+static inline int wsk_over_open(wsk_tree_t *t, int sub, wsk_rect_t anchor)
+{
+	return wsk__over_place(t, 1, sub, anchor, 0);
 }
 
 static inline void wsk_over_close(wsk_tree_t *t)
 {
+	wsk__over_shut(t, 1);
 	t->over = WSK_NONE;
 	t->omodal = 0;
 #ifndef WSK_NO_MENUKEYS
@@ -3159,14 +3320,20 @@ static inline void wsk_over_close(wsk_tree_t *t)
 #endif
 }
 
-/* The rows the open overlay covers, band-snapped: what opening or closing
-   it repaints. */
+/* The rows the open overlay covers -- every level of it (§5ar) --
+   band-snapped: what opening or closing it repaints. */
 static inline int wsk_over_rows(const wsk_tree_t *t, int *y0, int *y1)
 {
 	int lo, hi;
 	if (t->over == WSK_NONE) return WSK_E_EMPTY;
 	lo = (t->oy / WSK_BAND) * WSK_BAND;
 	hi = wsk__round_band(t->oy + t->oh);
+	for (int k = 2; k <= WSK_OVER_MAX; k++) {
+		const wsk_tree_t *p = wsk__olink(t, k);
+		if (p == 0) break;
+		if ((p->oy / WSK_BAND) * WSK_BAND < lo) lo = (p->oy / WSK_BAND) * WSK_BAND;
+		if (wsk__round_band(p->oy + p->oh) > hi) hi = wsk__round_band(p->oy + p->oh);
+	}
 	if (lo < 0) lo = 0;
 	if (hi > t->h) hi = t->h;
 	*y0 = lo;
@@ -3406,8 +3573,9 @@ static inline int wsk__hit_at(const wsk_tree_t *t, const wsk_tree_t *orig,
 	   (§5l rule 3). */
 	if (depth == 0 && wsk__on_over(t, x, y)) {
 		wsk_tree_t c;
-		if (!wsk__over_tree(t, &c)) return WSK_E_NOTFOUND;
-		return wsk__hit_at(&c, &t->nest[t->over], x, y, in, at, 1);
+		const wsk_tree_t *o = 0;              /* the deepest level there (§5ar) */
+		if (!wsk__over_lvl(t, wsk__over_pt(t, x, y), &c, &o)) return WSK_E_NOTFOUND;
+		return wsk__hit_at(&c, o, x, y, in, at, 1);
 	}
 #endif
 	for (int j = 0; j < t->n; j++) {
@@ -3642,10 +3810,11 @@ static inline int wsk__lookup(const wsk_tree_t *t, const char *key,
 	k = wsk__locate(t, t, key, 0, at, in, 0);
 #ifndef WSK_NO_OVER
 	/* an id is prime (D19), and an open overlay's widgets have them too */
-	if (k < 0 && t->over != WSK_NONE) {
+	for (int lv = 1; k < 0 && lv <= WSK_OVER_MAX; lv++) {     /* every level (§5ar) */
 		wsk_tree_t c;
-		if (wsk__over_tree(t, &c))
-			k = wsk__locate(&c, &t->nest[t->over], key, 0, at, in, 1);
+		const wsk_tree_t *o = 0;
+		if (!wsk__over_lvl(t, lv, &c, &o)) break;
+		k = wsk__locate(&c, o, key, 0, at, in, 1);
 	}
 #endif
 	return k;
@@ -3982,8 +4151,21 @@ static inline void wsk__text(wsk_sink_t *s, const wsk_tree_t *t,
 	   a row with no padding -- draws all of it. It wanted two pixels of
 	   slack until 2026-11-11, which cut "OK" to "O" (design.md §5f). Text
 	   at the start of a cell keeps the padding at both ends (§5n). */
-	int room = (start ? r.w - 2 * t->pad : r.w) / wsk_advance(t->font);
-	int top = r.y + (r.h - t->font) / 2, g = 0;
+	int room, top = r.y + (r.h - t->font) / 2, g = 0;
+
+#ifndef WSK_NO_SUBMENU
+	/* a button that opens a menu: its arrow at its end, the text in what
+	   is left (§5ar) */
+	if (w->flags & WSK_SUBMENU) {
+		int ax = r.x + r.w - t->pad - t->font;
+		/* the way it opens: ▸ beside, from a menu; ▾ below, elsewhere */
+		if (ax >= r.x && wsk__shows(t, ax, ax + t->font, top))
+			wsk__arrow(s, t, (t->omodal == 2) ? WSK_MARK_SHUT : WSK_MARK_OPEN,
+			           wsk__fade(t, w->ink), ax, top);
+		r.w = (short)(ax - r.x + (start ? t->pad : 0));
+	}
+#endif
+	room = (start ? r.w - 2 * t->pad : r.w) / wsk_advance(t->font);
 
 #ifndef WSK_NO_MARKS
 	/* a tree's mark takes a gutter of one font size, two characters (§5t) */
@@ -5121,24 +5303,28 @@ static inline void wsk__items(const wsk_doc_t *d, const wsk_tree_t *t,
 static inline void wsk__overlay(const wsk_doc_t *d, const wsk_tree_t *t,
                                 wsk_sink_t *s)
 {
-	wsk_tree_t c;
-	wsk_rect_t v;
-	int g;
+	/* every level open, in order: a submenu over its menu (§5ar rule 4) */
+	for (int k = 1; k <= WSK_OVER_MAX; k++) {
+		const wsk_tree_t *p = wsk__olink(t, k);
+		wsk_tree_t c;
+		wsk_rect_t v;
+		int g;
 
-	if (!wsk__over_tree(t, &c)) return;
+		if (p == 0 || !wsk__over_lay(t, p, &c)) return;
 #ifndef WSK_NO_MENUKEYS
-	/* the button the keys reached wears focus's ring -- in this copy
-	   only, so the window's own focus is untouched (§5y rule 3) */
-	if (t->ohi >= 0 && t->ohi < c.n) c.focus = &c.item[t->ohi];
+		/* the button the keys reached wears focus's ring -- in this copy
+		   only, so the window's own focus is untouched (§5y rule 3) */
+		if (p->ohi >= 0 && p->ohi < c.n) c.focus = &c.item[p->ohi];
 #endif
-	v.x = t->ox; v.w = t->ow;
-	v.y = (short)((t->oy > d->y0) ? t->oy : d->y0);
-	v.h = (short)(((t->oy + t->oh < d->y1) ? t->oy + t->oh : d->y1) - v.y);
-	if (v.h <= 0) return;
-	g = wsk__look(s, d, &c);
-	wsk__box(s, 0, v, c.bg);
-	wsk__items(d, &c, s);
-	if (g) wsk__s(s, "</g>");
+		v.x = p->ox; v.w = p->ow;
+		v.y = (short)((p->oy > d->y0) ? p->oy : d->y0);
+		v.h = (short)(((p->oy + p->oh < d->y1) ? p->oy + p->oh : d->y1) - v.y);
+		if (v.h <= 0) continue;
+		g = wsk__look(s, d, &c);
+		wsk__box(s, 0, v, c.bg);
+		wsk__items(d, &c, s);
+		if (g) wsk__s(s, "</g>");
+	}
 }
 #endif
 
@@ -5722,8 +5908,9 @@ static inline wsk_tree_t *wsk__scroller(const wsk_tree_t *t, wsk_tree_t *orig,
 #ifndef WSK_NO_OVER
 	if (depth == 0 && wsk__on_over(t, x, y)) {
 		wsk_tree_t c;
-		if (!wsk__over_tree(t, &c)) return 0;
-		return wsk__scroller(&c, (wsk_tree_t *)&t->nest[t->over], x, y, at, 1);
+		const wsk_tree_t *o = 0;
+		if (!wsk__over_lvl(t, wsk__over_pt(t, x, y), &c, &o)) return 0;
+		return wsk__scroller(&c, (wsk_tree_t *)o, x, y, at, 1);
 	}
 #endif
 #ifndef WSK_NO_WORLD
@@ -5804,8 +5991,9 @@ static inline wsk_tree_t *wsk__selector(const wsk_tree_t *t, wsk_tree_t *orig,
 #ifndef WSK_NO_OVER
 	if (depth == 0 && wsk__on_over(t, x, y)) {
 		wsk_tree_t c;
-		if (!wsk__over_tree(t, &c)) return 0;
-		return wsk__selector(&c, (wsk_tree_t *)&t->nest[t->over], x, y, at, lay, item, 1);
+		const wsk_tree_t *o = 0;
+		if (!wsk__over_lvl(t, wsk__over_pt(t, x, y), &c, &o)) return 0;
+		return wsk__selector(&c, (wsk_tree_t *)o, x, y, at, lay, item, 1);
 	}
 #endif
 #ifndef WSK_NO_WORLD
@@ -6510,6 +6698,87 @@ static inline int wsk_ui_paste(wsk_ui_t *ui, const char *text, int len,
  * or a path) -- a menu from its button (§5l rule 4). Any overlay already
  * open is closed first. Sets y0..y1 to the rows to repaint.
  */
+/* The chain's first menu (§5ar rule 5): level 2 over a dialog, else 1. */
+static inline int wsk__ofirst(const wsk_tree_t *r)
+{
+	return (r->omodal && r->over != WSK_NONE) ? 2 : 1;
+}
+
+/*
+ * Close level k and every level open from it, their rows spanned -- and
+ * CLOSE, naming level k's tree, when that closes the chain's first menu; a
+ * submenu closing under an open menu says nothing (§5ar rule 5).
+ */
+static inline int wsk__oclose(wsk_ui_t *ui, int k, wsk_note_t *note, int max, int n,
+                              int *lo, int *hi)
+{
+	wsk_tree_t *r = ui->root;
+	const wsk_tree_t *was = 0;
+	int first = wsk__ofirst(r);
+	for (int i = k; i <= WSK_OVER_MAX; i++) {
+		const wsk_tree_t *p = wsk__olink(r, i);
+		int a, b;
+		if (p == 0) break;
+		if (i == k) was = &r->nest[p->over];
+		a = (p->oy / WSK_BAND) * WSK_BAND;
+		b = wsk__round_band(p->oy + p->oh);
+		wsk__span(lo, hi, (a < 0) ? 0 : a, (b > r->h) ? r->h : b);
+	}
+	if (was == 0) {
+		if (k == 1) wsk_over_close(r);   /* a tree it cannot name: closed all the same */
+		return n;
+	}
+	if (k == 1) wsk_over_close(r);
+	else wsk__over_shut(r, k);
+	if (k <= first) n = wsk__note(note, max, n, WSK_NOTE_CLOSE, was, -1, 0);
+	return n;
+}
+
+#ifndef WSK_NO_SUBMENU
+/*
+ * A button that opens a menu (§5ar rule 1), clicked, rested on or reached
+ * by a key, in level `lv` (0 the window): its tree opens at the next level
+ * -- beside it in a menu, below it elsewhere -- and, `reach`, with its first
+ * button reached for the keys. Already open there, nothing changes.
+ */
+static inline int wsk__sub_open(wsk_ui_t *ui, int lv, const wsk_widget_t *w,
+                                wsk_rect_t at, int reach, int *lo, int *hi)
+{
+	wsk_tree_t *r = ui->root;
+	const wsk_tree_t *p = wsk__olink(r, lv + 1);
+	int a0, a1, e;
+
+	if (p != 0 && p->over == w->sub) return WSK_OK;
+#ifndef WSK_NO_TIP
+	wsk__tip_close(ui, lo, hi);          /* a menu covers a tip, as §5l's does */
+#endif
+	if (r->over != WSK_NONE && wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(lo, hi, a0, a1);
+	e = wsk__over_place(r, lv + 1, w->sub, at, lv >= wsk__ofirst(r));
+	if (e != WSK_OK) return e;
+	if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(lo, hi, a0, a1);
+#ifndef WSK_NO_MENUKEYS
+	if (reach && (p = wsk__olink(r, lv + 1)) != 0) {
+		const wsk_tree_t *m = &r->nest[p->over];
+		for (int i = 0; i < m->n; i++)
+			if (m->item[i].kind == WSK_BUTTON && !m->item[i].off) {
+				((wsk_tree_t *)p)->ohi = (short)i;
+				break;
+			}
+	}
+#else
+	(void)reach;
+#endif
+	return WSK_OK;
+}
+
+/* Whether item k of `in` opens a menu. */
+static inline int wsk__opens(const wsk_tree_t *in, int k)
+{
+	return k >= 0 && k < in->n && in->item[k].kind == WSK_BUTTON &&
+	       (in->item[k].flags & WSK_SUBMENU) != 0;
+}
+#endif
+
 static inline int wsk_ui_open(wsk_ui_t *ui, int sub, const char *anchor,
                               int *y0, int *y1)
 {
@@ -7185,8 +7454,13 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	   -- and the pointer resting off it rests on nothing. */
 	if (r->over != WSK_NONE && r->omodal && !wsk__on_over(r, x, y)) {
 		if (ev->kind == WSK_EV_HOVER) x = y = -1;
-		else if (ev->kind == WSK_EV_DOWN || ev->kind == WSK_EV_MENU || ev->kind == WSK_EV_WHEEL)
+		else if (ev->kind == WSK_EV_DOWN || ev->kind == WSK_EV_MENU || ev->kind == WSK_EV_WHEEL) {
+#ifndef WSK_NO_SUBMENU
+			/* a menu open over the dialog closes (§5ar) */
+			if (ev->kind != WSK_EV_WHEEL) n = wsk__oclose(ui, 2, note, max, n, &lo, &hi);
+#endif
 			goto rows;          /* and a press already on the dialog goes on */
+		}
 	}
 #endif
 #ifndef WSK_NO_WORLD
@@ -7197,41 +7471,68 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 #ifndef WSK_NO_OVER
 	/* A press off an open overlay closes it, and goes no further: the tap
 	   that dismisses a menu must not also press what is under it (§5l). */
+#ifndef WSK_NO_SUBMENU
+	/* a press on a shallower level closes what hangs below it, and goes on
+	   there (§5ar rule 5) */
+	if (ev->kind == WSK_EV_DOWN) {
+		int lv = wsk__over_pt(r, x, y);
+		if (lv > 0 && lv < wsk__olevels(r)) n = wsk__oclose(ui, lv + 1, note, max, n, &lo, &hi);
+	}
+#endif
 	if (ev->kind == WSK_EV_DOWN && r->over != WSK_NONE && !wsk__on_over(r, x, y)) {
-		const wsk_tree_t *was = &r->nest[r->over];
-		int a0, a1;
-		if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
-		wsk_over_close(r);
-		n = wsk__note(note, max, n, WSK_NOTE_CLOSE, was, -1, 0);
+		n = wsk__oclose(ui, 1, note, max, n, &lo, &hi);
 		ui->down = 0;
-	} else if (ev->kind == WSK_EV_KEY && ev->key == WSK_KEY_ESCAPE && r->over != WSK_NONE) {
+	} else if (ev->kind == WSK_EV_KEY && ev->key == WSK_KEY_ESCAPE && r->over != WSK_NONE &&
+	           r->omodal && wsk__olevels(r) <= 1) {
 		const wsk_tree_t *was = &r->nest[r->over];
 		int a0, a1;
 		if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
-		if (r->omodal) {                             /* focus back (§5ae) */
-			(void)wsk_ui_dialog_close(ui, &a0, &a1);
-			if (a1 > a0) wsk__span(&lo, &hi, a0, a1);
-		} else wsk_over_close(r);
+		(void)wsk_ui_dialog_close(ui, &a0, &a1);     /* focus back (§5ae) */
+		if (a1 > a0) wsk__span(&lo, &hi, a0, a1);
 		n = wsk__note(note, max, n, WSK_NOTE_CLOSE, was, -1, 0);
+	} else if (ev->kind == WSK_EV_KEY && ev->key == WSK_KEY_ESCAPE && r->over != WSK_NONE) {
+		/* the deepest level closes (§5ar) */
+		n = wsk__oclose(ui, wsk__olevels(r) > 0 ? wsk__olevels(r) : 1, note, max, n, &lo, &hi);
 	}
 #ifndef WSK_NO_MENUKEYS
 	/* An open menu's keys are its own (§5y): a highlight walks its
 	   buttons, and Enter chooses as a click would. */
-	else if (ev->kind == WSK_EV_KEY && r->over != WSK_NONE && !r->omodal &&
+	else if (ev->kind == WSK_EV_KEY && r->over != WSK_NONE &&
+	         wsk__olevels(r) >= wsk__ofirst(r) &&
 	         (ev->key == WSK_KEY_UP || ev->key == WSK_KEY_DOWN || ev->key == WSK_KEY_HOME ||
-	          ev->key == WSK_KEY_END || ev->key == WSK_KEY_ENTER)) {
-		/* the menu's own tree, which scrolls: writable, as every tree the
-		   toolkit changes is the caller's (§5i) */
-		wsk_tree_t c, *o = (wsk_tree_t *)&r->nest[r->over];
-		int a0, a1, k = r->ohi;
+	          ev->key == WSK_KEY_END || ev->key == WSK_KEY_ENTER
+#ifndef WSK_NO_SUBMENU
+	          || ev->key == WSK_KEY_LEFT || ev->key == WSK_KEY_RIGHT
+#endif
+	         )) {
+		/* the deepest menu's: its link holds its highlight, and its own
+		   tree, which scrolls, is writable, as every tree the toolkit
+		   changes is the caller's (§5i, §5ar) */
+		int lvn = wsk__olevels(r);
+		wsk_tree_t *p = (wsk_tree_t *)wsk__olink(r, lvn);
+		wsk_tree_t c, *o = (wsk_tree_t *)&r->nest[p->over];
+		int a0, a1, k = p->ohi;
 		used = 1;
-		if (wsk__over_tree(r, &c)) {
+		if (wsk__over_lay(r, p, &c)) {
+#ifndef WSK_NO_SUBMENU
+			if (ev->key == WSK_KEY_LEFT) {
+				/* back to the button it opened from */
+				if (lvn > wsk__ofirst(r)) n = wsk__oclose(ui, lvn, note, max, n, &lo, &hi);
+			} else if (ev->key == WSK_KEY_RIGHT || ev->key == WSK_KEY_ENTER) {
+				if (k >= 0 && wsk__opens(&c, k) && !c.goff && !c.item[k].off) {
+					wsk_rect_t b = wsk_rect(&c, k);
+					(void)wsk__sub_open(ui, lvn, &c.item[k], b, 1, &lo, &hi);
+				} else if (ev->key == WSK_KEY_ENTER &&
+				           k >= 0 && k < c.n && c.item[k].kind == WSK_BUTTON && !c.goff && !c.item[k].off) {
+					n = wsk__note(note, max, n, WSK_NOTE_CLICK, o, k, -1);
+					n = wsk__oclose(ui, wsk__ofirst(r), note, max, n, &lo, &hi);
+				}
+			} else
+#endif
 			if (ev->key == WSK_KEY_ENTER) {
 				if (k >= 0 && k < c.n && c.item[k].kind == WSK_BUTTON && !c.goff && !c.item[k].off) {
 					n = wsk__note(note, max, n, WSK_NOTE_CLICK, o, k, -1);
-					if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
-					wsk_over_close(r);
-					n = wsk__note(note, max, n, WSK_NOTE_CLOSE, o, -1, 0);
+					n = wsk__oclose(ui, wsk__ofirst(r), note, max, n, &lo, &hi);
 				}
 			} else {
 				/* the next button that way, wrapping; Home and End from
@@ -7247,7 +7548,7 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 				}
 				if (at >= 0 && at < c.n && c.item[at].kind == WSK_BUTTON && !c.item[at].off &&
 				    !c.goff && at != k) {
-					r->ohi = (short)at;
+					p->ohi = (short)at;
 #ifndef WSK_NO_SCROLL
 					/* a menu that scrolls keeps it whole in sight (rule 5) */
 					if (c.overflow == WSK_SCROLL) {
@@ -7289,13 +7590,8 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			}
 		}
 #ifndef WSK_NO_OVER
-		if (r->over != WSK_NONE && !wsk__on_over(r, x, y)) {
-			const wsk_tree_t *was = &r->nest[r->over];
-			int a0, a1;
-			if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
-			wsk_over_close(r);
-			n = wsk__note(note, max, n, WSK_NOTE_CLOSE, was, -1, 0);
-		}
+		if (r->over != WSK_NONE && !wsk__on_over(r, x, y))
+			n = wsk__oclose(ui, 1, note, max, n, &lo, &hi);
 #endif
 		if (ui->down) {                  /* a long press: let it go */
 			ui->down = 0;
@@ -7329,6 +7625,19 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 		int word = -1, k = -1;
 		if (!ui->down && x >= 0 && y >= 0) k = wsk__ui_hit(r, x, y, &in, &rect, &word, &at, &lay);
 		if (k < 0) { in = 0; k = -1; word = -1; }
+#ifndef WSK_NO_SUBMENU
+		/* resting in a menu: on a button that opens one, it opens; on any
+		   other item, what hangs from this menu closes (§5ar rule 5) */
+		if (!ui->down && k >= 0) {
+			int lv = wsk__over_pt(r, x, y);
+			if (lv >= wsk__ofirst(r)) {
+				if (wsk__opens(in, k) && !lay->goff && !in->item[k].off)
+					(void)wsk__sub_open(ui, lv, &in->item[k], rect, 0, &lo, &hi);
+				else if (lv < wsk__olevels(r))
+					n = wsk__oclose(ui, lv + 1, note, max, n, &lo, &hi);
+			}
+		}
+#endif
 		if (!ui->down && (in != ui->hover_in || k != ui->hover_item || word != ui->hover_word)) {
 			ui->hover_in = in;
 			ui->hover_item = (short)k;
@@ -7673,7 +7982,12 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 			wsk_rect_t rect = { 0, 0, 0, 0 };
 			int word = -1, k = wsk__ui_hit(r, x, y, &in, &rect, &word, &at, &lay);
 			if (k == ui->hit && in == ui->hit_in) {
-				n = wsk__note(note, max, n, WSK_NOTE_CLICK, in, k, ui->word);
+#ifndef WSK_NO_SUBMENU
+				int sm = wsk__opens(in, k);   /* it opens its menu instead (§5ar) */
+#else
+				int sm = 0;
+#endif
+				if (!sm) n = wsk__note(note, max, n, WSK_NOTE_CLICK, in, k, ui->word);
 #ifndef WSK_NO_SOURCE
 				if (ui->gline >= 0)
 					n = wsk__note(note, max, n, WSK_NOTE_GUTTER, in, k, ui->gline);
@@ -7707,16 +8021,20 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 					}
 				}
 #ifndef WSK_NO_OVER
-				/* a menu's choice is made once: a button in it closes it --
-				   a dialog's does not: OK may refuse what was typed, Up
-				   stays, so closing is the program's (§5ae) */
-				if (r->over != WSK_NONE && !r->omodal && in == &r->nest[r->over] &&
-				    in->item[k].kind == WSK_BUTTON) {
-					int a0, a1;
-					if (wsk_over_rows(r, &a0, &a1) == WSK_OK) wsk__span(&lo, &hi, a0, a1);
-					wsk_over_close(r);
-					n = wsk__note(note, max, n, WSK_NOTE_CLOSE, in, -1, 0);
+				{
+					int lv = wsk__over_pt(r, x, y);
+#ifndef WSK_NO_SUBMENU
+					if (sm) (void)wsk__sub_open(ui, lv, &in->item[k], rect, 0, &lo, &hi);
+					else
+#endif
+					/* a menu's choice is made once: a button in it closes
+					   every menu -- a dialog's does not: OK may refuse what
+					   was typed, Up stays, so closing is the program's (§5ae) */
+					if (lv >= wsk__ofirst(r) && in->item[k].kind == WSK_BUTTON)
+						n = wsk__oclose(ui, wsk__ofirst(r), note, max, n, &lo, &hi);
 				}
+#else
+				(void)sm;
 #endif
 			}
 		}
@@ -7771,6 +8089,12 @@ static inline int wsk_feed(wsk_ui_t *ui, const wsk_event_t *ev,
 	else if (ev->kind == WSK_EV_KEY && ev->key == WSK_KEY_ENTER && r->focus != 0 &&
 	         ui->focus_b == 0 && !wsk__focus_off(r)) {
 		wsk__focus_now(ui);
+#ifndef WSK_NO_SUBMENU
+		if (wsk__opens(ui->focus_in, ui->focus_item))   /* its menu, reached (§5ar) */
+			(void)wsk__sub_open(ui, (r->omodal && r->over != WSK_NONE) ? 1 : 0,
+			                    &ui->focus_in->item[ui->focus_item], ui->focus_r, 1, &lo, &hi);
+		else
+#endif
 		n = wsk__note(note, max, n, WSK_NOTE_CLICK, ui->focus_in, ui->focus_item, -1);
 #ifndef WSK_NO_CHECK
 		if (ui->focus_in->item[ui->focus_item].kind == WSK_CHECK &&

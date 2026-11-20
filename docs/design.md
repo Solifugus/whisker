@@ -3513,6 +3513,135 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5ar. Submenus (2026-11-19), written before its code
+
+The second of `ui-backend-gap.md` §8's larger gaps: gBASIC's `menu`
+nests (`menu(window, parent_menu, …)`, a window's checker allowing
+"items, separators and submenus"), and whisker opens **one overlay at a
+time** (§5l: "a submenu is a later question"). This is that question.
+
+1. **`WSK_SUBMENU` (16) in a button's `flags`**: the button **opens
+   tree `sub`** of the root's `nest` itself — no program glue — and is
+   drawn with §5t's triangle at its end (one `<path>`, every host), its
+   natural width a font wider for it. Refused on anything but a button,
+   and beside `WSK_DEFAULT` (Enter in a field would open a menu).
+2. **Where it opens**: from a button **in a menu**, *beside* it — right
+   of the menu, its first item level with the button; with no room
+   there, left of the menu; moved up to stay on the screen. From a
+   button **anywhere else** — the window (a menu bar, free) or a dialog
+   (a drop-down) — *below* it, as `wsk_ui_open` places a menu (§5l).
+   Taller than the screen refused unless it scrolls, as §5l.
+3. **A chain, and the struct gains nothing.** Every tree already has
+   `over`, `ox`…`oh`, `ohi`; they were the root's alone. Now **an open
+   overlay's own tree names the menu open from it** in those same
+   fields: the root names level 1, level 1's tree names level 2, up to
+   four (`WSK_OVER_MAX`). A link below the root counts only with `ow`
+   above 0, so a tree zeroed by hand is never read as open; a tree
+   already in the chain is refused (a menu that opens itself). The trees
+   written are the caller's, in RAM, as a scroll is (§5i). **Closing
+   clears every link it passes**, so a menu reopened opens alone.
+4. **Drawing and hit**: levels in order after the root, each on its own
+   backing, each with its own key ring; hit asks the deepest level
+   first and nothing falls through, as §5l.
+5. **The toolkit**:
+   - a click on a submenu button **opens** its level, closing anything
+     deeper — no CLICK, no CLOSE;
+   - the pointer **resting** (§5aa) on a submenu button in a menu opens
+     it, and resting on another item of that menu closes what hangs from
+     it — no delay yet (a menu crossed diagonally may switch; Qt's
+     "sloppy" delay is a later question);
+   - a click on **any other button in a menu**: CLICK, then every menu
+     closes — down to a dialog, which stays — and **one CLOSE**, naming
+     the first menu of the chain;
+   - a press on **no level**: every menu closes, CLOSE, and nothing
+     beneath is pressed (a dialog's modal rule stands; a menu over it
+     closes); a press on a **shallower** level closes what hangs below
+     that level and goes on there;
+   - **keys, in the deepest menu** (§5y): Up, Down, Home, End as before;
+     **Right**, or Enter on a submenu button, opens it with its first
+     button reached; **Left** closes the deepest submenu back to its
+     button; **Escape** closes the deepest level;
+   - **notes**: CLOSE when the chain's first menu closes, nothing when a
+     submenu closes under an open menu, nothing on opening — the program
+     keeps its trees current, as it keeps every tree.
+6. **Profile**: `WSK_NO_SUBMENU`, set by `WSK_PANEL` (a menu on a touch
+   panel is one deep) and implied by `WSK_NO_OVER`; the flag refused by
+   name there. **Without the flag, byte for byte as before.**
+
+Not here: switching menus along a menu bar by resting on the next one
+while one is open; a delay before resting opens.
+
+### Done criteria
+
+1. Every earlier output byte-identical; every profile builds.
+2. **Placement by hand**: beside on the right; on the left near the
+   right edge; moved up near the bottom; below a menu-bar button; too
+   tall refused and the scrolling control accepted.
+3. Drawing: the submenu after the menu's items, the arrow drawn, and no
+   arrow on a plain button (the control).
+4. Hit: the submenu's item over the menu's; its padding nothing.
+5. The toolkit: click opens with no CLICK; rest opens and a sibling
+   closes; a choice in a submenu is CLICK then one CLOSE, all closed and
+   every link cleared (reopened alone); a press outside, CLOSE; a press
+   on level 1 closes level 2 only; Right, Left, Enter, Escape; a cycle
+   refused; the fifth level refused.
+6. A drop-down in a dialog: opens below, a choice closes it and the
+   dialog stays.
+7. At the pixels: a menu and its submenu, each opening repainted alone
+   equal to a full redraw, and closing leaving the screen as before.
+8. **The demo**: `form.c` gains a menu bar — `Form ▸` with Clear,
+   Submit, and `Fill in ▸` a submenu of people — in both hosts.
+9. The bytes and the stack.
+
+**What it came to** (2026-11-19): as written, with one addition the
+picture asked for, and every earlier output byte-identical (53
+compared).
+
+- **The arrow says which way the menu opens**: the first picture drew
+  "File ▸" in the bar over a menu that opened *below* it. A menu's copy
+  is now marked when it is laid out (`omodal` 2, whisker's, in the copy
+  only), and a submenu button draws ▸ there and ▾ anywhere else.
+- **`wsk_over_rows` answers for every level**, so each place that
+  closed "the" overlay and repainted its rows — opening another menu, a
+  dialog, the toolkit's dismissals — repaints the whole chain without
+  being touched. With one level it is the range it always was.
+- **The press that dismisses a menu still presses nothing**; a press
+  on a shallower level is a new rule, and goes on to what it pressed.
+- **Resting over the gap between a menu and its submenu keeps it
+  open**: only resting on another *item* closes it — the pointer
+  crossing the menu's padding on its way would otherwise have closed
+  the submenu it was heading for.
+
+**Measured** (RISC-V `-Os`): **submenus cost the default 1,496 bytes**
+(`module_nest`, built without them); `module_shape` +488. **`WSK_PANEL`
++96 and `WSK_MINIMAL` +40** — the toolkit's closing paths now go
+through one helper, and the flag's refusal; that is the shared
+restructuring, not submenus, and it is recorded rather than hidden. The
+stack: **the panel's drawing chain unchanged** (`wsk_check_in` +16, which
+runs before drawing, never beneath the rasteriser); at the default
+`module_compose`'s chain +48, inlining in `wsk_part`.
+
+**48 checks** (1,391 → 1,439): 43 in `test.c` — File's menu below it at
+0,30 80×80 and Recent's beside it at 80,54 56×56, by hand; no CLICK for
+either; drawn in order, an arrow on File and Recent and none elsewhere
+(the control); hit in the submenu, its padding nothing; a choice in it
+CLICK then one CLOSE, every link cleared and File reopened alone;
+resting opens, crossing the gap keeps, resting on New closes silently;
+a press on New closes Recent's and clicks New; a press off both, one
+CLOSE and nothing beneath; Down, Right, Left, Enter, Escape twice; the
+right edge (left of the menu, 264), the bottom (moved up, 244), a
+cycle and a fifth level refused; a drop-down in a dialog — below Pick,
+Escape closing it alone with CLOSE, a choice closing it, a press off
+both closing it, the dialog staying throughout; the flag on a label,
+beside DEFAULT and naming no tree refused, and the control. Two
+mutations — the beside rule off by a pixel, resting never closing —
+each failed a check. The panel's refusal in `run.sh`. At the pixels
+(`submenu.ppm`): File, Recent, both closed — each repainted alone equal
+to a full redraw, and the screen at the end the screen before — looked
+at. **The demo**: `form.c`'s menu bar, Form ▾ with Clear, Fill in ▸ and
+Submit, opened by whisker with no code of the program's; `form.py`
+opens both and fills the form from the submenu (10, web 194).
+
 ## 5aq. Cells — a grid whose parts may span (2026-11-19), written before its code
 
 The first of `ui-backend-gap.md` §8's larger gaps. gBASIC's `cells`

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """A form in cells (design.md §5aq), in the browser host, over HTTP: the
 hints drawn while their fields are empty, a password sent as stars and
-never as itself, Enter in a field pressing the default button, and a
-whole form submitted -- form.c, as a page would drive it.
+never as itself, Enter in a field pressing the default button, a whole
+form submitted, and its menu bar's submenu (§5ar) filling it in -- form.c,
+as a page would drive it.
 
     python3 form.py <whisker-form-web binary>
 """
@@ -60,10 +61,10 @@ try:
        'the first frame: three hints, in their empty fields')
     ok('Tab between the parts' in first and 'Recent' in first, 'and the rest of the form with them')
 
-    d = post('K 8', 'T Ada')
+    d = post('K 8', 'K 8', 'T Ada')                   # past the menu bar's Form first
     last = d.split('\n\n')[-2] if d.count('\n\n') >= 1 else d     # the last frame sent
     ok('Ada' in last and 'your name' not in last and 'your name' in d,
-       'Tab, then "Ada": the hint while the focused field was empty, then the name and no hint')
+       'Tab to the name, "Ada": the hint while the focused field was empty, then the name and no hint')
 
     d = post('K 8', 'K 8', 'T p', 'T w', 'T 1')
     ok('***' in d and 'pw1' not in d and not re.search(r'>[^<]*pw[^<]*<', d),
@@ -75,9 +76,19 @@ try:
     d = post('D 60 419 0 1 0', 'U 60 419 0')
     ok('agreed' in d, 'I agree clicked: "agreed"')
 
-    d = post('D 230 23 0 1 0', 'U 230 23 0', 'K 7')
+    d = post('D 230 53 0 1 0', 'U 230 53 0', 'K 7')
     ok('thank you, Ada -- a password of 3 characters' in d,
        'back in the name, Enter: "thank you, Ada -- a password of 3 characters"')
+
+    # the menu bar (§5ar): Form opens its menu, Fill in its submenu beside
+    d = post('D 45 15 0 1 0', 'U 45 15 0')
+    ok('Clear' in d and 'Fill in' in d and 'Grace Hopper' not in d,
+       'Form clicked: its menu -- Clear, Fill in -- and not yet the people')
+    d = post('D 40 79 0 1 0', 'U 40 79 0')
+    ok('Grace Hopper' in d and 'Ken Thompson' in d, 'Fill in clicked: the people, in a submenu')
+    d = post('D 130 109 0 1 0', 'U 130 109 0')
+    ok('filled in Grace Hopper' in d and 'compiler' in d and 'Fill in' not in d.split('\n\n')[-2],
+       'Grace Hopper chosen: the form filled in, and both menus gone from the frame')
     s.close()
 finally:
     app.kill()

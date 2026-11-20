@@ -95,14 +95,14 @@ for D in "" -DWSK_PANEL -DWSK_MINIMAL -DWSK_NO_FIELD -DWSK_NO_MARKS -DWSK_NO_SCR
          -DWSK_NO_NEST -DWSK_NO_WRAP -DWSK_NO_TEXT -DWSK_NO_OVER -DWSK_NO_CHECK \
          -DWSK_NO_MEMO -DWSK_NO_INPUT -DWSK_NO_UTF8 -DWSK_NO_IMAGE -DWSK_NO_TEXTSEL -DWSK_NO_UNDO -DWSK_NO_SOURCE -DWSK_NO_ENTITY \
          -DWSK_NO_WORDS -DWSK_NO_SPLIT -DWSK_NO_MENUKEYS \
-         -DWSK_NO_WORLD -DWSK_NO_LISTKEYS -DWSK_NO_HOVER -DWSK_NO_TIP -DWSK_NO_GRAB -DWSK_NO_TABCHAR -DWSK_NO_UNDRAWN -DWSK_NO_GRID; do
+         -DWSK_NO_WORLD -DWSK_NO_LISTKEYS -DWSK_NO_HOVER -DWSK_NO_TIP -DWSK_NO_GRAB -DWSK_NO_TABCHAR -DWSK_NO_UNDRAWN -DWSK_NO_GRID -DWSK_NO_SUBMENU; do
 	if ${CC:-gcc} -O1 -Wall -Wextra -Werror $D -I"$HERE" -c -o /dev/null /tmp/wsk_switch.c 2>/tmp/wsk_switch.err; then
 		:
 	else
 		echo "FAIL  whisker.h does not build with '${D:-the default}'"; head -5 /tmp/wsk_switch.err; exit 1
 	fi
 done
-echo "ok    whisker.h builds with each of the 30 profiles and switches, -Werror"
+echo "ok    whisker.h builds with each of the 31 profiles and switches, -Werror"
 # a switch that drops a thing refuses it, rather than drawing it some other
 # way: WSK_NO_TABCHAR let a tab into a memo as a marker (the fourth read)
 cat > /tmp/wsk_notab.c <<'C'
@@ -139,6 +139,30 @@ if ${CC:-gcc} -O1 -Wall -Wextra -Werror -I"$HERE" -o /tmp/wsk_nogrid /tmp/wsk_no
 	echo "ok    a grid: checks at the default (the control), refused WSK_E_KIND at -DWSK_PANEL"
 else
 	echo "FAIL  -DWSK_PANEL does not refuse a grid by name"; exit 1
+fi
+# and a button that opens a menu (§5ar), the same way
+cat > /tmp/wsk_nosub.c <<'C'
+#include "whisker.h"
+int main(void)
+{
+	wsk_widget_t w[1] = { { .kind = WSK_BUTTON, .text = "File", .size = 30, .sub = 0, .flags = 16 } };
+	wsk_tree_t t, k[1];
+	int which = 0;
+	wsk_init(&t, WSK_COL, 100, 100);
+	t.item = w; t.n = 1; t.nest = k; t.nests = 1;
+	wsk_nest_init(&k[0], &t, WSK_COL);
+#ifndef WSK_NO_SUBMENU
+	return wsk_check(&t, &which) != WSK_OK;
+#else
+	return wsk_check(&t, &which) != WSK_E_KIND;
+#endif
+}
+C
+if ${CC:-gcc} -O1 -Wall -Wextra -Werror -I"$HERE" -o /tmp/wsk_nosub /tmp/wsk_nosub.c && /tmp/wsk_nosub &&
+   ${CC:-gcc} -O1 -Wall -Wextra -Werror -DWSK_PANEL -I"$HERE" -o /tmp/wsk_nosub /tmp/wsk_nosub.c && /tmp/wsk_nosub; then
+	echo "ok    a submenu button: checks at the default (the control), refused WSK_E_KIND at -DWSK_PANEL"
+else
+	echo "FAIL  -DWSK_PANEL does not refuse a submenu button by name"; exit 1
 fi
 
 echo
@@ -223,6 +247,8 @@ link_check module_shape.c "module_shape.c -DWSK_NO_WORLD" -DWSK_NO_WORLD
 NOWORLD="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_GRID" -DWSK_NO_GRID
 NOGRID="$SIZE"
+link_check module_nest.c "module_nest.c -DWSK_NO_SUBMENU" -DWSK_NO_SUBMENU
+NOSUBMENU="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_PANEL" -DWSK_PANEL
 PANEL="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
@@ -240,7 +266,7 @@ printf "        UTF-8 %d, the world %d, cells %d;\n" "$(( FULL - NOUTF8 ))" "$((
 printf "        overlays %d, selection and the clipboard %d, undo %d, words %d, dividers %d,\n" \
 	"$(( NEST - NOOVER ))" "$(( NEST - NOSEL ))" "$(( NEST - NOUNDO ))" "$(( NEST - NOWORDS ))" \
 	"$(( NEST - NOSPLIT ))"
-printf "        menu keys %d, hover %d, tooltips %d,\n" "$(( NEST - NOMENUKEYS ))" "$(( NEST - NOHOVER ))" "$(( NEST - NOTIP ))"
+printf "        menu keys %d, hover %d, tooltips %d, submenus %d,\n" "$(( NEST - NOMENUKEYS ))" "$(( NEST - NOHOVER ))" "$(( NEST - NOTIP ))" "$(( NEST - NOSUBMENU ))"
 echo "        to a toolkit program (module_nest.c)."
 echo "      A reduced build is the same renderer, not a second one (§7): what it"
 echo "      keeps it draws byte for byte, and what it lacks it refuses by name."

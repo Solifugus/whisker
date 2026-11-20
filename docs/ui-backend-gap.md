@@ -198,7 +198,10 @@ Design §6.1's four, as they stand:
    `overflow = WSK_GRID`, a `wsk_cell_t` per part — row, column,
    across, down, a height and its share; two parts in one cell
    refused, so a backend places each past the last one's span);
-   submenus; raise and retitle in the host contract.
+   ~~submenus~~ (§5ar, 2026-11-19: `WSK_SUBMENU` on a button opens its
+   tree itself — beside it in a menu, below it elsewhere — a chain of
+   up to four, through the overlay fields every tree already has);
+   raise and retitle in the host contract.
 3. **gBASIC: step 6** — the contract tiers under `GBASIC_UI`. Until it
    exists a whisker backend has nothing to be measured by.
 4. **`ui_whisker.c`** — the retained model and the 148 members, on the

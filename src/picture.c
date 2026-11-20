@@ -2481,6 +2481,77 @@ int main(void)
 		shot("cells.ppm");
 	}
 
+	/*
+	 * Submenus (§5ar) at the pixels: File opened from a bar, Recent opened
+	 * beside it, each repainted in its rows alone against a full redraw --
+	 * and a press off both leaving the screen there was before.
+	 */
+	{
+		enum { T_BAR, T_FILE, T_RECENT, TREES };
+		static const wsk_widget_t TOP[] = {
+			{ .kind = WSK_STACK, .id = "bar", .sub = T_BAR, .size = 30 },
+			{ .kind = WSK_LABEL, .id = "body", .text = "a window with a menu bar", .weight = 1 },
+		};
+		static const wsk_widget_t BAR[] = {
+			{ .kind = WSK_BUTTON, .id = "file", .text = "File", .size = 60, .flags = WSK_SUBMENU, .sub = T_FILE },
+			{ .kind = WSK_BUTTON, .id = "help", .text = "Help", .size = 60 },
+		};
+		static const wsk_widget_t FILEW[] = {
+			{ .kind = WSK_BUTTON, .id = "new", .text = "New", .size = 26 },
+			{ .kind = WSK_BUTTON, .id = "recent", .text = "Recent", .size = 26, .flags = WSK_SUBMENU, .sub = T_RECENT },
+			{ .kind = WSK_BUTTON, .id = "quit", .text = "Quit", .size = 26 },
+		};
+		static const wsk_widget_t REC[] = {
+			{ .kind = WSK_BUTTON, .id = "a", .text = "notes.bas", .size = 26 },
+			{ .kind = WSK_BUTTON, .id = "b", .text = "chart.bas", .size = 26 },
+		};
+		static uint16_t before[PW * PH], want[PW * PH];
+		wsk_tree_t root, k[TREES];
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		uint32_t v;
+		int which = 0, y0, y1, good = 1, lo, hi;
+		const int px[3] = { 30, 40, 300 }, py[3] = { 15, 74, 160 };
+
+		wsk_init(&root, WSK_COL, PW, PH);
+		root.bg = 0x10203au; root.pad = 0; root.gap = 0;
+		root.item = TOP; root.n = 2; root.nest = k; root.nests = TREES;
+		wsk_nest_init(&k[T_BAR], &root, WSK_ROW);    k[T_BAR].item = BAR; k[T_BAR].n = 2; k[T_BAR].pad = 0; k[T_BAR].gap = 0;
+		wsk_nest_init(&k[T_FILE], &root, WSK_COL);   k[T_FILE].item = FILEW; k[T_FILE].n = 3; k[T_FILE].pad = 4; k[T_FILE].gap = 0;
+		k[T_FILE].bg = 0x2a3a4au;
+		wsk_nest_init(&k[T_RECENT], &root, WSK_COL); k[T_RECENT].item = REC; k[T_RECENT].n = 2; k[T_RECENT].pad = 4; k[T_RECENT].gap = 0;
+		k[T_RECENT].bg = 0x3a2a4au;
+		wsk_ui_init(&ui, &root);
+		printf("\n  submenus (§5ar)\n");
+		ok(wsk_check(&root, &which) == WSK_OK, "a bar, File's menu and Recent's check");
+		s.put = to_window; s.ctx = &dev;
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&root, &s, 4096);
+		memcpy(before, screen, sizeof screen);
+		for (int step = 0; step < 3; step++) {
+			memset(&ev, 0, sizeof ev);
+			ev.kind = WSK_EV_DOWN; ev.x = (short)px[step]; ev.y = (short)py[step]; ev.d = 1;
+			wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			lo = y0; hi = y1;
+			ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+			if (y1 > y0) { if (y0 < lo || hi <= lo) lo = y0; if (y1 > hi) hi = y1; }
+			if (hi > lo) {
+				v = ((uint32_t)lo << 16) | ((uint32_t)hi & 0xFFFFu);
+				svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+				s.len = 0; wsk_render_rows(&root, lo, hi, &s, 4096);
+			}
+			memcpy(want, screen, sizeof screen);
+			if (step == 1) shot("submenu.ppm");
+			v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+			s.len = 0; wsk_render(&root, &s, 4096);
+			if (memcmp(screen, want, sizeof screen) != 0) { good = 0; printf("     step %d differs from a full redraw\n", step); }
+		}
+		ok(good, "File opened, Recent opened beside it, both closed: each repainted in its rows alone equals a full redraw");
+		ok(memcmp(screen, before, sizeof screen) == 0, "and closed, the screen there was before either opened");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

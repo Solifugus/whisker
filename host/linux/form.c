@@ -9,7 +9,9 @@
  * two rows taking what height is left, a licence read only, a striped list
  * of recent people, and I agree beside Cancel and OK. Every word §5ao and
  * §5ap added is in it: the hints, the secret, the default button (Enter in
- * a field presses OK), the read-only memo, the striped rows.
+ * a field presses OK), the read-only memo, the striped rows. And a menu bar
+ * (§5ar): Form opens its menu by itself, and Fill in opens a submenu of
+ * people beside it -- no code here opens either.
  */
 #include "host.h"
 #include "whisker.h"
@@ -21,10 +23,11 @@
 #define W 720
 #define H 480
 
-enum { T_FORM, T_RECENT };
+enum { T_FORM, T_RECENT, T_BAR, T_MENU, T_PEOPLE, TREES };
 enum { B_NAME, B_ROLE, B_PASS, B_NOTES, B_LIC, BUFS };
 
 static const wsk_widget_t TOP[] = {
+	{ .kind = WSK_STACK, .id = "bar", .sub = T_BAR, .size = 30 },
 	{ .kind = WSK_STACK, .id = "form", .sub = T_FORM, .weight = 1 },
 	{ .kind = WSK_TEXT, .id = "status", .sub = 0, .size = 30 },
 };
@@ -54,6 +57,22 @@ static const wsk_cell_t CELLS[] = {
 	{ 5, 0, 0, 0, 0, 0 }, { 5, 1, 3, 0, 100, 0 },
 	{ 6, 0, 2, 0, 0, 0 }, { 6, 2, 0, 0, 36, 0 }, { 6, 3, 0, 0, 36, 0 },
 };
+static const wsk_widget_t BAR[] = {
+	{ .kind = WSK_BUTTON, .id = "mform", .text = "Form", .size = 90, .flags = WSK_SUBMENU, .sub = T_MENU },
+	{ .kind = WSK_LABEL,  .id = "fill",  .weight = 1 },
+};
+static const wsk_widget_t MENU[] = {
+	{ .kind = WSK_BUTTON, .id = "mclear",  .text = "Clear",   .size = 30 },
+	{ .kind = WSK_BUTTON, .id = "mfill",   .text = "Fill in", .size = 30, .flags = WSK_SUBMENU, .sub = T_PEOPLE },
+	{ .kind = WSK_BUTTON, .id = "msubmit", .text = "Submit",  .size = 30 },
+};
+/* who Fill in offers, and what it fills */
+static const wsk_widget_t PEOPLE[] = {
+	{ .kind = WSK_BUTTON, .id = "f0", .text = "Ada Lovelace", .size = 30 },
+	{ .kind = WSK_BUTTON, .id = "f1", .text = "Grace Hopper", .size = 30 },
+	{ .kind = WSK_BUTTON, .id = "f2", .text = "Ken Thompson", .size = 30 },
+};
+static const char *const ROLE_OF[3] = { "analyst", "compiler", "shell" };
 static const wsk_widget_t RECENT[] = {
 	{ .kind = WSK_LABEL, .id = "p0", .text = "Ada Lovelace -- analyst" },
 	{ .kind = WSK_LABEL, .id = "p1", .text = "Grace Hopper -- compiler" },
@@ -68,7 +87,7 @@ static wsk_buf_t buf[BUFS];
 static unsigned char state[1];
 static char status[200], clip[512];
 static const char *strs[1];
-static wsk_tree_t root, trees[2];
+static wsk_tree_t root, trees[TREES];
 static wsk_ui_t ui;
 
 static void to_window(wsk_sink_t *s, const char *b, int n)
@@ -90,6 +109,13 @@ static void clear(void)
 		buf[i].len = buf[i].caret = buf[i].span = buf[i].top = 0;
 	}
 	state[0] = 0;
+}
+
+static void put(int b, const char *v)
+{
+	snprintf(text[b], sizeof text[b], "%s", v);
+	buf[b].len = buf[b].caret = (int)strlen(text[b]);
+	buf[b].span = 0;
 }
 
 static void submit(void)
@@ -121,8 +147,8 @@ int main(void)
 
 	wsk_init(&root, WSK_COL, W, H);
 	root.pad = 0; root.gap = 0;
-	root.item = TOP; root.n = 2;
-	root.nest = trees; root.nests = 2;
+	root.item = TOP; root.n = 3;
+	root.nest = trees; root.nests = TREES;
 	root.str = strs; root.strs = 1;
 	root.buf = buf; root.bufs = BUFS;
 	root.state = state; root.states = 1;
@@ -137,6 +163,15 @@ int main(void)
 	trees[T_RECENT].item = RECENT; trees[T_RECENT].n = (int)(sizeof RECENT / sizeof RECENT[0]);
 	trees[T_RECENT].overflow = WSK_SCROLL; trees[T_RECENT].select = 1; trees[T_RECENT].stripe = 1;
 	trees[T_RECENT].talign = WSK_ALIGN_START; trees[T_RECENT].pad = 0; trees[T_RECENT].gap = 0;
+
+	wsk_nest_init(&trees[T_BAR], &root, WSK_ROW);
+	trees[T_BAR].item = BAR; trees[T_BAR].n = 2; trees[T_BAR].pad = 0; trees[T_BAR].gap = 0;
+	wsk_nest_init(&trees[T_MENU], &root, WSK_COL);
+	trees[T_MENU].item = MENU; trees[T_MENU].n = 3; trees[T_MENU].pad = 4; trees[T_MENU].gap = 0;
+	trees[T_MENU].bg = 0x2a3a4au;
+	wsk_nest_init(&trees[T_PEOPLE], &root, WSK_COL);
+	trees[T_PEOPLE].item = PEOPLE; trees[T_PEOPLE].n = 3; trees[T_PEOPLE].pad = 4; trees[T_PEOPLE].gap = 0;
+	trees[T_PEOPLE].bg = 0x2a3a4au;
 
 	wsk_ui_init(&ui, &root);
 	ui.clip = clip; ui.clipcap = sizeof clip;
@@ -175,8 +210,24 @@ int main(void)
 		for (int i = 0; i < n; i++) {
 			const wsk_note_t *t = &note[i];
 			const char *id = (t->in != 0 && t->item >= 0) ? t->in->item[t->item].id : "";
-			if (t->kind == WSK_NOTE_CLICK && strcmp(id, "ok") == 0) { submit(); whole = 1; }
-			else if (t->kind == WSK_NOTE_CLICK && strcmp(id, "cancel") == 0) {
+			if (t->kind == WSK_NOTE_CLICK && (strcmp(id, "ok") == 0 || strcmp(id, "msubmit") == 0)) {
+				submit();
+				whole = 1;
+			} else if (t->kind == WSK_NOTE_CLICK && strcmp(id, "mclear") == 0) {
+				clear();
+				say("cleared, from the menu");
+				whole = 1;
+			} else if (t->kind == WSK_NOTE_CLICK && t->in == &trees[T_PEOPLE]) {
+				char m[96];
+				put(B_NAME, PEOPLE[t->item].text);
+				put(B_ROLE, ROLE_OF[t->item]);
+				snprintf(m, sizeof m, "filled in %s", PEOPLE[t->item].text);
+				say(m);
+				whole = 1;
+			} else if (t->kind == WSK_NOTE_CLOSE) {
+				whole = 1;                      /* what the menus covered */
+			}
+			if (t->kind == WSK_NOTE_CLICK && strcmp(id, "cancel") == 0) {
 				clear();
 				say("cleared");
 				whole = 1;

@@ -431,6 +431,19 @@ directly**.
   `host/linux/form.c`** (`run.sh --form`, both hosts) has every §5ao/§5ap
   word in it. The stack tool's "no `<path>`" was a SIGPIPE coin toss
   under `pipefail`, now fixed.
+- **§5ar — submenus** (2026-11-19, gBASIC's nested `menu`):
+  `WSK_SUBMENU` (16) in a button's `flags` **opens tree `sub` itself** —
+  beside it in a menu (right, else left, moved up), below it elsewhere,
+  so a menu bar and a dialog's drop-down need no program code; ▸ or ▾
+  by which way. **A chain through fields every tree already has**: an
+  open menu's own tree's `over`/`ox`…`oh`/`ohi` name the menu open from
+  it (up to `WSK_OVER_MAX` 4; a link below the root counts only with
+  `ow` > 0; a cycle refused); **closing clears every link**. Resting
+  opens, resting on another item closes; Right/Enter open, Left back,
+  Escape the deepest; one CLOSE when the chain's first menu closes.
+  `wsk_over_rows` spans every level. 1,496 bytes default
+  (`WSK_NO_SUBMENU`, in `WSK_PANEL`; panel +96, minimal +40 from the
+  shared closing helper). `form.c` has a menu bar with a submenu.
 - **§5am — the wire on one stream** (2026-11-18): a connection opening
   `WHISKER 1 v=… caps=…` is a seat on that connection, lines both ways
   (`docs/wire.md` §8) — nothing else speaks for it, a POST with its very
@@ -569,14 +582,14 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,391 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,439 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
 looking at the pictures. `host/linux/run.sh --test` adds 136 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
-18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`), 13 for files indented with tabs, with Windows line endings, in Latin-1 (`tabfile.py`), 7 for a form in cells (`form.py`) — 191 in all.
+18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`), 13 for files indented with tabs, with Windows line endings, in Latin-1 (`tabfile.py`), 10 for a form in cells and its menus (`form.py`) — 194 in all.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

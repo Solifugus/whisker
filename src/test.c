@@ -69,6 +69,14 @@ static int has_x(const char *hay, const char *pat)
 	return 0;
 }
 
+/* How many of the first n notes are of a kind (§5ar). */
+static int notes_of(const wsk_note_t *nt, int n, int kind)
+{
+	int k = 0;
+	for (int j = 0; j < n && j < 8; j++) if (nt[j].kind == kind) k++;
+	return k;
+}
+
 static int count(const char *hay, const char *needle)
 {
 	int k = 0;
@@ -7624,6 +7632,182 @@ int main(void)
 			p.aw = 120;
 			ok(wsk_rect(&p, 0).h == 84, "and at 120: two a line, three lines, 84 -- the depth its width gives");
 		}
+	}
+
+	printf("\n-- §5ar  submenus\n");
+	{
+		enum { T_BAR, T_FILE, T_RECENT, T_DLG, TREES };
+		static wsk_widget_t TOPW[2], BAR[2], FILEW[3], REC[2], DLG[2];
+		wsk_tree_t r, k[TREES];
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		wsk_tree_t *lk;
+		wsk_rect_t q;
+		char doc[16384];
+		int n, y0, y1, which = 0, closes;
+		const char *id;
+
+		memset(TOPW, 0, sizeof TOPW); memset(BAR, 0, sizeof BAR); memset(FILEW, 0, sizeof FILEW);
+		memset(REC, 0, sizeof REC); memset(DLG, 0, sizeof DLG);
+		TOPW[0].kind = WSK_STACK; snprintf(TOPW[0].id, WSK_ID_MAX, "bar"); TOPW[0].sub = T_BAR; TOPW[0].size = 30;
+		TOPW[1].kind = WSK_LABEL; snprintf(TOPW[1].id, WSK_ID_MAX, "body"); TOPW[1].weight = 1;
+		BAR[0].kind = WSK_BUTTON; snprintf(BAR[0].id, WSK_ID_MAX, "file"); snprintf(BAR[0].text, WSK_TEXT_MAX, "File");
+		BAR[0].size = 60; BAR[0].flags = WSK_SUBMENU; BAR[0].sub = T_FILE;
+		BAR[1].kind = WSK_BUTTON; snprintf(BAR[1].id, WSK_ID_MAX, "help"); snprintf(BAR[1].text, WSK_TEXT_MAX, "Help");
+		BAR[1].size = 60;
+		snprintf(FILEW[0].id, WSK_ID_MAX, "new");    snprintf(FILEW[0].text, WSK_TEXT_MAX, "New");
+		snprintf(FILEW[1].id, WSK_ID_MAX, "recent"); snprintf(FILEW[1].text, WSK_TEXT_MAX, "recent");
+		snprintf(FILEW[2].id, WSK_ID_MAX, "quit");   snprintf(FILEW[2].text, WSK_TEXT_MAX, "Quit");
+		for (int i = 0; i < 3; i++) { FILEW[i].kind = WSK_BUTTON; FILEW[i].size = 24; }
+		FILEW[1].flags = WSK_SUBMENU; FILEW[1].sub = T_RECENT;
+		snprintf(REC[0].id, WSK_ID_MAX, "a.bas"); snprintf(REC[0].text, WSK_TEXT_MAX, "a.bas");
+		snprintf(REC[1].id, WSK_ID_MAX, "b.bas"); snprintf(REC[1].text, WSK_TEXT_MAX, "b.bas");
+		for (int i = 0; i < 2; i++) { REC[i].kind = WSK_BUTTON; REC[i].size = 24; }
+		DLG[0].kind = WSK_BUTTON; snprintf(DLG[0].id, WSK_ID_MAX, "pick"); snprintf(DLG[0].text, WSK_TEXT_MAX, "Pick");
+		DLG[0].size = 30; DLG[0].flags = WSK_SUBMENU; DLG[0].sub = T_RECENT;
+		DLG[1].kind = WSK_BUTTON; snprintf(DLG[1].id, WSK_ID_MAX, "done"); snprintf(DLG[1].text, WSK_TEXT_MAX, "Done");
+		DLG[1].size = 30;
+
+		wsk_init(&r, WSK_COL, 400, 300);
+		r.pad = 0; r.gap = 0; r.ids = 1;
+		r.item = TOPW; r.n = 2; r.nest = k; r.nests = TREES;
+		wsk_nest_init(&k[T_BAR], &r, WSK_ROW);    k[T_BAR].item = BAR; k[T_BAR].n = 2; k[T_BAR].pad = 0; k[T_BAR].gap = 0;
+		wsk_nest_init(&k[T_FILE], &r, WSK_COL);   k[T_FILE].item = FILEW; k[T_FILE].n = 3; k[T_FILE].pad = 4; k[T_FILE].gap = 0;
+		wsk_nest_init(&k[T_RECENT], &r, WSK_COL); k[T_RECENT].item = REC; k[T_RECENT].n = 2; k[T_RECENT].pad = 4; k[T_RECENT].gap = 0;
+		wsk_nest_init(&k[T_DLG], &r, WSK_COL);    k[T_DLG].item = DLG; k[T_DLG].n = 2; k[T_DLG].pad = 4; k[T_DLG].gap = 4;
+		wsk_ui_init(&ui, &r);
+#define FEED(K, X, Y, KEY) (memset(&ev, 0, sizeof ev), ev.kind = (K), ev.x = (short)(X), ev.y = (short)(Y), \
+                            ev.key = (unsigned short)(KEY), ev.d = 1, wsk_feed(&ui, &ev, nt, 8, &y0, &y1))
+#define CLICKAT(X, Y) (FEED(WSK_EV_DOWN, X, Y, 0), FEED(WSK_EV_UP, X, Y, 0))
+#define HAS_NOTE(KIND) notes_of(nt, n, (KIND))
+
+		ok(wsk_check(&r, &which) == WSK_OK, "a menu bar whose File opens a menu whose Recent opens another: checks");
+		n = CLICKAT(30, 15);
+		ok(n == 0 && r.over == T_FILE && r.ox == 0 && r.oy == 30 && r.ow == 80 && r.oh == 80,
+		   "File clicked: no CLICK -- its menu opened below it, 0,30 80x80 (Recent's 48 + its arrow 16 + padding)");
+		n = CLICKAT(40, 70);
+		lk = &k[T_FILE];
+		ok(n == 0 && lk->over == T_RECENT && lk->ox == 80 && lk->oy == 54 && lk->ow == 56 && lk->oh == 56,
+		   "Recent clicked: no CLICK -- its menu beside it, 80,54 56x56, its first item level with Recent");
+		ok(y0 <= 54 && y1 >= 110, "and its rows repainted");
+		ok(wsk_check(&r, &which) == WSK_OK, "two levels open: checks");
+		render_into(&r, doc, sizeof doc, 16384);
+		ok(strstr(doc, "id=\"a.bas\"") > strstr(doc, "id=\"recent\"") && strstr(doc, "id=\"recent\"") > strstr(doc, "id=\"help\""),
+		   "drawn in order: the window, the menu, the submenu over it");
+		ok(count(doc, "<path d=") == 2, "an arrow on File and on Recent, and none on Help or the rest (the control)");
+		id = wsk_hit_id(&r, 100, 70);
+		ok(id != 0 && strcmp(id, "a.bas") == 0, "hit at 100,70: a.bas, in the submenu");
+		ok(wsk_hit_id(&r, 100, 56) == 0 && wsk_hit_id(&r, 40, 70) != 0 && strcmp(wsk_hit_id(&r, 40, 70), "recent") == 0,
+		   "the submenu's padding: nothing; the menu beside it: Recent");
+
+		n = CLICKAT(100, 70);
+		closes = HAS_NOTE(WSK_NOTE_CLOSE);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[T_RECENT] && nt[0].item == 0 &&
+		   nt[1].kind == WSK_NOTE_CLOSE && nt[1].in == &k[T_FILE] && closes == 1,
+		   "a.bas chosen: CLICK on it, then one CLOSE, naming File's menu");
+		ok(r.over == WSK_NONE && k[T_FILE].over == WSK_NONE && k[T_FILE].ow == 0, "and every level closed, every link cleared");
+		CLICKAT(30, 15);
+		ok(r.over == T_FILE && wsk__olevels(&r) == 1, "File again: its menu alone -- the submenu not reopened with it");
+
+		/* resting */
+		n = FEED(WSK_EV_HOVER, 40, 70, 0);
+		ok(wsk__olevels(&r) == 2 && k[T_FILE].over == T_RECENT, "resting on Recent: its menu opens");
+		n = FEED(WSK_EV_HOVER, 82, 56, 0);
+		ok(wsk__olevels(&r) == 2, "the pointer crossing to it, over its padding: it stays");
+		n = FEED(WSK_EV_HOVER, 40, 46, 0);
+		ok(wsk__olevels(&r) == 1 && r.over == T_FILE && HAS_NOTE(WSK_NOTE_CLOSE) == 0,
+		   "resting on New: the submenu closes, the menu stays, and nothing is said");
+
+		/* a press on the shallower level */
+		FEED(WSK_EV_HOVER, 40, 70, 0);
+		n = FEED(WSK_EV_DOWN, 40, 46, 0);
+		ok(wsk__olevels(&r) == 1 && HAS_NOTE(WSK_NOTE_CLOSE) == 0, "a press on New with Recent's open: Recent's closes");
+		n = FEED(WSK_EV_UP, 40, 46, 0);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[T_FILE] && nt[1].kind == WSK_NOTE_CLOSE,
+		   "and its lifting: CLICK on New, CLOSE");
+
+		/* a press outside everything */
+		CLICKAT(30, 15); CLICKAT(40, 70);
+		n = FEED(WSK_EV_DOWN, 300, 200, 0);
+		ok(n == 1 && nt[0].kind == WSK_NOTE_CLOSE && r.over == WSK_NONE && k[T_FILE].over == WSK_NONE,
+		   "a press off both: one CLOSE, both closed");
+		n = FEED(WSK_EV_UP, 300, 200, 0);
+		ok(n == 0, "and nothing beneath clicked");
+
+		/* keys */
+		CLICKAT(30, 15);
+		FEED(WSK_EV_KEY, 0, 0, WSK_KEY_DOWN); FEED(WSK_EV_KEY, 0, 0, WSK_KEY_DOWN);
+		ok(r.ohi == 1, "Down twice: Recent reached");
+		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_RIGHT);
+		ok(wsk__olevels(&r) == 2 && k[T_FILE].ohi == 0, "Right: its menu opens, a.bas reached");
+		FEED(WSK_EV_KEY, 0, 0, WSK_KEY_DOWN);
+		ok(k[T_FILE].ohi == 1 && r.ohi == 1, "Down: b.bas -- the submenu's keys, the menu's highlight kept");
+		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_LEFT);
+		ok(wsk__olevels(&r) == 1 && r.ohi == 1 && n == 0, "Left: back to Recent, silently");
+		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_LEFT);
+		ok(wsk__olevels(&r) == 1 && r.over == T_FILE, "Left in the first menu: it stays");
+		FEED(WSK_EV_KEY, 0, 0, WSK_KEY_ENTER);
+		ok(wsk__olevels(&r) == 2 && k[T_FILE].ohi == 0, "Enter on Recent: opens it too");
+		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_ESCAPE);
+		ok(wsk__olevels(&r) == 1 && n == 0, "Escape: the submenu closes, nothing said");
+		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_ESCAPE);
+		ok(r.over == WSK_NONE && n == 1 && nt[0].kind == WSK_NOTE_CLOSE, "Escape again: the menu, CLOSE");
+		CLICKAT(30, 15);
+		FEED(WSK_EV_KEY, 0, 0, WSK_KEY_DOWN); FEED(WSK_EV_KEY, 0, 0, WSK_KEY_DOWN);
+		FEED(WSK_EV_KEY, 0, 0, WSK_KEY_RIGHT);
+		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_ENTER);
+		ok(n == 2 && nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[T_RECENT] && nt[0].item == 0 &&
+		   nt[1].kind == WSK_NOTE_CLOSE && r.over == WSK_NONE, "Enter on a.bas: CLICK, CLOSE, all closed");
+
+		/* placement at the edges, and the chain's limits */
+		q.x = 340; q.y = 0; q.w = 60; q.h = 30;
+		ok(wsk_over_open(&r, T_FILE, q) == WSK_OK && r.ox == 320, "File's menu from a button at the right edge: at 320");
+		q.x = 324; q.y = 58; q.w = 72; q.h = 24;
+		ok(wsk__over_place(&r, 2, T_RECENT, q, 1) == WSK_OK && k[T_FILE].ox == 264,
+		   "its submenu: no room on the right, so left of it, at 264");
+		q.y = 280;
+		ok(wsk__over_place(&r, 2, T_RECENT, q, 1) == WSK_OK && k[T_FILE].oy == 244,
+		   "from a button low down: moved up, 244, its bottom the screen's");
+		ok(wsk__over_place(&r, 3, T_FILE, q, 1) == WSK_E_KIND && wsk__olevels(&r) == 2,
+		   "File's menu opened from inside itself: refused, a cycle");
+		ok(wsk__over_place(&r, 5, T_RECENT, q, 1) == WSK_E_KIND, "a fifth level: refused");
+		wsk_over_close(&r);
+		ok(r.over == WSK_NONE && k[T_FILE].over == WSK_NONE, "closed: every link cleared");
+
+		/* a drop-down in a dialog */
+		ok(wsk_ui_dialog(&ui, T_DLG, 200, 100, &y0, &y1) == WSK_OK, "a dialog with a Pick button");
+		q = rect_of(&r, "pick");
+		n = CLICKAT(q.x + 10, q.y + 10);
+		ok(n == 0 && wsk__olevels(&r) == 2 && k[T_DLG].ox == q.x && k[T_DLG].oy == q.y + q.h,
+		   "Pick: its menu below it, over the dialog");
+		n = FEED(WSK_EV_KEY, 0, 0, WSK_KEY_ESCAPE);
+		ok(wsk__olevels(&r) == 1 && r.omodal && n == 1 && nt[0].kind == WSK_NOTE_CLOSE && nt[0].in == &k[T_RECENT],
+		   "Escape: the drop-down closes -- CLOSE, it was the first menu -- and the dialog stays");
+		CLICKAT(q.x + 10, q.y + 10);
+		n = CLICKAT(k[T_DLG].ox + 10, k[T_DLG].oy + 10);
+		ok(nt[0].kind == WSK_NOTE_CLICK && nt[0].in == &k[T_RECENT] && wsk__olevels(&r) == 1 && r.over == T_DLG,
+		   "a.bas chosen from it: CLICK, it closes, the dialog stays");
+		CLICKAT(q.x + 10, q.y + 10);
+		n = CLICKAT(390, 290);
+		ok(wsk__olevels(&r) == 1 && r.over == T_DLG, "a press off both: the drop-down closes, the dialog stays (modal)");
+		wsk_ui_dialog_close(&ui, &y0, &y1);
+
+		/* refusals */
+		FILEW[0].flags = WSK_SUBMENU; FILEW[0].kind = WSK_LABEL;
+		CLICKAT(30, 15);
+		ok(wsk_check(&r, &which) == WSK_E_KIND, "WSK_SUBMENU on a label: refused");
+		FILEW[0].kind = WSK_BUTTON; FILEW[0].flags = WSK_SUBMENU | WSK_DEFAULT; FILEW[0].sub = T_RECENT;
+		ok(wsk_check(&r, &which) == WSK_E_KIND, "and beside WSK_DEFAULT");
+		FILEW[0].flags = WSK_SUBMENU; FILEW[0].sub = TREES;
+		ok(wsk_check(&r, &which) == WSK_E_KIND, "and naming no tree");
+		FILEW[0].sub = T_RECENT;
+		ok(wsk_check(&r, &which) == WSK_OK, "CONTROL: on a button naming a tree, alone: checks");
+		FILEW[0].flags = 0;
+		wsk_over_close(&r);
+#undef FEED
+#undef CLICKAT
+#undef HAS_NOTE
 	}
 
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);
