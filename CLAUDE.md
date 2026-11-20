@@ -446,6 +446,18 @@ directly**.
   shared closing helper). `form.c` has a menu bar with a submenu.
   **Matthew, 2026-11-19, of the form with its cells and menus: "works
   pretty nicely."**
+- **§5as — remote polish** (2026-11-19): **a key for pages** — listening
+  beyond loopback the host makes 128 random bits and prints
+  `http://host:8090/?k=…`; every request carries `k=`, a duplex line
+  ` k=`, or 403 / `E key` before anything is read; `WHISKER_KEY` sets one
+  (loopback too); **loopback with none set is unchanged**; a dialled
+  display is never asked. **Saved places** in the client: `--save NAME
+  …`, `whisker-client NAME`, `--places` (`~/.config/whisker/places`,
+  0600). **`wh_title` and `wh_raise`** in the host contract — the wire's
+  `N <win> <title>` (window 0's sent on joining) and `F <win>`; the code
+  editor is titled by its file, a second Ctrl-N raises its pad. **Save As
+  now gives its name the keys, all chosen** (it never did — §5ae's tests
+  clicked first); `chooser.ppm` rebaselined. `host/web/keys.py` (26).
 - **§5am — the wire on one stream** (2026-11-18): a connection opening
   `WHISKER 1 v=… caps=…` is a seat on that connection, lines both ways
   (`docs/wire.md` §8) — nothing else speaks for it, a POST with its very
@@ -584,14 +596,14 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,439 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,440 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 136 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 162 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
-18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`), 13 for files indented with tabs, with Windows line endings, in Latin-1 (`tabfile.py`), 10 for a form in cells and its menus (`form.py`) — 194 in all.
+18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`), 13 for files indented with tabs, with Windows line endings, in Latin-1 (`tabfile.py`), 10 for a form in cells and its menus (`form.py`) — 196 in all.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

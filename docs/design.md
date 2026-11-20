@@ -3513,6 +3513,111 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5as. Remote polish — a key for pages, saved places, a window's title (2026-11-19), written before its code
+
+What §5al and §5am left named and unbuilt, the three a person meets first
+running a program remotely: a page on a network anyone there can open; a
+client that must be given its address every time; and a client window
+titled "whisker-client" whatever it shows. With them, the host contract's
+own missing pair, **retitle and raise** (`ui-backend-gap.md` §8 item 2).
+
+1. **A key for pages.** A host listening **beyond this machine**
+   (`WHISKER_LISTEN` not a loopback address) makes a random key at start
+   — 128 bits from `/dev/urandom`, as hex — and prints the address with
+   it (`http://host:8090/?k=…`). Every request then carries it — the page,
+   its stream, its posts, its images (`k=` in the query) — and a duplex
+   connection says it on its first line (`WHISKER 1 … k=…`); without it,
+   **403** for a request, `E key` and closed for a stream, **before
+   anything is read or sent**. Compared in constant time. `WHISKER_KEY`
+   sets one instead (a script's, or to have one on loopback too — a
+   machine with other users); **on loopback with none set, nothing
+   changes**: SSH is still the lock (D25), and every check before this one
+   connects as it did. A program that **dials** a display (§5am) needs no
+   key: it chose where to go. The page keeps `k` from its own address and
+   sends it on; `whisker-client --key K` or `WHISKER_KEY` sends it. A key
+   is not encryption: on a network a page's traffic is still plain, and
+   the wire says so.
+2. **Saved places in the client.** `whisker-client --save NAME <what you
+   would have typed>` saves the words and connects; `whisker-client NAME`
+   connects to them again; `whisker-client --places` lists them. One line
+   a place in `$XDG_CONFIG_HOME/whisker/places` (else
+   `~/.config/whisker/places`), `NAME word…`, written mode **0600** since
+   a key may be among the words, rewritten whole (a temporary file
+   renamed) so a crash leaves the old list. A name is a word that is not a
+   port or `host:port` and does not start with `-`; a word with a space in
+   it is refused at saving rather than split at reading.
+3. **A window's title, and raising it — in the host contract.**
+   `wh_title(win, title)` and `wh_raise(win)`. SDL: the window's own title
+   and `SDL_RaiseWindow`. The wire gains two messages, `N <win> <title>`
+   and `F <win>`; a joining screen is sent `N 0 <title>` — window 0's,
+   from `wh_open` — before any `O`. The page sets its tab's title from
+   window 0's and a panel's caption from the rest, and brings a panel to
+   the front on `F`; the client titles its windows from `N` ("whisker —
+   <title>") and raises on `F`. A screen ignores a message it does not
+   know — the page and the client already did, and the wire now says so.
+
+Not here: TLS (a library choice, D23); the relay for an SSH server
+without forwarding; Windows and macOS.
+
+### Done criteria
+
+1. Every earlier check unchanged — loopback with no key set behaves as
+   before, which every existing host check proves by connecting as it did.
+2. **The key**: listening beyond loopback, the printed address carries a
+   key; the page, the stream, a post and an image without it refused, a
+   wrong key refused, and **with it served** (the control); a duplex line
+   without it, `E key`; `whisker-client --key` drawing through it;
+   `WHISKER_KEY` on loopback demanding it; a dialled display untouched.
+3. **Saved places**: `--save`, then the name alone connects to the same
+   program; the file 0600, one line; a second save replacing the first of
+   that name; `--places` listing; a word with a space refused; an unknown
+   name a usage message, not a connection to a host of that name.
+4. **Titles**: a stream's joining starts `N 0 <the program's title>`; the
+   client's window title is it, through `wh_title` too; a page's tab
+   title is it (Chrome); `F` raises a panel in the page.
+5. The wire written: `docs/wire.md` §1, §2, §7.
+
+**What it came to** (2026-11-19): as written, `whisker.h` untouched.
+
+- **Two faults the controls found in the key's own first build**: the
+  page was matched as exactly `/`, so `/?k=…` was a 404 — a keyed page
+  could never load; and an image's query was taken as part of its file
+  name, so every image on a keyed page would have been missing. Both
+  showed only because each refusal sits beside the same request served.
+- **Found driving Save As over the wire: the chooser never gave its name
+  the keys.** Typing after Ctrl-Shift-S went nowhere until the name was
+  clicked — §5ae's tests had always clicked it first. Saving, the name
+  now has the keys at once and all of it is chosen, so typing replaces
+  it. **One output rebaselined on purpose**: `chooser.ppm`, 522 pixels,
+  all in the name field — the name chosen, the caret at its end.
+- **Titles**: the code editor's window is named for its file, and named
+  again after Save As; a second Ctrl-N raises the scratch pad rather than
+  doing nothing — the contract's two new calls each with a caller. The
+  client says its window's title on stderr, which is how the check reads
+  it under SDL's dummy driver.
+- **`test.py` rebaselined on purpose**: a stream's joining now starts
+  `N 0`, and the page asks for its stream through `keyed(…)`; the check
+  now asserts the title line rather than stepping past it.
+
+**Not verified**: a page bringing a panel to the front on `F` — the
+host sending `F` is checked, the page's handling only read; and the
+window title in a real desktop's title bar, which is Matthew's to see.
+
+**Checks**: 26 in `host/web/keys.py` (Linux suite 136 → 162) — the key
+made and printed; the page, the stream, a post and an image refused
+without it, with a wrong key, one too long and one under another name,
+and each served with it; `E key` on a duplex line; loopback with no key
+untouched; `WHISKER_KEY` on loopback; the client refused without
+`--key` and drawing with it, its window titled from the program's; a
+dialled display shown with no key; `N 0` first, the file's name, and
+again after Save As; Ctrl-N twice, `O` then `F`; saved places — saved
+and connected, the file 0600 and one line, the name alone connecting
+with the key, a second save replacing, `--places`, a spaced word and
+an unknown name refused. One in `test.c` (1,439 → 1,440): Save As
+typed into at once, failing with the fix taken out. Two in the web
+suite (194 → 196): the title line on joining, and the tab's title in
+Chrome.
+
 ## 5ar. Submenus (2026-11-19), written before its code
 
 The second of `ui-backend-gap.md` §8's larger gaps: gBASIC's `menu`

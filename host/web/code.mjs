@@ -124,6 +124,9 @@ try {
   await cdp('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
   await sleep(500);
   ok((await settle()) > 0, 'the code editor draws in a real browser');
+  // §5as: window 0's title is the tab's -- the editor's, its file's name
+  ok(await js('document.title') === 'sample.bas -- whisker source',
+     `the tab's title the program's: "${await js('document.title')}"`);
   await snap('code_first.png');
 
   // the font is 18: a character 9 wide, rows 22 apart from 4 + 32 + 6.

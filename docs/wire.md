@@ -18,7 +18,16 @@ Plain **HTTP/1.1 over TCP**. The program listens; screens connect.
 
 - **Where**: `127.0.0.1` — this machine only — unless `WHISKER_LISTEN`
   names an address (`0.0.0.0` for every interface). Port `WHISKER_PORT`,
-  else 8090. **Plain HTTP carries no secret**, so a screen on another
+  else 8090.
+- **A key** (§5as): listening beyond this machine, the program makes one —
+  128 random bits, as hex — and prints the address with it,
+  `http://host:8090/?k=…`; `WHISKER_KEY` sets one instead, loopback too.
+  Every request then carries **`k=<key>`** in its query — the page, the
+  stream, a post, an image — and a duplex screen says ` k=<key>` on its
+  first line; without it a request is **`403`** and a duplex line gets
+  `E key`, before anything else is read or sent. A display the program
+  dialled is not asked. On loopback with no key set, nothing is asked.
+  A key is not encryption. **Plain HTTP carries no secret**, so a screen on another
   machine comes through an **SSH tunnel** (`ssh -N -L 8090:localhost:8090
   you@there`), which encrypts and decides who may connect at all.
 - **What a screen draws** it says itself (§5am): `caps=` in a duplex
@@ -52,13 +61,18 @@ sent as spaces, so a message is always one line.
 | message | meaning |
 |---|---|
 | `S <seat> <gen>` | **you are seat `<seat>`**, this joining of it `<gen>` — sent first, and only when the program serves seats (`wh_seats(1)`). Every post must carry both. |
+| `N <win> <title>` | **a window's title** (§5as), to the end of the line, at most 63 bytes — window 0's is sent on joining, after `S`; the page shows 0's on its tab |
+| `F <win>` | **bring that window to the front** (§5as) |
 | `O <win> <w> <h> <title>` | **a window opened** (§5af): number 1–7, `w`×`h` device pixels, its title to the end of the line |
 | `Q <win>` | a window closed |
 | `C <text>` | **copy this to the clipboard** (§5s), escaped (§4) |
 | `<y0> <y1> <w> <h> <svg…>` | **a document for window 0**: repaint rows `y0`..`y1` (half-open) of a `w`×`h` picture with it — or all of it when `y1 <= y0`. A complete SVG every time, never a fragment: it carries the backing for the rows it repaints (§3 of the design) |
 | `w<win> <y0> <y1> <w> <h> <svg…>` | the same, for window `win` |
 
-**On joining**, in order: `S` (seats only); an `O` for every window already
+**A screen ignores a message it does not know**: that is how the wire
+grows.
+
+**On joining**, in order: `S` (seats only); `N 0` and window 0's title; an `O` for every window already
 open; then, for a program **without** seats, every document since the last
 whole one, so a late screen sees what the others see. A program **with**
 seats is told the screen joined (`WH_JOIN`) and draws it whole itself.
@@ -145,14 +159,16 @@ lines.)
 
 - **No encryption, no secret in the protocol itself**: SSH provides both
   for a remote screen; a browser on the network has only
-  `WHISKER_LISTEN`'s choice to open it. A token for pages (design §5al
-  step 2) and TLS are to come.
+  `WHISKER_LISTEN`'s choice to open it, and the key that then comes with
+  it (§1): who may connect, not who can read. TLS is to come.
 - **No compression**; a document is at most what the program sends —
   RV-9's own window takes 4,096 bytes, and programs that can exceed it draw
   in bands (`host/linux/fit.h`).
 - **An SSH server without forwarding** (RV-9's) cannot carry `ssh -W`; a
   relay run as the session's command would — named, not built.
-- **The client keeps no saved places** yet: it is given its address.
+- **Saved places** are the client's own (§5as): `whisker-client --save
+  NAME …` keeps the words, `whisker-client NAME` uses them,
+  `--places` lists them — in `~/.config/whisker/places`, 0600.
 
 ## 8. The wire on one stream (§5am)
 
@@ -163,7 +179,7 @@ output to a port on the far side, so SSH carries the wire with no tunnel
 and nothing installed.
 
 - **The screen speaks first**, one line:
-  `WHISKER 1[ v=<viewer>][ caps=<n>]` — who it says it is (§5) and what it
+  `WHISKER 1[ v=<viewer>][ caps=<n>][ k=<key>]` — who it says it is (§5), the key if the program has one (§1), and what it
   draws (§1).
 - **Then both send lines**, `
 ` ends each. The program: every message of

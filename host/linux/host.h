@@ -95,6 +95,13 @@ int  wh_window(int w, int h, const char *title);
 void wh_window_close(int win);
 void wh_on(int win);
 
+/* A window's title, changed -- 0's is wh_open's to begin with -- and a
+   window brought to the front of the others (§5as). A screen shows the
+   title its way: SDL on the window, the page on its tab and a panel's bar,
+   the client on its own window. */
+void wh_title(int win, const char *title);
+void wh_raise(int win);
+
 /*
  * Seats (§5ab): one person's screen and input. A program that serves several
  * people calls wh_seats(1), then hears WH_JOIN and WH_GONE with each event's

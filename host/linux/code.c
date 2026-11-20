@@ -118,7 +118,11 @@ static void say(const char *line);
 static void pad_open(wsk_sink_t *s)
 {
 	int y0, y1;
-	if (pad >= 0) return;
+	if (pad >= 0) {                     /* open already: brought to the front (§5as) */
+		wh_raise(pad);
+		say("scratch raised");
+		return;
+	}
 	pad = wh_window(SW_W, SW_H, "whisker -- scratch");
 	if (pad < 0) { say("no room for another window"); return; }
 	memset(padbuf, 0, sizeof padbuf);
@@ -140,6 +144,16 @@ static void pad_open(wsk_sink_t *s)
 static char pathbuf[PATH_MAX];
 static wsk_undo_t undo;
 static const char *path = "sample.bas";
+
+/* The window's title is the file's name (§5as), so a screen's title bar or
+   tab says which file this is -- and says so again after Save As. */
+static void retitle(void)
+{
+	const char *b = strrchr(path, '/');
+	char t[96];
+	snprintf(t, sizeof t, "%.60s -- whisker source", b ? b + 1 : path);
+	wh_title(0, t);
+}
 static const int W = 1024, H = 600;
 
 /* gBASIC's keywords, from its lexer (gbasic src/lexer.c) */
@@ -342,6 +356,7 @@ static int load(seat_t *by, const char *p)
 	memset(breaks, 0, sizeof breaks);
 	snprintf(pathbuf, sizeof pathbuf, "%s", p);
 	path = pathbuf;
+	retitle();
 	colour();
 	remark();
 	views();
@@ -539,6 +554,7 @@ int main(int argc, char **argv)
 		say(m);
 	}
 	if (wh_open(W, H, 1, "whisker -- source") != 0) return 1;
+	retitle();
 	s.put = to_window; s.ctx = 0; s.len = 0;
 	wh_seats(1);                        /* a seat a viewer (§5al); SDL's one window is seat 0 */
 
@@ -654,6 +670,7 @@ int main(int argc, char **argv)
 				if (okw) {
 					snprintf(pathbuf, sizeof pathbuf, "%s", st->chooser.path);
 					path = pathbuf;
+					retitle();
 					snprintf(m, sizeof m, "saved %s", st->chooser.path);
 				} else if (tf.enc == ENC_LATIN1 && !tf_latin1_ok(text, textlen))
 					snprintf(m, sizeof m, "%s is Latin-1, and the text has a character it cannot hold: not saved", st->chooser.path);

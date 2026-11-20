@@ -86,7 +86,10 @@ static const char PAGE[] =
 "let chain=Promise.resolve(),sent=Promise.resolve(),drawn=0,seat=-1,gen=0,es=null;\n"
 /* a seat's posts name it and its generation, so a page that lost its seat
    cannot speak for whoever has the number now */
-"const url=(w)=>{const q=[];if(seat>=0)q.push('s='+seat,'g='+gen);if(w)q.push('w='+w);return '/ev'+(q.length?'?'+q.join('&'):'');};\n"
+/* the key this page was opened with (§5as), carried on everything it asks */
+"const KEY=new URLSearchParams(location.search).get('k')||'',KQ=KEY?'k='+encodeURIComponent(KEY):'';\n"
+"const keyed=u=>KQ?u+(u.includes('?')?'&':'?')+KQ:u;\n"
+"const url=(w)=>{const q=[];if(seat>=0)q.push('s='+seat,'g='+gen);if(w)q.push('w='+w);if(KQ)q.push(KQ);return '/ev'+(q.length?'?'+q.join('&'):'');};\n"
 /* whisker's advance is half the font size; make the browser's monospace
    agree -- and keep runs of spaces, which an SVG collapses and /w0 does not
    (§5v: measured, xml:space on the root did nothing in Chrome; this does) */
@@ -98,7 +101,7 @@ static const char PAGE[] =
 "const IMG={};\n"
 "function inline(svg){\n"
 "  const hrefs=[...svg.matchAll(/<image href=\"([^\"]+)\"/g)].map(m=>m[1]).filter(u=>!(u in IMG));\n"
-"  return Promise.all(hrefs.map(u=>fetch(u).then(r=>r.blob()).then(b=>new Promise(ok=>{\n"
+"  return Promise.all(hrefs.map(u=>fetch(keyed(u)).then(r=>r.blob()).then(b=>new Promise(ok=>{\n"
 "    const f=new FileReader(); f.onload=()=>{IMG[u]=f.result;ok();}; f.onerror=()=>{IMG[u]='';ok();}; f.readAsDataURL(b);}))\n"
 "    .catch(()=>{IMG[u]='';}))).then(()=>svg.replace(/<image href=\"([^\"]+)\"/g,(m,u)=>'<image href=\"'+(IMG[u]||u)+'\"'));\n"
 "}\n"
@@ -143,7 +146,7 @@ static const char PAGE[] =
    back as the same viewer, two tabs are two -- so a program that keeps a
    viewer's caret and view (the code editor) finds them again */
 "let vid='';try{vid=sessionStorage.getItem('whisker-viewer')||'';if(!vid){vid='page-'+Math.random().toString(36).slice(2,12);sessionStorage.setItem('whisker-viewer',vid);}}catch(x){}\n"
-"function connect(){es=new EventSource('/events'+(vid?'?v='+vid:''));\n"
+"function connect(){es=new EventSource(keyed('/events'+(vid?'?v='+vid:'')));\n"
 /* a stream (re)opened is sent every window still open: a panel from
    before it is one whose closing this page may have missed */
 "es.onopen=()=>{for(const n of Object.keys(V))if(+n)unpanel(+n);};\n"
@@ -153,6 +156,9 @@ static const char PAGE[] =
 "  if(e.data.startsWith('C ')){copy(unesc(e.data.slice(2)));return;}\n"
 "  if(e.data.startsWith('O ')){const v=e.data.split(' ');panel(+v[1],+v[2],+v[3],v.slice(4).join(' '));return;}\n"
 "  if(e.data.startsWith('Q ')){unpanel(+e.data.slice(2));return;}\n"
+/* a window's title, and to the front (§5as): 0's is the tab's */
+"  if(e.data.startsWith('N ')){const v=e.data.split(' '),n=+v[1],t=v.slice(2).join(' ');if(!n)document.title=t;else if(V[n])V[n].t.textContent=t;return;}\n"
+"  if(e.data.startsWith('F ')){const n=+e.data.slice(2);if(n&&V[n])V[n].d.style.zIndex=++top9;return;}\n"
 "  const m=/^(?:w(\\d+) )?(\\d+) (\\d+) (\\d+) (\\d+) /.exec(e.data);\n"
 "  if(m) draw(+(m[1]||0),+m[2],+m[3],+m[4],+m[5],e.data.slice(m[0].length));\n"
 "};}\n"
@@ -233,7 +239,7 @@ static const char PAGE[] =
 "  bar.appendChild(t);bar.appendChild(x);\n"
 "  const cv=document.createElement('canvas');cv.tabIndex=0;cv.width=w;cv.height=h;\n"
 "  d.appendChild(bar);d.appendChild(cv);document.body.appendChild(d);\n"
-"  V[n]={c:cv,g:cv.getContext('2d'),W:w,H:h,d};\n"
+"  V[n]={c:cv,g:cv.getContext('2d'),W:w,H:h,d,t};\n"
 "  d.addEventListener('pointerdown',()=>{d.style.zIndex=++top9;},true);\n"
 "  x.addEventListener('pointerdown',e=>{e.stopPropagation();});\n"
 "  x.addEventListener('click',()=>send('C',n));\n"
@@ -281,6 +287,7 @@ static struct {
 	int       wlast;         /* the window last opened: the next takes the next
 	                            number free after it, not the lowest */
 	struct { int open, w, h; char title[64]; } win[8];   /* 0 is wh_open's */
+	char      key[68];       /* what every request must carry, or "" (§5as) */
 	char      display[256];  /* WHISKER_DISPLAY, a screen to dial (§5am), or "" */
 	long      dlast;         /* when it was last dialled */
 	char     *clip[WH_SEATS];  /* each seat's clipboard: the last it copied or
@@ -492,6 +499,42 @@ static void name_of(char *who, int cap, const char *v)
  * the HTTP response for a stream, or 0 for a duplex connection (§5am),
  * whose seat is the connection and whose messages are plain lines.
  */
+/*
+ * Whether a request's query, or a duplex screen's first line, carries the
+ * key (§5as): k=<key> after '?', '&' or a space, compared without stopping
+ * at the first difference. With no key, everything does.
+ */
+static int keyed(const char *q)
+{
+	size_t n = strlen(S.key);
+	if (n == 0) return 1;
+	for (const char *p = q; (p = strstr(p, "k=")) != 0; p += 2) {
+		const char *v = p + 2;
+		unsigned d = 0;
+		size_t i;
+		if (p == q || (p[-1] != '?' && p[-1] != '&' && p[-1] != ' ')) continue;
+		for (i = 0; i < n && v[i] != '\0'; i++) d |= (unsigned char)(v[i] ^ S.key[i]);
+		if (i < n || (v[n] != '\0' && v[n] != '&' && v[n] != ' ')) d |= 1;
+		if (d == 0) return 1;
+	}
+	return 0;
+}
+
+/* A title as a message carries it: one line, at most 63 bytes, cut
+   between characters, never empty. */
+static void title_of(char *t, const char *title)
+{
+	const char *src = (title && *title) ? title : "whisker";
+	int k = 0;
+	while (src[k] != '\0' && k < 63) {
+		t[k] = (src[k] == '\n' || src[k] == '\r') ? ' ' : src[k];
+		k++;
+	}
+	/* stopped inside a character: back to its start */
+	while (k > 0 && (src[k] & 0xC0) == 0x80) k--;
+	t[k] = '\0';
+}
+
 static int subscribe(int i, const char *q, int caps, const char *head)
 {
 	client_t *c = &S.c[i];
@@ -523,6 +566,10 @@ static int subscribe(int i, const char *q, int caps, const char *head)
 	if (head) send_all(c->fd, head, (int)strlen(head));
 	if (S.seats)                            /* its seat, and which joining of it */
 		emit(i, sn, snprintf(sn, sizeof sn, "data: S %d %u\n\n", i, c->gen));
+	{                                       /* window 0's title (§5as) */
+		char o[96];
+		emit(i, o, snprintf(o, sizeof o, "data: N 0 %s\n\n", S.win[0].title));
+	}
 	for (int k = 1; k < 8; k++)             /* the windows already open (§5af) */
 		if (S.win[k].open) {
 			char o[128];
@@ -603,6 +650,11 @@ static void respond(int i)
 		len = (int)l;
 	}
 	if (c->got < head + len) return;        /* body not all here */
+	if (!keyed(path)) {                     /* nothing for a request without the key (§5as) */
+		send_str(c->fd, "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+		drop(i);
+		return;
+	}
 
 	if (strcmp(method, "POST") == 0 && (strcmp(path, "/ev") == 0 || strncmp(path, "/ev?", 4) == 0)) {
 		char *p = end + 4, *stop = p + len;
@@ -640,7 +692,9 @@ static void respond(int i)
 	} else if (strncmp(path, "/static/", 8) == 0) {
 		/* Files a page's images name (§5r): from WHISKER_STATIC, or ./static,
 		   by a plain name -- no '/', no "..", nothing above the folder. */
-		const char *name = path + 8, *dir = getenv("WHISKER_STATIC");
+		const char *dir = getenv("WHISKER_STATIC");
+		char *name = path + 8, *qm = strchr(name, '?');
+		if (qm != 0) *qm = '\0';               /* the key's query is not the file's name (§5as) */
 		const char *type = strstr(name, ".svg") ? "image/svg+xml"
 		                 : strstr(name, ".png") ? "image/png"
 		                 : (strstr(name, ".jpg") || strstr(name, ".jpeg")) ? "image/jpeg"
@@ -665,7 +719,7 @@ static void respond(int i)
 			fclose(f);
 		}
 		drop(i);
-	} else if (strcmp(path, "/") == 0) {
+	} else if (strcmp(path, "/") == 0 || strncmp(path, "/?", 2) == 0) {   /* with its key (§5as) */
 		char h[160];
 		int n = snprintf(h, sizeof h, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n"
 		                 "Content-Length: %d\r\nConnection: close\r\n\r\n", (int)sizeof PAGE - 1);
@@ -805,6 +859,13 @@ static void service(int ms)
 			int rest, j;
 			if (nl == 0) { if (c->got >= (int)sizeof c->req - 1) drop(i); continue; }
 			snprintf(first, sizeof first, "%.*s", (int)(nl - c->req), c->req);
+			/* a screen that came to us says the key; a display this
+			   program dialled was its own choice (§5as) */
+			if (!c->dialled && !keyed(first)) {
+				send_str(c->fd, "E key\n");
+				drop(i);
+				continue;
+			}
 			cp = strstr(first, " caps=");
 			rest = c->got - (int)(nl + 1 - c->req);
 			memmove(c->req, nl + 1, (size_t)rest);
@@ -846,15 +907,41 @@ int wh_open(int w, int h, int scale, const char *title)
 		perror("whisker-web: bind");
 		return -1;
 	}
+	/* a key (§5as): WHISKER_KEY's, or -- listening beyond this machine --
+	   128 random bits; on loopback with none set, none, as before */
+	{
+		const char *k = getenv("WHISKER_KEY");
+		int ok = (k != NULL && *k != '\0' && strlen(k) < sizeof S.key);
+		for (const char *q = k; ok && *q != '\0'; q++)
+			if (!((*q >= '0' && *q <= '9') || (*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') ||
+			      *q == '-' || *q == '_')) ok = 0;
+		if (k != NULL && *k != '\0' && !ok) {
+			fprintf(stderr, "whisker-web: WHISKER_KEY is letters, digits, - and _, at most 67\n");
+			return -1;
+		}
+		if (ok) snprintf(S.key, sizeof S.key, "%s", k);
+		else if (a.sin_addr.s_addr != htonl(INADDR_LOOPBACK)) {
+			unsigned char r[16];
+			FILE *u = fopen("/dev/urandom", "rb");
+			if (u == NULL || fread(r, 1, sizeof r, u) != sizeof r) {
+				fprintf(stderr, "whisker-web: no random key, so not listening on the network\n");
+				if (u) fclose(u);
+				return -1;
+			}
+			fclose(u);
+			for (int j = 0; j < 16; j++) snprintf(S.key + 2 * j, 3, "%02x", r[j]);
+		}
+	}
 	{
 		char ip[32];
 		inet_ntop(AF_INET, &a.sin_addr, ip, sizeof ip);
-		fprintf(stderr, "whisker-web: %s, %dx%d, at http://%s:%d/%s\n", title ? title : "whisker", w, h,
-		        ip, port ? atoi(port) : 8090,
+		fprintf(stderr, "whisker-web: %s, %dx%d, at http://%s:%d/%s%s%s\n", title ? title : "whisker", w, h,
+		        ip, port ? atoi(port) : 8090, S.key[0] ? "?k=" : "", S.key,
 		        a.sin_addr.s_addr == htonl(INADDR_LOOPBACK) ? "  (this machine only: WHISKER_LISTEN=0.0.0.0 opens the network)" : "");
 	}
 	S.open = 1;
 	S.win[0].open = 1; S.win[0].w = w; S.win[0].h = h;   /* window 0, wh_open's (§5af) */
+	title_of(S.win[0].title, title);
 	{
 		/* a screen to dial as well (§5am): whisker-client --listen, here or
 		   through ssh -R; dialled at the first poll, again if it goes */
@@ -899,7 +986,7 @@ static void to_all(const char *m, int n)
    and on every page that comes later. */
 int wh_window(int w, int h, const char *title)
 {
-	char m[160], t[64];
+	char m[160];
 	int i, k = 0;
 	/* round from the last number given, so a number just closed is the
 	   last to be given again: a page's events and documents still on
@@ -909,15 +996,28 @@ int wh_window(int w, int h, const char *title)
 		if (!S.win[i].open) break;
 	}
 	if (k > 7 || w < 1 || h < 1 || w > 4096 || h > 4096) return -1;
-	k = 0;
 	S.wlast = i;
-	for (const char *q = title ? title : "whisker"; *q != '\0' && k < (int)sizeof t - 1; q++)
-		t[k++] = (*q == '\n' || *q == '\r') ? ' ' : *q;
-	t[k] = '\0';
 	S.win[i].open = 1; S.win[i].w = w; S.win[i].h = h;
-	memcpy(S.win[i].title, t, (size_t)k + 1);
-	to_all(m, snprintf(m, sizeof m, "data: O %d %d %d %s\n\n", i, w, h, t));
+	title_of(S.win[i].title, title);
+	to_all(m, snprintf(m, sizeof m, "data: O %d %d %d %s\n\n", i, w, h, S.win[i].title));
 	return i;
+}
+
+/* A window's title, changed, and to the front (§5as): to every screen, and
+   the title kept for one that joins later. */
+void wh_title(int win, const char *title)
+{
+	char m[96];
+	if (win < 0 || win >= 8 || !S.win[win].open) return;
+	title_of(S.win[win].title, title);
+	to_all(m, snprintf(m, sizeof m, "data: N %d %s\n\n", win, S.win[win].title));
+}
+
+void wh_raise(int win)
+{
+	char m[32];
+	if (win < 0 || win >= 8 || !S.win[win].open) return;
+	to_all(m, snprintf(m, sizeof m, "data: F %d\n\n", win));
 }
 
 void wh_window_close(int win)

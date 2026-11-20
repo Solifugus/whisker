@@ -327,6 +327,17 @@ static inline int wsk_chooser_open(wsk_chooser_t *ch, wsk_ui_t *ui, int kind, co
 	{
 		int e = wsk_ui_dialog(ui, ch->nb, w, h, y0, y1);
 		ch->open = (e == WSK_OK);           /* open only if its dialog is */
+		/* saving, the name has the keys at once and all of it is chosen,
+		   so typing replaces it -- as a desktop's save dialog does; found
+		   driving Save As over the wire, 2026-11-19 (§5as) */
+		if (ch->open && kind == WSK_CHOOSE_SAVE) {
+			r->focus = &ch->dlg[3];
+			ui->focus_in = 0; ui->focus_item = -1; ui->focus_b = 0;
+			wsk__focus_now(ui);                  /* as wsk_ui_dialog_close resolves it */
+#ifndef WSK_NO_TEXTSEL
+			nb->span = -nb->len;
+#endif
+		}
 		return e;
 	}
 }

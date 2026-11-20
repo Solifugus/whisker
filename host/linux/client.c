@@ -5,6 +5,10 @@
  *     whisker-client [host:]port [viewer]             dial a program
  *     whisker-client --ssh you@host [port] [viewer]   through SSH, nothing else
  *     whisker-client --listen [[host:]port]           wait for programs to dial
+ *     ... --key K                                     the program's key (§5as)
+ *     whisker-client --save NAME <any of the above>   keep the words as NAME
+ *     whisker-client NAME [more]                      connect as saved
+ *     whisker-client --places                         list what is saved
  *
  * The program serves its window with the browser host (host/web), which
  * speaks the wire (docs/wire.md); this is a screen for it that is not a
@@ -49,6 +53,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -71,7 +76,7 @@ typedef struct {
 } conn_t;
 
 static conn_t conn[CONNS];
-static char host[256] = "127.0.0.1", port[16] = "8090", viewer[64];
+static char host[256] = "127.0.0.1", port[16] = "8090", viewer[64], key[68];
 static int opened = 0, listening = 0, lfd = -1, script = 0;
 static volatile sig_atomic_t stop;
 static FILE *mlog;
@@ -94,7 +99,8 @@ static int write_all(int fd, const char *b, int n)
 static void hello(conn_t *c)
 {
 	char h[160];
-	int n = snprintf(h, sizeof h, "WHISKER 1%s%s caps=%d\n", viewer[0] ? " v=" : "", viewer, wh_caps());
+	int n = snprintf(h, sizeof h, "WHISKER 1%s%s caps=%d%s%s\n", viewer[0] ? " v=" : "", viewer, wh_caps(),
+	                 key[0] ? " k=" : "", key);       /* the program's key, if it has one (§5as) */
 	write_all(c->wfd, h, n);
 }
 
@@ -106,7 +112,7 @@ static conn_t *adopt(int rfd, int wfd, pid_t ssh)
 			if (c->b == NULL) c->b = (char *)malloc(BUF);
 			if (c->b == NULL) return NULL;
 			c->live = 1; c->rfd = rfd; c->wfd = wfd; c->ssh = ssh; c->len = 0; c->seat = -1;
-			for (int n = 0; n < 8; n++) { c->rwin[n] = -1; c->pend[n].w = 0; }
+			for (int n = 0; n < 8; n++) { c->rwin[n] = -1; c->pend[n].w = 0; c->pend[n].title[0] = '\0'; }
 			fcntl(rfd, F_SETFL, fcntl(rfd, F_GETFL) | O_NONBLOCK);
 			hello(c);
 			return c;
@@ -187,13 +193,16 @@ static void unesc(char *t)
 
 /* A program's window 0, here: in a client of one program the client's own
    window, opened at its size; listening, a window of its own. */
-static int main_window(int w, int h)
+static int main_window(conn_t *c, int w, int h)
 {
-	char title[300];
-	snprintf(title, sizeof title, "whisker -- %s", listening ? "a program" : host);
+	char title[340];
+	/* the program's own title, when it said one (§5as) */
+	if (c->pend[0].title[0]) snprintf(title, sizeof title, "whisker -- %s", c->pend[0].title);
+	else snprintf(title, sizeof title, "whisker -- %s", listening ? "a program" : host);
 	if (!listening) {
 		if (!opened) {
 			if (wh_open(w, h, 1, title) != 0) { stop = 1; return -1; }
+			fprintf(stderr, "whisker-client: window 0 titled \"%s\"\n", title);
 			opened = 1;
 		}
 		return 0;
@@ -227,6 +236,27 @@ static void message(conn_t *c, char *m)
 		}
 		return;
 	}
+	if (m[0] == 'N' && m[1] == ' ') {
+		/* a window's title (§5as): window 0's names this client's window;
+		   one not open here yet keeps it for when it is */
+		int n, at = 0;
+		if (sscanf(m + 2, "%d %n", &n, &at) == 1 && n >= 0 && n < 8) {
+			snprintf(c->pend[n].title, sizeof c->pend[n].title, "%s", m + 2 + at);
+			if (c->rwin[n] >= 0) {
+				char t[340];
+				if (n == 0) snprintf(t, sizeof t, "whisker -- %s", m + 2 + at);
+				else snprintf(t, sizeof t, "%s", m + 2 + at);
+				wh_title(c->rwin[n], t);
+				fprintf(stderr, "whisker-client: window %d titled \"%s\"\n", n, t);
+			}
+		}
+		return;
+	}
+	if (m[0] == 'F' && m[1] == ' ') {          /* to the front (§5as) */
+		int n = atoi(m + 2);
+		if (n >= 0 && n < 8 && c->rwin[n] >= 0) wh_raise(c->rwin[n]);
+		return;
+	}
 	if (m[0] == 'Q' && m[1] == ' ') {
 		int n = atoi(m + 2);
 		if (n > 0 && n < 8 && c->rwin[n] >= 0) { wh_window_close(c->rwin[n]); c->rwin[n] = -1; }
@@ -239,7 +269,7 @@ static void message(conn_t *c, char *m)
 		if (*p == 'w') { n = atoi(p + 1); p = strchr(p, ' '); if (p == NULL) return; p++; }
 		if (sscanf(p, "%d %d %d %d %n", &y0, &y1, &w, &h, &at) != 4 || n < 0 || n >= 8) return;
 		if (n == 0 && c->rwin[0] < 0) {
-			c->rwin[0] = main_window(w, h);
+			c->rwin[0] = main_window(c, w, h);
 			if (listening) lobby();
 			for (int k = 1; k < 8 && c->rwin[0] >= 0; k++)   /* the windows it had open already */
 				if (c->pend[k].w > 0 && c->rwin[k] < 0) {
@@ -323,17 +353,168 @@ static void lobby(void)
 	wsk_render(&lobt, &s, 4096);
 }
 
-int main(int argc, char **argv)
+/*
+ * Saved places (§5as): one line a place, "NAME word...", the words what
+ * was typed after the name -- in $XDG_CONFIG_HOME/whisker/places, else
+ * ~/.config/whisker/places, mode 0600 since a key may be among them.
+ */
+static int places_path(char *p, size_t cap, int make)
+{
+	const char *x = getenv("XDG_CONFIG_HOME"), *h = getenv("HOME");
+	int n;
+	if (x != NULL && *x != '\0') n = snprintf(p, cap, "%s/whisker", x);
+	else if (h != NULL && *h != '\0') n = snprintf(p, cap, "%s/.config/whisker", h);
+	else return -1;
+	if (n < 0 || (size_t)n + 8 >= cap) return -1;
+	if (make) {                               /* the folders, private */
+		char d[600];
+		snprintf(d, sizeof d, "%s", p);
+		for (char *q = d + 1; *q != '\0'; q++)
+			if (*q == '/') { *q = '\0'; mkdir(d, 0700); *q = '/'; }
+		mkdir(d, 0700);
+	}
+	strcat(p, "/places");
+	return 0;
+}
+
+/* A word that names a place: not an option, not a port, not host:port. */
+static int is_name(const char *w)
+{
+	int digits = 1;
+	if (w[0] == '\0' || w[0] == '-' || strchr(w, ':') != NULL) return 0;
+	for (const char *q = w; *q != '\0'; q++) {
+		if (*q < '0' || *q > '9') digits = 0;
+		if (!((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') || (*q >= '0' && *q <= '9') ||
+		      *q == '-' || *q == '_' || *q == '.')) return 0;
+	}
+	return !digits;
+}
+
+/* The words saved under `name`, into `words` -- `av` pointing into it --
+   and how many; -1 when there is no such place. */
+static int place_load(const char *name, char *words, size_t cap, char **av, int max)
+{
+	char path[640], line[1024];
+	FILE *f;
+	int n = -1;
+	if (places_path(path, sizeof path, 0) != 0 || (f = fopen(path, "r")) == NULL) return -1;
+	while (n < 0 && fgets(line, sizeof line, f) != NULL) {
+		char *t = strtok(line, " \t\n");
+		if (t == NULL || strcmp(t, name) != 0) continue;
+		n = 0;
+		words[0] = '\0';
+		for (size_t used = 0; (t = strtok(NULL, " \t\n")) != NULL && n < max; n++) {
+			size_t l = strlen(t) + 1;
+			if (used + l > cap) break;
+			memcpy(words + used, t, l);
+			av[n] = words + used;
+			used += l;
+		}
+	}
+	fclose(f);
+	return n;
+}
+
+/* Save `words` under `name`, replacing a place of that name: the list
+   written whole to a file beside it, then renamed over it. */
+static int place_save(const char *name, char **w, int n)
+{
+	char path[640], tmp[660], line[1024];
+	FILE *in, *out;
+	int fd;
+	for (int i = 0; i < n; i++)
+		if (strpbrk(w[i], " \t\n\r") != NULL || w[i][0] == '\0') {
+			fprintf(stderr, "whisker-client: \"%s\" has a space in it, and a saved place keeps words\n", w[i]);
+			return -1;
+		}
+	if (places_path(path, sizeof path, 1) != 0) { fprintf(stderr, "whisker-client: no HOME to save in\n"); return -1; }
+	snprintf(tmp, sizeof tmp, "%s.new", path);
+	if ((fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600)) < 0 || (out = fdopen(fd, "w")) == NULL) {
+		perror("whisker-client: places");
+		return -1;
+	}
+	if ((in = fopen(path, "r")) != NULL) {
+		while (fgets(line, sizeof line, in) != NULL) {
+			size_t l = strlen(name);
+			if (strncmp(line, name, l) == 0 && (line[l] == ' ' || line[l] == '\t' || line[l] == '\n')) continue;
+			fputs(line, out);
+		}
+		fclose(in);
+	}
+	fputs(name, out);
+	for (int i = 0; i < n; i++) { fputc(' ', out); fputs(w[i], out); }
+	fputc('\n', out);
+	if (fclose(out) != 0 || rename(tmp, path) != 0) { perror("whisker-client: places"); return -1; }
+	return 0;
+}
+
+int main(int argc0, char **argv0)
 {
 	const char *target = NULL;
-	int a = 1;
+	int a = 1, argc = 1;
+	char *argv[64], words[1024];
+	const char *save = NULL;
+
+	/* --places, --save NAME and --key K come out first; a saved name is
+	   replaced by its words (§5as) */
+	argv[0] = argv0[0];
+	for (int i = 1; i < argc0 && argc < 60; i++) {
+		if (strcmp(argv0[i], "--places") == 0) {
+			char path[640], line[1024];
+			FILE *f;
+			if (places_path(path, sizeof path, 0) != 0 || (f = fopen(path, "r")) == NULL) return 0;
+			while (fgets(line, sizeof line, f) != NULL) fputs(line, stdout);
+			fclose(f);
+			return 0;
+		}
+		if (strcmp(argv0[i], "--save") == 0 && i + 1 < argc0) {
+			save = argv0[++i];
+			if (!is_name(save)) { fprintf(stderr, "whisker-client: \"%s\" cannot name a place\n", save); return 2; }
+			continue;
+		}
+		if (strcmp(argv0[i], "--key") == 0 && i + 1 < argc0) {
+			argv[argc++] = argv0[i];
+			argv[argc++] = argv0[++i];
+			continue;
+		}
+		argv[argc++] = argv0[i];
+	}
+	if (save == NULL && argc >= 2 && is_name(argv[1])) {
+		char *av[60];
+		const char *name = argv[1];
+		int n = place_load(name, words, sizeof words, av, 58);
+		if (n < 0) { fprintf(stderr, "whisker-client: no saved place \"%s\" (--places lists them)\n", name); return 2; }
+		for (int i = 2; i < argc && n < 58; i++) av[n++] = argv[i];   /* anything after the name too */
+		for (int i = 0; i < n; i++) argv[1 + i] = av[i];
+		argc = 1 + n;
+	}
+	if (save != NULL) {
+		if (place_save(save, argv + 1, argc - 1) != 0) return 1;
+		fprintf(stderr, "whisker-client: saved as \"%s\"\n", save);
+	}
+	/* and the key itself, wherever it was */
+	{
+		const char *k = getenv("WHISKER_KEY");
+		int j = 1;
+		for (int i = 1; i < argc; i++) {
+			if (strcmp(argv[i], "--key") == 0 && i + 1 < argc) { k = argv[++i]; continue; }
+			argv[j++] = argv[i];
+		}
+		argc = j;
+		if (k != NULL) snprintf(key, sizeof key, "%s", k);
+		for (char *q = key; *q != '\0'; q++)
+			if (!((*q >= '0' && *q <= '9') || (*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') ||
+			      *q == '-' || *q == '_')) { fprintf(stderr, "whisker-client: a key is letters, digits, - and _\n"); return 2; }
+	}
 
 	if (argc > 1 && strcmp(argv[1], "--listen") == 0) { listening = 1; snprintf(port, sizeof port, "9100"); a = 2; }
 	else if (argc > 2 && strcmp(argv[1], "--ssh") == 0) { target = argv[2]; a = 3; }
 	if (!listening && target == NULL && argc < 2) {
 		fprintf(stderr, "usage: whisker-client [host:]port [viewer]\n"
 		                "       whisker-client --ssh you@host [port] [viewer]\n"
-		                "       whisker-client --listen [[host:]port]\n");
+		                "       whisker-client --listen [[host:]port]\n"
+		                "       --key K: the program's key; --save NAME: keep these words as NAME;\n"
+		                "       whisker-client NAME: connect as saved; --places: list them\n");
 		return 2;
 	}
 	if (argc > a) {

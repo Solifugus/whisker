@@ -88,7 +88,7 @@ try:
     c.request("GET", "/")
     r = c.getresponse()
     page = r.read().decode()
-    ok(r.status == 200 and "<canvas" in page and "EventSource('/events'" in page,
+    ok(r.status == 200 and "<canvas" in page and "EventSource(keyed('/events'" in page,
        "the page is served: a canvas, and a subscription to /events")
     # §5ak: whisker's icon, an inline SVG that parses
     import re as _re, urllib.parse as _up, xml.etree.ElementTree as _et
@@ -105,6 +105,9 @@ try:
 
     ev = Events()
     ok(b"text/event-stream" in ev.head, "/events is a Server-Sent Event stream")
+    title = ev.next()
+    ok(title is not None and title.startswith("data: N 0 "),
+       "on joining, window 0's title first (§5as): %s" % title)
     first = ev.next()
     ok(first is not None and first.startswith("data: 0 0 1024 600 <svg"),
        "a page that subscribes is sent the whole picture first: rows 0..0 (all), 1024x600")
@@ -193,6 +196,7 @@ try:
     post("K %d" % (ord("q") | 0x200))  # a chord nobody uses (Ctrl-Z undoes, §5v)
     time.sleep(0.3)
     second = Events()
+    second.next()                     # its title (§5as)
     replay = second.next()
     ok(replay is not None and replay.startswith("data: 0 0 "),
        "a page that subscribes late is sent the picture from the last full document")

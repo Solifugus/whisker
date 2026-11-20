@@ -318,6 +318,19 @@ void wh_window_close(int win)
 	if (S_cur == win) S_cur = 0;
 }
 
+/* A window's title, and to the front (§5as). */
+void wh_title(int win, const char *title)
+{
+	if (win >= 0 && win < WH_WINDOWS && SW[win].open && SW[win].win != NULL)
+		SDL_SetWindowTitle(SW[win].win, title ? title : "whisker");
+}
+
+void wh_raise(int win)
+{
+	if (win >= 0 && win < WH_WINDOWS && SW[win].open && SW[win].win != NULL)
+		SDL_RaiseWindow(SW[win].win);
+}
+
 /* The documents after this go to window `win` (§5af) -- or, if it is not
    open, nowhere: drawn into another window they would be wrong there. */
 void wh_on(int win)

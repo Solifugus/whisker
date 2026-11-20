@@ -5539,6 +5539,15 @@ int main(void)
 		r = wsk_chooser_feed(&ch, &ui, nt, wsk_feed(&ui, &ev, nt, 4, &y0, &y1), &y0, &y1);
 		ok(r == WSK_CHOSEN && strcmp(ch.path, "/home/me/new.bas2") == 0,
 		   "a tap in the name, a 2 typed, Enter: /home/me/new.bas2 -- a name that need not exist");
+		/* (§5as) the name has the keys from the start, all of it chosen */
+		wsk_chooser_open(&ch, &ui, WSK_CHOOSE_SAVE, 0, "/home/me", "new.bas", 0, 400, 300, &y0, &y1);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_TEXT; ev.text[0] = 'x';
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_ENTER; ev.text[0] = 0;
+		r = wsk_chooser_feed(&ch, &ui, nt, wsk_feed(&ui, &ev, nt, 4, &y0, &y1), &y0, &y1);
+		ok(r == WSK_CHOSEN && strcmp(ch.path, "/home/me/x") == 0,
+		   "Save as again, an x typed at once, Enter: /home/me/x -- the name had the keys, all of it chosen (5as)");
 
 		/* a folder */
 		wsk_chooser_open(&ch, &ui, WSK_CHOOSE_FOLDER, 0, "/home/me", 0, "*.bas", 400, 300, &y0, &y1);
