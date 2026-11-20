@@ -145,7 +145,7 @@ backend can hide:
 | | SDL (desktop) | browser |
 |---|---|---|
 | draws with | **RV-9's rasteriser**, compiled in from RV-9's tree (`raster.c`, `font.c`, `drv_svgwin.c`) | the page's canvas |
-| text | **ASCII only** (`wh_caps` claims `WSK_CAP_ENTITY` alone) — and one monospaced font | UTF-8, monospaced |
+| text | ~~ASCII only~~ **UTF-8 since 2026-11-20** (whisker design §5at): 3,042 characters past ASCII, a box for the rest (CJK, emoji) — one monospaced font | UTF-8, monospaced |
 | images | **none** | yes |
 | a document | **4,096 bytes**, so a big window is drawn in bands (`fit.h`) | no limit |
 | windows | real ones | panels in the page |

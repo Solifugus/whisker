@@ -3513,6 +3513,87 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5at. A desktop font beyond ASCII (2026-11-20), written with its prototype
+
+**Why.** The desktop window and `whisker-client` draw through RV-9's
+`drv_svgwin.c` (D23 makes it the desktop's rasteriser, built in), whose
+font is 95 ASCII glyphs. So the SDL host claimed no `WSK_CAP_UTF8`, and
+on the desktop **a label with é was refused** (`WSK_E_TEXT`), a memo drew
+every é as a marker (§5aj), and the code editor's title showed `?`.
+`ui-backend-gap.md` §6 lists it as the desktop's first difference from
+the browser. A gBASIC program with one French word could not open its
+window there.
+
+**Whose it is.** Drawing text is RV-9's code, so the change is **a
+request to RV-9** (`docs/rv9-request-font.md`) carrying a patch
+(`host/linux/rv9-font.patch`); until RV-9 takes it, the desktop build
+applies it to its own copy (`host/linux/run.sh`), and stops when RV-9's
+`font.h` names the switch itself. No byte of `whisker.h` changes:
+whisker has measured text in characters for a UTF-8 host since §5r.
+
+**Rules.**
+
+1. **Behind `RV9_FONT_WIDE`**, which only the desktop build defines: the
+   patched driver without it preprocesses to the original's tokens, so a
+   board is byte for byte what it was.
+2. **`<text>` is read as UTF-8, one cell a code point** — whisker's own
+   count under `WSK_CAP_UTF8`, so layout and the rasteriser agree on every
+   column.
+3. **The glyphs** are DejaVu Sans Mono, the console font's face, at its
+   size and baseline (RV-9's `mkfont.py`'s own sizing, repeated):
+   **3,042 characters** — Latin-1, Latin Extended A, B and Additional, IPA,
+   Greek, Cyrillic, punctuation, currency, arrows, maths, technical, box
+   drawing, blocks, shapes, dingbats. `tools/mkfontwide.py` writes
+   `host/linux/font_wide.c`: 304,200 bytes of glyphs, the console font's
+   layout, found by binary search, once a character.
+4. **Left out**, each because a cell cannot answer it: combining marks
+   (they draw over the character before, and whisker counts each a
+   column), format and control characters, private use, anything Unicode
+   calls wide (two columns — §5aj's width table, still not built), and
+   past U+FFFF.
+5. **A character the font lacks is a hollow box in its cell**; **a broken
+   byte is U+FFFD**, one cell a byte — so missing and broken look
+   different. whisker itself never sends broken UTF-8 (it refuses it); the
+   rule is for anything else writing to the driver.
+6. **Box drawing and blocks fill the whole cell**: drawn four times over
+   across the face's own advance (9.6 px at 16, not 10) and em, then
+   box-filtered down. The first version drew them as text and every line
+   was lighter at each seam between cells; a full block had a pale column.
+7. The SDL host claims `WSK_CAP_UTF8` when the driver defines
+   `RV9_FONT_UTF8`, so **`whisker-client` says `caps=17`** on the wire.
+
+**What a program sees.** Labels, buttons, fields and tabs with é, Ω or
+→ are drawn on the desktop instead of refused; a memo and the code editor
+draw such text instead of markers (control characters are still markers);
+a file's name with é is the editor's title. 日 and an emoji are drawn —
+as a box, one column.
+
+**Cost.** `whisker.h`: nothing, in any profile. The desktop binary:
+**+311,018 bytes** (`whisker-code`, 205,333 → 516,351 text: the table,
+its 6 KB of code points, ~700 bytes of code). A board: nothing.
+
+**Checks** (the Linux suite, 180 → 198). `host/linux/fonttest.c` draws
+through RV-9's driver built both ways: é an e with an accent in one cell,
+Ω Ж ▸ a cell each, ─ joined across cells, 日 a box, a stray byte and a cut
+sequence U+FFFD with the text after them unmoved, `text-anchor="middle"`
+by characters — **7 of them fail on the board's build** (the control),
+and **every ASCII character and entity draws the same pixels in both**.
+`selftest.c`: é typed through SDL's own text event goes into a field and
+the window draws it, and the same field with `caps = 0` is refused (the
+control). **Rebaselined on purpose**: `duplex.py`'s "the native client
+was sent a marker" — it is sent é now; the marker check moved to a screen
+on the wire that says `caps=16`.
+
+**Not this step**: two-column characters (CJK, emoji — a different font,
+~20,000 glyphs, and the width table first); combining marks; proportional
+faces (§9.2); a board's font (Latin-1 alone would be 9,500 bytes, today's
+ASCII font's size — not asked for, since nothing on the C5 types past
+ASCII).
+
+**By eye**: the code editor (`run.sh --code`) on a file with é, Greek and
+a box drawn in ─ — looked at in its own window's pixels, 2026-11-20; and
+`/tmp/whisker-host/font.ppm`, the test's picture.
+
 ## A fifth independent read, 2026-11-20 — cells to remote polish
 
 Three iterations since the fourth (§5aq–§5as). The same two-reader
@@ -4410,7 +4491,7 @@ pixels; whisker sends **what the window is** — a few kilobytes of SVG for
 a whole screen, a band for a change — and the browser, a phone or a
 native client draws it at its own resolution. Not better yet: no
 encryption, no compression, and a native client draws only what RV-9's
-rasteriser draws (ASCII, no images) until D23's font.
+rasteriser draws (no images; ASCII until §5at's font, 2026-11-20).
 
 1. **The wire, written down** (`docs/wire.md`): every message each way,
    as the browser host speaks it today — the contract both clients read
@@ -4674,7 +4755,7 @@ source only**:
 Not this step: **characters two columns wide** (CJK, emoji) and
 **combining marks** (zero) are drawn by the browser but counted one
 column each, so a caret after one drifts — a width table, step 3; and
-**a desktop font beyond ASCII**, with D23's rasteriser.
+**a desktop font beyond ASCII**, with D23's rasteriser (§5at, 2026-11-20).
 
 Done when: each of the measured characters checks and draws in a memo
 on a host without UTF-8 — a marker at its column, the text around it

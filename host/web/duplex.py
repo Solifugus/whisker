@@ -8,9 +8,9 @@ touched). Checked:
 
   - whisker-client --ssh: OpenSSH's own -W, no tunnel set up; its pixels the
     editor's own window's
-  - two screens on one document saying different things about what they
-    draw: the browser-like one sent the e-acute, the native one a marker --
-    and never the character
+  - screens on one document saying different things about what they draw:
+    the browser-like one and the native one (§5at) sent the e-acute, one
+    saying caps=16 a marker -- and never the character
   - a seat on its own connection takes input only from it: a POST naming it,
     with its very generation, is dropped (the control: its own line moves it)
   - WHISKER_DISPLAY: a program dials a --listen client through ssh -R; the
@@ -187,8 +187,21 @@ PermitTTY no
     marker = re.compile(rb'<rect x="\d+" y="\d+" width="\d+" height="9" fill="#')
     alog = text(a.log)
     ok(eacute in bbuf, "a browser-like screen, saying nothing of what it draws: sent the e-acute itself")
-    ok(eacute not in alog and marker.search(alog) is not None,
-       "the native client, which said caps=16: sent a marker for it, and never the character")
+    ok(eacute in alog,
+       "the native client, which draws past ASCII since §5at (caps=17): sent the e-acute too")
+    c = socket.create_connection(("127.0.0.1", ED_PORT))
+    c.sendall(b"WHISKER 1 v=plain caps=16\n")
+    c.settimeout(0.3)
+    cbuf = b""
+    end = time.time() + 4
+    while time.time() < end and b"</svg>" not in cbuf:
+        try:
+            cbuf += c.recv(65536)
+        except socket.timeout:
+            pass
+    ok(eacute not in cbuf and marker.search(cbuf) is not None,
+       "a screen on the wire saying caps=16, entities only: sent a marker for it, and never the character")
+    c.close()
     ok(b"WHISKER" not in bbuf and alog.count(b"\n") > 0, "each its own seat's documents, at once, from one editor")
     b.close()
 

@@ -34,6 +34,18 @@ mkdir -p "$OUT/stub"
 cp "$RV9/components/rv9_io/src"/{raster.c,raster.h,drv_svgwin.c,font.c,font.h} "$OUT/"
 cp -r "$RV9/tools/hosttest/stub/." "$OUT/stub/"
 [[ -n "$RV9_SNAP" ]] && rm -rf "$RV9_SNAP"         # copied: this script ends by exec
+# The desktop's font beyond ASCII (design §5at): RV-9's driver reads <text>
+# as UTF-8 and draws from font_wide.c when built with RV9_FONT_WIDE. Until
+# RV-9 takes rv9-font.patch (docs/rv9-request-font.md) it is applied to the
+# copy here; one that no longer applies leaves the window ASCII, as it was,
+# and --test fails on it.
+FONT=("$OUT/font.c")
+if grep -q RV9_FONT_WIDE "$OUT/font.h" || patch -s -d "$OUT" -p4 <"$HERE/rv9-font.patch" >/dev/null 2>&1; then
+	FONT=("$OUT/font.c" "$HERE/font_wide.c" -DRV9_FONT_WIDE)
+else
+	echo "run.sh: rv9-font.patch no longer applies to RV-9's driver -- the window draws ASCII only" >&2
+	[[ "${1:-}" == "--test" ]] && exit 1
+fi
 INC=(-I"$OUT/stub" -I"$OUT" -I"$HERE" -I"$HERE/../../src")
 
 if [[ "${1:-}" == "--test" ]]; then
@@ -41,7 +53,7 @@ if [[ "${1:-}" == "--test" ]]; then
 	# panel exits at once -- demo.c did, unnoticed, from 2026-10-24 to 11-15
 	for P in demo input edit code floor dock tabs form; do
 		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-$P" \
-			"$HERE/$P.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+			"$HERE/$P.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" \
 			"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 		A=(); [[ $P == code ]] && A=("$HERE/sample.bas")   # < > in it: RV-9 decodes them
 		set +e
@@ -89,7 +101,7 @@ if [[ "${1:-}" == "--test" ]]; then
 	# come back, two viewers
 	if command -v ssh >/dev/null && [[ -x /usr/sbin/sshd ]] && command -v python3 >/dev/null; then
 		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-client" \
-			"$HERE/client.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+			"$HERE/client.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" \
 			"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-code-web" \
 			"$HERE/code.c" "$HERE/../web/host_web.c" "${INC[@]}"
@@ -105,8 +117,26 @@ if [[ "${1:-}" == "--test" ]]; then
 	else
 		echo "      no ssh, sshd or python3: the remote check was skipped"
 	fi
+	# §5at: the desktop's font beyond ASCII, at the pixels -- built as the
+	# board builds RV-9's driver (whose wide checks must fail: the control)
+	# and as this window does, and ASCII drawn byte for byte the same by both
+	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/fonttest-board" "$HERE/fonttest.c" \
+		"$OUT/raster.c" "$OUT/font.c" -I"$OUT/stub" -I"$OUT"
+	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/fonttest" "$HERE/fonttest.c" \
+		"$OUT/raster.c" "${FONT[@]}" -I"$OUT/stub" -I"$OUT"
+	if "$OUT/fonttest-board" "$OUT/font-board.ppm" >"$OUT/fonttest-board.out" 2>&1; then
+		echo "FAIL  the board's build of RV-9's driver passed the wide font's checks: they test nothing"; exit 1
+	fi
+	n=$(grep -c '^FAIL' "$OUT/fonttest-board.out")
+	echo "ok    the board's build of RV-9's driver: $n of the wide font's checks fail there (the control)"
+	"$OUT/fonttest" "$OUT/font.ppm" | grep -v '^I ' || exit 1
+	"$OUT/fonttest-board" "$OUT/ascii-board.ppm" ascii >/dev/null 2>&1
+	"$OUT/fonttest" "$OUT/ascii.ppm" ascii >/dev/null 2>&1
+	if cmp -s "$OUT/ascii-board.ppm" "$OUT/ascii.ppm" && [[ -s "$OUT/ascii.ppm" ]]; then
+		echo "ok    every ASCII character and entity: the same pixels in both builds"
+	else echo "FAIL  ASCII draws differently with the wide font"; exit 1; fi
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/selftest" \
-		"$HERE/selftest.c" "$OUT/raster.c" "$OUT/font.c" \
+		"$HERE/selftest.c" "$OUT/raster.c" "${FONT[@]}" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec env SDL_VIDEODRIVER=dummy "$OUT/selftest"
 fi
@@ -114,35 +144,35 @@ fi
 if [[ "${1:-}" == "--edit" ]]; then
 	shift
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-edit" \
-		"$HERE/edit.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"$HERE/edit.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec "$OUT/whisker-edit" "$@"
 fi
 
 if [[ "${1:-}" == "--floor" ]]; then
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-floor" \
-		"$HERE/floor.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"$HERE/floor.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec "$OUT/whisker-floor"
 fi
 
 if [[ "${1:-}" == "--dock" ]]; then
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-dock" \
-		"$HERE/dock.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"$HERE/dock.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec "$OUT/whisker-dock"
 fi
 
 if [[ "${1:-}" == "--tabs" ]]; then
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-tabs" \
-		"$HERE/tabs.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"$HERE/tabs.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec "$OUT/whisker-tabs"
 fi
 
 if [[ "${1:-}" == "--form" ]]; then
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-form" \
-		"$HERE/form.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"$HERE/form.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec "$OUT/whisker-form"
 fi
@@ -150,7 +180,7 @@ fi
 if [[ "${1:-}" == "--client" ]]; then
 	shift
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-client" \
-		"$HERE/client.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"$HERE/client.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec "$OUT/whisker-client" "$@"
 fi
@@ -158,7 +188,7 @@ fi
 if [[ "${1:-}" == "--code" ]]; then
 	shift
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-code" \
-		"$HERE/code.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"$HERE/code.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec "$OUT/whisker-code" "${1:-$HERE/sample.bas}"
 fi
@@ -166,12 +196,12 @@ fi
 if [[ "${1:-}" == "--input" ]]; then
 	shift
 	${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-input" \
-		"$HERE/input.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+		"$HERE/input.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" \
 		"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 	exec "$OUT/whisker-input" "$@"
 fi
 
 ${CC:-gcc} -O2 -Wall -Wextra -o "$OUT/whisker-demo" \
-	"$HERE/demo.c" "$HERE/host_sdl.c" "$OUT/raster.c" "$OUT/font.c" \
+	"$HERE/demo.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" \
 	"${INC[@]}" $(pkg-config --cflags --libs sdl2)
 exec "$OUT/whisker-demo" "$@"

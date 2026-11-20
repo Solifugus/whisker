@@ -471,6 +471,21 @@ directly**.
   titles cut mid-character; a `places.new` kept 0644; long places lines
   split; CRLF hellos and long image names refused. 14 + 18 checks
   (`host/web/review5.py`).
+- **§5at — a desktop font beyond ASCII** (2026-11-20): the desktop
+  window and `whisker-client` draw **3,042 characters past ASCII** —
+  Latin, Greek, Cyrillic, punctuation, arrows, maths, box drawing — so
+  the SDL host claims `WSK_CAP_UTF8` (the client says `caps=17`). Drawing
+  text is RV-9's, so it is **a request to RV-9**
+  (`docs/rv9-request-font.md`): `host/linux/rv9-font.patch` reads
+  `<text>` as UTF-8 and looks glyphs up by code point, **all behind
+  `RV9_FONT_WIDE`** (a board compiles the same tokens); the table is
+  whisker's `tools/mkfontwide.py` → `host/linux/font_wide.c`, DejaVu
+  Sans Mono at the console font's size and baseline. The desktop build
+  **applies the patch to its copy until RV-9 takes it** — one that stops
+  applying fails `--test`. Missing (CJK, emoji): a box; a broken byte:
+  U+FFFD. No byte of `whisker.h`; +311 KB in a desktop binary.
+  `host/linux/fonttest.c` checks it built both ways (7 checks fail on
+  the board's build; ASCII identical in both).
 - **§5am — the wire on one stream** (2026-11-18): a connection opening
   `WHISKER 1 v=… caps=…` is a seat on that connection, lines both ways
   (`docs/wire.md` §8) — nothing else speaks for it, a POST with its very
@@ -612,7 +627,7 @@ twice; it needs over 11.7 KB). Design §9.4.
 `src/run.sh --module` is the whole of it: **1,454 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 180 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 198 — every demo program started, and the desktop's font at the pixels — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),

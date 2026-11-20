@@ -343,6 +343,61 @@ int main(void)
 		ok(poll_until(&ev, 20) != WH_QUIT, "q no longer quits: it is a letter now");
 	}
 
+	/* §5at: past ASCII, typed and drawn. The window claims UTF-8 since its
+	   font is wide, so a field takes an e-acute from SDL's own text event
+	   and the window draws it; told the host draws ASCII only, whisker
+	   refuses the same field (the control). */
+	{
+		static const wsk_widget_t F[] = {
+			{ .kind = WSK_FIELD, .id = "a", .sub = 0, .size = 40 },
+		};
+		static uint16_t acute[W * H];
+		char ab[16] = "";
+		wsk_buf_t buf[1];
+		wsk_tree_t t3;
+		wsk_ui_t ui;
+		wsk_note_t nt[2];
+		wsk_event_t we;
+		wh_event_t ev;
+		SDL_Event e;
+		wsk_sink_t s3;
+		int y0, y1, diff = 0;
+
+		memset(buf, 0, sizeof buf);
+		buf[0].b = ab; buf[0].cap = 16;
+		wsk_init(&t3, WSK_COL, W, H);
+		t3.item = F; t3.n = 1; t3.buf = buf; t3.bufs = 1;
+		t3.caps = (unsigned char)wh_caps();
+		ok((wh_caps() & WH_CAP_UTF8) && (int)WH_CAP_UTF8 == (int)WSK_CAP_UTF8,
+		   "the window claims UTF-8: its font reaches past ASCII (§5at)");
+		wsk_ui_init(&ui, &t3);
+		wsk_ui_focus(&ui, "a", &y0, &y1);
+		memset(&e, 0, sizeof e);
+		e.type = SDL_TEXTINPUT;
+		snprintf(e.text.text, sizeof e.text.text, "\xc3\xa9");
+		SDL_PushEvent(&e);
+		ok(poll_until(&ev, 20) == WH_TEXT && strcmp(ev.text, "\xc3\xa9") == 0,
+		   "\xc3\xa9 typed arrives from the host as WH_TEXT, both its bytes");
+		memset(&we, 0, sizeof we);
+		we.kind = WSK_EV_TEXT;
+		memcpy(we.text, ev.text, sizeof we.text);
+		wsk_feed(&ui, &we, nt, 2, &y0, &y1);
+		ok(strcmp(ab, "\xc3\xa9") == 0 && buf[0].caret == 2, "and goes into the field, the caret after it");
+
+		s3.put = to_window; s3.ctx = 0; s3.len = 0;
+		ok(wsk_render(&t3, &s3, 4096) > 0, "and the window draws it");
+		memcpy(acute, S.fb, sizeof acute);
+		t3.caps = 0;
+		ok(wsk_render(&t3, &s3, 4096) == WSK_E_TEXT,
+		   "CONTROL: told the host draws ASCII only, whisker refuses the same field (WSK_E_TEXT)");
+		t3.caps = (unsigned char)wh_caps();
+		ab[0] = 'e'; ab[1] = '\0'; buf[0].len = 1; buf[0].caret = 1;
+		wsk_render(&t3, &s3, 4096);
+		for (int i = 0; i < W * H; i++) diff += acute[i] != S.fb[i];
+		ok(diff > 0 && diff < 60, "drawn: \xc3\xa9 and e differ in a handful of pixels -- the accent");
+		printf("     \xc3\xa9 against e: %d pixels differ\n", diff);
+	}
+
 	/* §5s: a desktop's plumbing through the host -- right-click, chords,
 	   Shift where it means something, and the clipboard. */
 	{

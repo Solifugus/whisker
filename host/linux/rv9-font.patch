@@ -1,0 +1,110 @@
+diff --git a/components/rv9_io/src/drv_svgwin.c b/components/rv9_io/src/drv_svgwin.c
+index b94a37c..783eaa6 100644
+--- a/components/rv9_io/src/drv_svgwin.c
++++ b/components/rv9_io/src/drv_svgwin.c
+@@ -1005,6 +1005,28 @@ static int text_char(const char *s, size_t n, size_t *used)
+         if (n >= 4 && memcmp(s, "&gt;", 4) == 0)  { *used = 4; return '>'; }
+         if (n >= 5 && memcmp(s, "&amp;", 5) == 0) { *used = 5; return '&'; }
+     }
++#ifdef RV9_FONT_UTF8
++    /* UTF-8: one character of two, three or four bytes. Anything that is
++       not a whole, shortest, valid sequence is one byte, drawn as U+FFFD,
++       the replacement character -- so a broken byte and a character the
++       font lacks (a box) look different. */
++    unsigned char c0 = (unsigned char)s[0];
++    if (c0 >= 0x80) {
++        size_t len = c0 > 0xF4 ? 0 : c0 >= 0xF0 ? 4 : c0 >= 0xE0 ? 3 : c0 >= 0xC0 ? 2 : 0;
++        unsigned cp = len == 4 ? c0 & 0x07u : len == 3 ? c0 & 0x0Fu : c0 & 0x1Fu;
++        size_t k = 1;
++        for (; len && k < len && k < n && ((unsigned char)s[k] & 0xC0) == 0x80; k++)
++            cp = (cp << 6) | ((unsigned char)s[k] & 0x3Fu);
++        static const unsigned least[5] = { 0, 0, 0x80, 0x800, 0x10000 };
++        if (len == 0 || k != len || cp < least[len] || cp > 0x10FFFF
++            || (cp >= 0xD800 && cp <= 0xDFFF)) {
++            *used = 1;
++            return 0xFFFD;
++        }
++        *used = len;
++        return (int)cp;
++    }
++#endif
+     *used = 1;
+     return (unsigned char)s[0];
+ }
+@@ -1049,6 +1071,9 @@ static void do_text(rband_t *b, const char *t, const char *te,
+     for (size_t i = 0, c = 0; i < n; i += used, c++) {
+         int ch = text_char(str + i, n - i, &used);
+         if (ch == '\n' || ch == '\t') ch = ' ';
++#ifdef RV9_FONT_UTF8
++        int wide = ch > RV9_FONT_LAST ? rv9_glyph_wide((unsigned)ch) : -1;
++#endif
+ 
+         int32_t cx = x + (int32_t)c * w;
+ 
+@@ -1071,7 +1096,11 @@ static void do_text(rband_t *b, const char *t, const char *te,
+                         int32_t sx = ((int32_t)pxi << 8)
+                                      + (256 * (2 * l + 1)) / 6 - cx;
+                         int gx = (int)(((int64_t)sx * RV9_GLYPH_W) / w);
++#ifdef RV9_FONT_UTF8
++                        sum += rv9_glyph_cov_cp((unsigned)ch, wide, gx, gy);
++#else
+                         sum += rv9_glyph_cov(ch, gx, gy);
++#endif
+                     }
+                 }
+ 
+diff --git a/components/rv9_io/src/font.h b/components/rv9_io/src/font.h
+index 0d3355c..b7db52b 100644
+--- a/components/rv9_io/src/font.h
++++ b/components/rv9_io/src/font.h
+@@ -42,3 +42,50 @@ static inline int rv9_glyph_cov(int ch, int gx, int gy)
+     unsigned char b = rv9_font[ch - RV9_FONT_FIRST][gy][gx >> 1];
+     return (gx & 1) ? (b & 0x0F) : (b >> 4);
+ }
++
++/*
++ * Beyond ASCII, for a build that asks (RV9_FONT_WIDE): a second table of
++ * glyphs in the same cell and layout, found by code point, and <text> read
++ * as UTF-8. The desktop host defines it (whisker, design §5at); a board does
++ * not, and draws byte for byte what it did -- the table is ~300 KB.
++ *
++ * A character neither table has draws as a box the cell's size, so text
++ * that is there is never silently missing.
++ */
++#ifdef RV9_FONT_WIDE
++#define RV9_FONT_UTF8 1
++
++extern const unsigned short rv9_font_wide_n;
++extern const unsigned short rv9_font_wide_cp[];        /* sorted */
++extern const unsigned char  rv9_font_wide[][RV9_GLYPH_H * RV9_GLYPH_STRIDE];
++
++/* Glyph i of the wide table for code point cp, or -1. */
++static inline int rv9_glyph_wide(unsigned cp)
++{
++    int lo = 0, hi = (int)rv9_font_wide_n - 1;
++    while (lo <= hi) {
++        int mid = (lo + hi) >> 1;
++        unsigned c = rv9_font_wide_cp[mid];
++        if (c == cp) return mid;
++        if (c < cp) lo = mid + 1; else hi = mid - 1;
++    }
++    return -1;
++}
++
++/* Coverage of one pixel of the glyph for any code point: ASCII from the
++   console font, the rest from the wide table, and a box for what neither
++   has -- an outline inset a pixel, from the x-height's top to the
++   baseline's foot. `wide` is rv9_glyph_wide(cp), looked up once a
++   character rather than nine times a pixel. */
++static inline int rv9_glyph_cov_cp(unsigned cp, int wide, int gx, int gy)
++{
++    if (cp <= RV9_FONT_LAST) return rv9_glyph_cov((int)cp, gx, gy);
++    if (gx < 0 || gx >= RV9_GLYPH_W || gy < 0 || gy >= RV9_GLYPH_H) return 0;
++    if (wide >= 0) {
++        unsigned char b = rv9_font_wide[wide][gy * RV9_GLYPH_STRIDE + (gx >> 1)];
++        return (gx & 1) ? (b & 0x0F) : (b >> 4);
++    }
++    if (gy < 4 || gy > 16 || gx < 1 || gx > 8) return 0;
++    return (gy == 4 || gy == 16 || gx == 1 || gx == 8) ? 15 : 0;
++}
++#endif

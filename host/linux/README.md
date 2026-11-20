@@ -33,6 +33,13 @@ presented, never when it is rasterised, and nearest-neighbour rather than
 smooth — a magnified device pixel should look like a device pixel, or the host
 flatters the picture the board will really draw. Input is divided back down.
 
+The second is text past ASCII (design §5at). The board's font is ASCII; this
+window's is that font plus 3,042 characters more (`font_wide.c`, from
+`tools/mkfontwide.py`), read as UTF-8 by a patch to RV-9's driver
+(`rv9-font.patch`, asked of RV-9 in `docs/rv9-request-font.md`) that
+`run.sh` applies to its copy. For ASCII the pixels are the board's, every
+one — `fonttest.c` compares them.
+
 ## Four operations, the same four `/w0` offers
 
 ```c

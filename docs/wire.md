@@ -36,7 +36,9 @@ Plain **HTTP/1.1 over TCP**. The program listens; screens connect.
 - **What a screen draws** it says itself (§5am): `caps=` in a duplex
   connection's first line (§8), `?c=` on a stream — the `WH_CAP_*` bits:
   1 UTF-8, 2 images, 4 clip paths, 8 opacity, 16 entities. A screen that
-  says nothing is taken for a browser (1|2|4|16). The program asks
+  says nothing is taken for a browser (1|2|4|16); `whisker-client` says
+  17 — UTF-8 and entities — since its font reached past ASCII (whisker
+  design §5at), 16 before. The program asks
   `wh_seat_caps(seat)` for one screen and `wh_caps()` for what every
   screen here draws. `WHISKER_CAPS`, if set, is a ceiling over all of
   them.
