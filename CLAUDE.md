@@ -444,6 +444,8 @@ directly**.
   `wsk_over_rows` spans every level. 1,496 bytes default
   (`WSK_NO_SUBMENU`, in `WSK_PANEL`; panel +96, minimal +40 from the
   shared closing helper). `form.c` has a menu bar with a submenu.
+  **Matthew, 2026-11-19, of the form with its cells and menus: "works
+  pretty nicely."**
 - **§5am — the wire on one stream** (2026-11-18): a connection opening
   `WHISKER 1 v=… caps=…` is a seat on that connection, lines both ways
   (`docs/wire.md` §8) — nothing else speaks for it, a POST with its very
