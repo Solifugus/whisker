@@ -26,6 +26,9 @@ cd "$HERE"
 echo "-- 1..6  the suite"
 ${CC:-gcc} -O1 -Wall -Wextra -Werror -o /tmp/wsk_test test.c
 /tmp/wsk_test
+# §5au: the chooser as Windows builds it, a drive's root a top
+${CC:-gcc} -O1 -Wall -Wextra -Werror -o /tmp/wsk_drives drives.c
+/tmp/wsk_drives
 
 echo
 echo "-- 1  the document parses, by something that is not us"

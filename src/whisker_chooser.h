@@ -154,6 +154,19 @@ static inline int wsk__ch_admits(const char *f, const char *name)
 	return !any;
 }
 
+/* How long a path's top is: "/" 1; on Windows (or with WSK_CH_DRIVES) a
+   drive's, "C:/", 3 (§5au); 0 for a path from here. On Linux "C:/x" is a
+   folder named "C:", so the drive is Windows' only. */
+static inline int wsk__ch_top(const char *p)
+{
+	if (p[0] == '/') return 1;
+#if defined(_WIN32) || defined(WSK_CH_DRIVES)
+	if (((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':' && p[2] == '/')
+		return 3;
+#endif
+	return 0;
+}
+
 /* Folder and name joined: "/" and "a" make "/a", "/x" and "a" "/x/a"; a
    name that is a path from the top already is itself. 0, or -1 if it would
    not fit -- never a path cut short, which would name another file (found
@@ -161,7 +174,7 @@ static inline int wsk__ch_admits(const char *f, const char *name)
 static inline int wsk__ch_join(char *out, const char *folder, const char *name)
 {
 	int k = 0;
-	if (name[0] == '/') {
+	if (wsk__ch_top(name) > 0) {
 		if (wsk__ch_len(name) >= WSK_CH_PATH) return -1;
 		wsk__ch_cpy(out, name, WSK_CH_PATH);
 		return 0;
@@ -376,16 +389,17 @@ static inline void wsk__ch_go(wsk_chooser_t *ch, const char *to, int *y0, int *y
 	(void)wsk_over_rows(ch->root, y0, y1);
 }
 
-/* The folder above this one: "/a/b" is "/a", "/a" is "/"; a relative one,
+/* The folder above this one: "/a/b" is "/a", "/a" is "/", and on Windows
+   "C:/a" is "C:/" and "C:/" itself; a relative one,
    "proj/src" is "proj", "proj" is ".", "." is ".." -- never the top (found
    by review: a program with no absolute path started at "."). */
 static inline void wsk__ch_up(wsk_chooser_t *ch, int *y0, int *y1)
 {
 	char to[WSK_CH_PATH];
-	int k, rel = (ch->folder[0] != '/');
+	int k, top = wsk__ch_top(ch->folder), rel = (top == 0);
 	wsk__ch_cpy(to, ch->folder, WSK_CH_PATH);
 	k = wsk__ch_len(to);
-	while (k > 1 && to[k - 1] == '/') to[--k] = '\0';
+	while (k > (top ? top : 1) && to[k - 1] == '/') to[--k] = '\0';
 	if (rel) {
 		int dots = (k == 1 && to[0] == '.') || (k >= 2 && to[k - 1] == '.' && to[k - 2] == '.' &&
 		                                        (k == 2 || to[k - 3] == '/'));
@@ -398,8 +412,8 @@ static inline void wsk__ch_up(wsk_chooser_t *ch, int *y0, int *y1)
 			if (k == 0) { to[0] = '.'; to[1] = '\0'; } else to[k - 1] = '\0';
 		}
 	} else {
-		while (k > 0 && to[k - 1] != '/') k--;
-		if (k <= 1) { to[0] = '/'; to[1] = '\0'; } else to[k - 1] = '\0';
+		while (k > top && to[k - 1] != '/') k--;
+		if (k <= top) to[top] = '\0'; else to[k - 1] = '\0';   /* the top: "/", "C:/" */
 	}
 	wsk__ch_go(ch, to, y0, y1);
 }

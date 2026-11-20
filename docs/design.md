@@ -3513,6 +3513,120 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5au. Windows and macOS — the desktop window first (2026-11-20), written before its code
+
+**Why.** D16's desktop toolkit is for gBASIC programs, and a gBASIC
+program's users are on Windows and macOS as often as Linux. D23 says
+the desktop host is built into the program; this step is that host on
+the other two.
+
+**Measured first** (cross-compiled with MinGW-w64 and SDL 2.30.9's own
+MinGW release): every window program (`demo`, `input`, `edit`,
+`floor`, `dock`, `tabs`, `form`, `code`) fails on Windows for **two
+calls in `host_sdl.c`** — `setenv` (X11's window class) and `SIGUSR1` (a
+test's snapshot) — one in RV-9's host stub (`clock_gettime`, which
+MinGW's winpthread has), and the code editor for `realpath` and
+`fsync`. `whisker.h` and RV-9's rasteriser compile
+as they are. `whisker-client` and the browser host need **sockets**
+(Winsock), and `--ssh` a child process with pipes: a step of their own.
+
+**Steps.**
+
+1. **The window programs** on Windows and macOS (this step).
+2. **Sockets**: the browser host and `whisker-client` on Winsock.
+3. **`--ssh` on Windows** (its own OpenSSH, `CreateProcess` with pipes);
+   saved places in `%APPDATA%`.
+4. Later, each its own question: a `.app` bundle and an `.exe`'s
+   Explorer icon; **high DPI** (Retina, Windows at 150 %) — whisker's
+   units are pixels, so a sharp window means drawing at the device's
+   scale, which is a layout question before it is a host one.
+
+**Rules for step 1.**
+
+1. **One header of shims**, `host/linux/port.h` (the directory keeps
+   its name; it is the SDL host's): `wh_ms` from `SDL_GetTicks64` on
+   every platform (it already was); the window class set only where
+   there is X11 to read it; the snapshot signal only where there is a
+   `SIGUSR1`. For the editor: a full path (`realpath`,
+   `_fullpath` with `\` turned to `/`), a flush to disk (`fsync`,
+   `_commit`), and **replace-on-save** (`rename`; on Windows
+   `MoveFileEx(…, MOVEFILE_REPLACE_EXISTING)`, since its `rename`
+   refuses an existing name and a save would fail every time after the
+   first).
+2. **File names are UTF-8 on Windows too**: the program carries a
+   manifest with `activeCodePage` UTF-8 (Windows 10 1903 and later), so
+   `fopen` and the lister take the same bytes the chooser shows. An
+   older Windows sees its own code page — said, not worked around.
+3. **A drive's root is a root.** The chooser (`whisker_chooser.h`)
+   knows `/` as the top; `C:/` is one too — up from it stays, a name
+   joins after its slash, and a path starting `C:/` is not relative.
+   Portable code in a portable header, so the main suite checks it on
+   Linux. Listing the drives is not this step.
+4. **Files open binary** everywhere they already say `rb`/`wb` (they
+   do: `textfile.h` keeps line endings itself, §5aj; checked, not
+   assumed, because a Windows text-mode `fopen` would turn every CRLF
+   file into LF behind its back).
+5. **macOS: Cmd is Ctrl.** whisker's chords say `WSK_MOD_CTRL`; on
+   macOS the host sets it for **Cmd** (Cmd-S saves, Cmd-C copies), and
+   Ctrl as well. **Option types**: the text filter that drops text with
+   Alt held (Alt-x is a chord on Linux) does not apply there, since
+   Option-e then e is how a Mac types é.
+6. **One file on Windows** (D23): SDL linked statically, and libgcc;
+   the `.exe` needs nothing beside it. macOS links the SDL it is given
+   (Homebrew's), as Linux does — static there is a bundle's question.
+
+**Checks.** What can fail here, and the controls:
+
+- The Linux suite **cross-builds every window program for Windows**
+  under `-Werror` when MinGW-w64 and SDL's MinGW release are present
+  (`tools/sdl-cross.sh` fetches the release, pinned by SHA-256, into
+  `~/.cache/whisker`), and says so when they are not.
+- Each `.exe` **imports no `SDL2.dll`** (control: the same program
+  linked against the import library does) and carries the manifest's
+  UTF-8.
+- **macOS: compiled, not linked** — `zig cc -target aarch64-macos`
+  against SDL's own headers, `-Werror`, when zig is present.
+- The chooser's drive roots in `src/test.c`, with `/` as before as the
+  control.
+- **Run under Wine** — `selftest.exe` with SDL's dummy driver — when a
+  `wine` is on the path. There is none on this machine; **running is
+  Matthew's to see** on a Windows and a Mac, or Wine's once installed.
+
+**Not this step**: steps 2–4; a Windows or macOS build of RV-9's
+patch-applying `run.sh` itself (the build script stays bash — a
+Windows build is made from Linux or WSL, a Mac's on the Mac).
+
+**What step 1 came to** (2026-11-20): as written, and four things the
+writing did not know.
+
+- **`SDL_MAIN_HANDLED`**: SDL on Windows renames a program's `main` to
+  `SDL_main` and supplies its own — but only in a file that includes
+  SDL's header, which whisker's programs do not (only `host_sdl.c`
+  does). So the host defines `SDL_MAIN_HANDLED` and calls
+  `SDL_SetMainReady()`: every program keeps its own `main`, and MinGW
+  starts it even as a GUI (`-mwindows`) program.
+- **One `.exe` is ~3.9 MB** (`-s`): SDL, the rasteriser, the wide font
+  (300 KB) and the program, importing only Windows' own DLLs.
+- **A drive in the chooser is Windows' only** (`_WIN32`, or
+  `WSK_CH_DRIVES` for a test): on Linux `C:/x` is a folder named `C:`,
+  and treating it as a top would be a bug there. So the checks are a
+  file of their own, `src/drives.c` (9, four failing on the chooser
+  before), and `test.c` holds the Linux side as the control.
+- **`objdump | grep -q` under `pipefail` reads a match as none** — the
+  same SIGPIPE coin toss §5aq found in the stack tool. The checks hold
+  a tool's output before searching it.
+
+**Checks**: the main suite gains `drives.c` (9) and one control in
+`test.c`; the Linux suite gains five (198 → 203): eight programs build
+for Windows under `-Werror`; `whisker-code.exe` imports no `SDL2.dll`
+(a build without `-static` does); it carries the UTF-8 manifest (one
+built without does not); ten files compile for Apple silicon and Intel
+Macs under `-Werror`; Cmd is Ctrl in the Mac's preprocessed host and
+not in Linux's. **Not run**: no Wine and no Mac here. **Unverified**:
+that the old `msvcrt.dll` MinGW links against honours the manifest's
+UTF-8 in `fopen` (the newer UCRT certainly does) — a file named
+`café.bas`, opened on Windows, will say.
+
 ## 5at. A desktop font beyond ASCII (2026-11-20), written with its prototype
 
 **Why.** The desktop window and `whisker-client` draw through RV-9's

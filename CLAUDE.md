@@ -471,6 +471,20 @@ directly**.
   titles cut mid-character; a `places.new` kept 0644; long places lines
   split; CRLF hellos and long image names refused. 14 + 18 checks
   (`host/web/review5.py`).
+- **§5au — Windows and macOS, step 1: the window programs**
+  (2026-11-20). `host/linux` is the SDL host's directory wherever it
+  runs. `port.h` (full path, sync, **replace-on-save** — Windows'
+  `rename` refuses an existing name), `SDL_MAIN_HANDLED` (programs keep
+  their `main`), a **manifest making file names UTF-8**
+  (`host/linux/win/`), **a drive's root a top in the chooser** on
+  Windows only (`src/drives.c`; on Linux `C:/x` is a folder), and on
+  macOS **Cmd is Ctrl and Option types**. The Linux suite **cross-builds
+  every window program for Windows** (MinGW-w64, SDL's own release
+  fetched pinned by `tools/sdl-cross.sh`; one ~3.9 MB `.exe`, no
+  `SDL2.dll`) and **compiles them for both Macs** with `zig cc` — built,
+  not run: no Wine, no Mac here. Steps 2–4: Winsock for the client and
+  the browser host, `--ssh` on Windows, bundles and high DPI.
+  **Hold a tool's output before `grep -q`** under `pipefail`.
 - **§5at — a desktop font beyond ASCII** (2026-11-20): the desktop
   window and `whisker-client` draw **3,042 characters past ASCII** —
   Latin, Greek, Cyrillic, punctuation, arrows, maths, box drawing — so
@@ -626,10 +640,10 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,454 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,464 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 198 — every demo program started, and the desktop's font at the pixels — including the
+looking at the pictures. `host/linux/run.sh --test` adds 203 — every demo program started, built for Windows and compiled for macOS, and the desktop's font at the pixels — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),

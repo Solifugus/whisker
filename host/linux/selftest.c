@@ -91,7 +91,9 @@ int main(void)
 	int y0, y1, painted = 0, outside = 0, inside = 0;
 
 	SDL_SetHint(SDL_HINT_VIDEODRIVER, "dummy");
+#ifndef _WIN32
 	setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
 
 	ok(wh_open(W, H, SCALE, "selftest") == 0, "the window opens");
 	{

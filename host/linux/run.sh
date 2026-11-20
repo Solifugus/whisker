@@ -117,6 +117,68 @@ if [[ "${1:-}" == "--test" ]]; then
 	else
 		echo "      no ssh, sshd or python3: the remote check was skipped"
 	fi
+	# §5au: Windows and macOS. Windows: every window program cross-built,
+	# one .exe each with SDL inside (the control: linked without -static it
+	# needs SDL2.dll) and the manifest that makes file names UTF-8; run
+	# under Wine when there is one. macOS: compiled for both kinds of Mac,
+	# not linked (no SDK here), and Cmd made Ctrl only there.
+	ROOT="$HERE/../.."
+	if command -v x86_64-w64-mingw32-gcc >/dev/null && SDLW="$("$ROOT/tools/sdl-cross.sh" windows 2>/dev/null)"; then
+		WOUT="$OUT/windows"; mkdir -p "$WOUT"
+		WLIBS=(-L"$SDLW/lib" -lSDL2 -lm -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32
+		       -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -ldinput8 -lpthread)
+		WINC=(-I"$OUT/stub" -I"$OUT" -I"$HERE" -I"$ROOT/src" -I"$SDLW/include")
+		x86_64-w64-mingw32-windres -I "$HERE/win" "$HERE/win/whisker.rc" -O coff -o "$WOUT/res.o"
+		for P in demo input edit floor dock tabs form code; do
+			x86_64-w64-mingw32-gcc -O2 -s -Wall -Wextra -Werror -static -mwindows -o "$WOUT/whisker-$P.exe" \
+				"$HERE/$P.c" "$HERE/host_sdl.c" "$OUT/raster.c" "${FONT[@]}" "$WOUT/res.o" "${WINC[@]}" "${WLIBS[@]}" \
+				|| { echo "FAIL  $P.c does not build for Windows"; exit 1; }
+		done
+		echo "ok    every window program builds for Windows (MinGW-w64, SDL's own 2.30.9 release), under -Werror"
+		# objdump's output held first: grep -q stopping early would SIGPIPE it,
+		# and under pipefail a match would read as none (§5aq's lesson)
+		IMP="$(x86_64-w64-mingw32-objdump -p "$WOUT/whisker-code.exe")"
+		if grep -qi 'DLL Name: SDL2' <<<"$IMP"; then
+			echo "FAIL  whisker-code.exe needs SDL2.dll beside it"; exit 1; fi
+		x86_64-w64-mingw32-gcc -O2 -mwindows -o "$WOUT/dynamic.exe" "$HERE/demo.c" "$HERE/host_sdl.c" "$OUT/raster.c" \
+			"${FONT[@]}" "${WINC[@]}" -L"$SDLW/lib" -lSDL2 -lpthread
+		IMP="$(x86_64-w64-mingw32-objdump -p "$WOUT/dynamic.exe")"
+		if grep -qi 'DLL Name: SDL2' <<<"$IMP"; then
+			echo "ok    and each is one file: whisker-code.exe imports only Windows' own DLLs (the control: linked without -static, SDL2.dll)"
+		else echo "FAIL  the control: a dynamic build should import SDL2.dll"; exit 1; fi
+		if grep -aq 'activeCodePage.*UTF-8' "$WOUT/whisker-code.exe" && ! grep -aq activeCodePage "$WOUT/dynamic.exe"; then
+			echo "ok    and carries the manifest: file names in UTF-8 (the control: one built without it does not)"
+		else echo "FAIL  the UTF-8 manifest is not in whisker-code.exe"; exit 1; fi
+		x86_64-w64-mingw32-gcc -O2 -Wall -Wextra -Werror -static -mconsole -o "$WOUT/selftest.exe" "$HERE/selftest.c" \
+			"$OUT/raster.c" "${FONT[@]}" "$WOUT/res.o" "${WINC[@]}" "${WLIBS[@]}"
+		if command -v wine >/dev/null; then
+			if SDL_VIDEODRIVER=dummy WINEDEBUG=-all wine "$WOUT/selftest.exe" >"$WOUT/selftest.out" 2>&1; then
+				echo "ok    selftest.exe passes under Wine ($(grep -c '^ok' "$WOUT/selftest.out") checks)"
+			else echo "FAIL  selftest.exe under Wine:"; grep FAIL "$WOUT/selftest.out" | head; exit 1; fi
+		else
+			echo "      no wine: the Windows programs were built, not run"
+		fi
+	else
+		echo "      no MinGW-w64, or SDL's MinGW release could not be had: Windows not built"
+	fi
+	if command -v zig >/dev/null && MH="$("$ROOT/tools/sdl-cross.sh" mac 2>/dev/null)"; then
+		for TG in aarch64-macos x86_64-macos; do
+			for F in demo input edit floor dock tabs form code client host_sdl; do
+				zig cc -target $TG -c -o "$OUT/mac-$F.o" -O2 -Wall -Wextra -Werror -DRV9_FONT_WIDE \
+					-I"$OUT/stub" -I"$OUT" -I"$HERE" -I"$ROOT/src" -I"$MH" "$HERE/$F.c" \
+					|| { echo "FAIL  $F.c does not compile for $TG"; exit 1; }
+			done
+		done
+		echo "ok    every window program and the client compile for macOS, Apple silicon and Intel, under -Werror (not linked: no SDK here)"
+		MACI="$(zig cc -target aarch64-macos -E -I"$OUT/stub" -I"$OUT" -I"$HERE" -I"$ROOT/src" -I"$MH" "$HERE/host_sdl.c" 2>/dev/null)"
+		LINI="$(${CC:-gcc} -E -I"$OUT/stub" -I"$OUT" -I"$HERE" -I"$ROOT/src" $(pkg-config --cflags sdl2) "$HERE/host_sdl.c")"
+		if grep -q 'KMOD_CTRL | KMOD_GUI' <<<"$MACI" && ! grep -q 'KMOD_CTRL | KMOD_GUI' <<<"$LINI"; then
+			echo "ok    on macOS Cmd makes a chord as Ctrl does (the control: not on Linux)"
+		else echo "FAIL  Cmd is not Ctrl on macOS, or is on Linux"; exit 1; fi
+	else
+		echo "      no zig, or SDL's headers could not be had: macOS not compiled"
+	fi
+
 	# §5at: the desktop's font beyond ASCII, at the pixels -- built as the
 	# board builds RV-9's driver (whose wide checks must fail: the control)
 	# and as this window does, and ASCII drawn byte for byte the same by both

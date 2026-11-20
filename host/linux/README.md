@@ -52,6 +52,22 @@ wh_poll(&event)               /* a point, press or release */
 No widget lives on this side of the seam, and that is the whole discipline. The
 moment this file needs a button of its own, it has stopped being a host.
 
+## Windows and macOS (design §5au)
+
+The directory is `host/linux` for history; the host is SDL's, and runs
+wherever SDL does.
+
+- **Windows**, built from Linux: `./run.sh --test` cross-builds every window
+  program with MinGW-w64 and SDL's own MinGW release (fetched once, pinned,
+  by `tools/sdl-cross.sh windows`) into `/tmp/whisker-host/windows/` —
+  `whisker-code.exe`, `whisker-form.exe` and the rest, each one file with
+  SDL inside. Copy one to Windows 10 (1903 or later) and run it.
+- **macOS**, built on the Mac: `brew install sdl2 pkg-config`, whisker and
+  RV-9 checked out side by side (or `RV9=` naming RV-9), then `./run.sh
+  --code` as here. Cmd is Ctrl (Cmd-S saves); Option types, as a Mac's does.
+
+Neither has been run yet — this machine has no Wine and no Mac.
+
 ## What the self test checks
 
 Headless, through SDL's dummy driver, with events pushed onto the queue instead

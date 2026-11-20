@@ -43,6 +43,7 @@
 #include "textfile.h"
 #include "lister.h"
 #include "fit.h"
+#include "port.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -515,7 +516,7 @@ static void folder_of(const char *p, char *out, int cap)
 {
 	char full[PATH_MAX];
 	const char *slash;
-	if (realpath(p, full) == NULL) snprintf(full, sizeof full, "%s", p);
+	if (wh_fullpath(p, full) == NULL) snprintf(full, sizeof full, "%s", p);
 	slash = strrchr(full, '/');
 	if (slash == NULL) { snprintf(out, (size_t)cap, "."); return; }
 	if (slash == full) { snprintf(out, (size_t)cap, "/"); return; }
@@ -668,9 +669,9 @@ int main(int argc, char **argv)
 				if (f != NULL) {
 					okw = tf_out(f, text, textlen, &tf) == 0;   /* its own line endings and encoding */
 					okw = (fflush(f) == 0) && okw;
-					okw = (fsync(fileno(f)) == 0 || errno == EINVAL) && okw;
+					okw = (wh_sync(fileno(f)) == 0 || errno == EINVAL) && okw;
 					okw = (fclose(f) == 0) && okw;
-					if (okw) okw = (rename(tmp, st->chooser.path) == 0);
+					if (okw) okw = (wh_replace(tmp, st->chooser.path) == 0);
 					if (!okw) unlink(tmp);
 				}
 				if (okw) {

@@ -40,6 +40,7 @@
 
 #undef fmul                  /* or math.h's gets renamed too, and collides */
 
+#define SDL_MAIN_HANDLED          /* a program's own main(), on Windows too (§5au) */
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -179,7 +180,9 @@ static void icon_make(void)
  */
 #include <signal.h>
 static volatile sig_atomic_t S_shoot;
+#ifdef SIGUSR1                   /* not on Windows: no snapshots there (§5au) */
 static void on_shoot(int sig) { (void)sig; S_shoot = 1; }
+#endif
 static void shoot(void)
 {
 	const char *p = getenv("WHISKER_SHOT");
@@ -193,6 +196,17 @@ static void shoot(void)
 	}
 	fclose(f);
 }
+
+/* Which keys make a chord (§5s). On macOS Cmd is Ctrl -- Cmd-S saves,
+   Cmd-C copies -- and Option is not Alt: it types (Option-e, e is é), so
+   it neither makes a chord nor stops text (§5au). */
+#ifdef __APPLE__
+#define WH_SDL_CTRL (KMOD_CTRL | KMOD_GUI)
+#define WH_SDL_ALT  0
+#else
+#define WH_SDL_CTRL KMOD_CTRL
+#define WH_SDL_ALT  KMOD_LALT
+#endif
 
 /* ---- the contract ---- */
 
@@ -266,9 +280,16 @@ int wh_open(int w, int h, int scale, const char *title)
 	S_cur = S_ev = S_many = S_off = 0;
 	/* the class a desktop groups and names its windows by: whisker, not
 	   the program's file name -- unless the person set one (§5ak) */
-	setenv("SDL_VIDEO_X11_WMCLASS", "whisker", 0);
+#ifndef _WIN32
+	setenv("SDL_VIDEO_X11_WMCLASS", "whisker", 0);   /* no X11 on Windows (§5au) */
+#endif
 	icon_make();
+#ifdef _WIN32
+	SDL_SetMainReady();
+#endif
+#ifdef SIGUSR1
 	if (getenv("WHISKER_SHOT") != NULL) signal(SIGUSR1, on_shoot);
+#endif
 	if (SDL_Init(SDL_INIT_VIDEO) != 0) {
 		fprintf(stderr, "whisker-host: SDL: %s\n", SDL_GetError());
 		return -1;
@@ -436,8 +457,8 @@ int wh_poll(wh_event_t *out)
 			SDL_Keycode k = e.key.keysym.sym;
 			Uint16 m = e.key.keysym.mod;
 			int key = 0, mods = ((m & KMOD_SHIFT) ? WH_MOD_SHIFT : 0) |
-			                    ((m & KMOD_CTRL) ? WH_MOD_CTRL : 0) |
-			                    ((m & KMOD_LALT) ? WH_MOD_ALT : 0);
+			                    ((m & WH_SDL_CTRL) ? WH_MOD_CTRL : 0) |
+			                    ((m & WH_SDL_ALT) ? WH_MOD_ALT : 0);
 			if (k == SDLK_ESCAPE) key = WH_KEY_ESCAPE;
 			else if (k == SDLK_APPLICATION || (k == SDLK_F10 && (m & KMOD_SHIFT)))
 				{ key = WH_KEY_MENU; mods = 0; }
@@ -473,7 +494,7 @@ int wh_poll(wh_event_t *out)
 			int i = 0;
 			/* a chord is a key, not text: SDL drops Ctrl's control
 			   characters itself, but Alt-x would type an x as well */
-			if ((SDL_GetModState() & (KMOD_CTRL | KMOD_LALT)) &&
+			if ((SDL_GetModState() & (WH_SDL_CTRL | WH_SDL_ALT)) &&
 			    !(SDL_GetModState() & (KMOD_RALT | KMOD_MODE))) break;
 			while (i < (int)sizeof out->text - 1 && e.text.text[i] != '\0') {
 				out->text[i] = e.text.text[i];

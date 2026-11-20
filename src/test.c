@@ -5518,6 +5518,8 @@ int main(void)
 		   "Up twice more: the top, /, its folders -- readme.txt is not *.bas");
 		CH_CLICK(160, 108);
 		ok(strcmp(ch.folder, "/") == 0, "and Up at the top stays at the top");
+		ok(wsk__ch_top("C:/x") == 0 && wsk__ch_top("/x") == 1,
+		   "built for Linux, C:/x is a folder named C: -- a drive is Windows' (§5au; drives.c is the other side)");
 		r = CH_CLICK(336, 324);
 		ok(r == WSK_CANCELLED && ch.path[0] == '\0' && root.over == WSK_NONE, "Cancel: cancelled -- no path, never an empty one");
 
