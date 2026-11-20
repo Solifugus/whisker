@@ -485,7 +485,9 @@ directly**.
   applying fails `--test`. Missing (CJK, emoji): a box; a broken byte:
   U+FFFD. No byte of `whisker.h`; +311 KB in a desktop binary.
   `host/linux/fonttest.c` checks it built both ways (7 checks fail on
-  the board's build; ASCII identical in both).
+  the board's build; ASCII identical in both). **Matthew, on a file of
+  his own: "everything looks right.. all the fonts."** The request is
+  with RV-9's session.
 - **§5am — the wire on one stream** (2026-11-18): a connection opening
   `WHISKER 1 v=… caps=…` is a seat on that connection, lines both ways
   (`docs/wire.md` §8) — nothing else speaks for it, a POST with its very

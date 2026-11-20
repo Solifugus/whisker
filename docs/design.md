@@ -3592,7 +3592,10 @@ ASCII).
 
 **By eye**: the code editor (`run.sh --code`) on a file with é, Greek and
 a box drawn in ─ — looked at in its own window's pixels, 2026-11-20; and
-`/tmp/whisker-host/font.ppm`, the test's picture.
+`/tmp/whisker-host/font.ppm`, the test's picture. **Matthew, 2026-11-20,
+on a test file of his own (`whisker-font-test-café.txt`): "everything
+looks right.. all the fonts."** The request went to RV-9's session the
+same day.
 
 ## A fifth independent read, 2026-11-20 — cells to remote polish
 
