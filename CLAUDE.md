@@ -414,6 +414,23 @@ directly**.
   set every new tree field** (it missed `stripe`; five checks caught
   it). +128 default, +160 panel. **That closes `ui-backend-gap.md`
   §8's small gaps.**
+- **§5aq — cells** (2026-11-19, gBASIC's `cells` with `across:` and
+  `down:`): `overflow = WSK_GRID` and the caller's `cells`, a
+  `wsk_cell_t` per item (row, col, across, down — 0 is 1 — and `tall`,
+  `grow`), static-const-able. **One tree, each item placed** — rows as
+  trees could not carry a part down. Columns as wide as their widest
+  part (`size`/`weight` are across, as in a row), a spanning part
+  widening its last column, the rest by weight; rows the same down by
+  `grow`; a part fills its columns and is centred down in its rows (Qt's
+  default). **Two parts in one cell refused** — gBASIC's Qt backend puts
+  the part after a span *under* it (`grid_col++`), theirs to fix. Past
+  16 × 32 refused (a longer form is a grid in a scrolling column). Hit,
+  repaint, Tab: a stack's, through `wsk_rect`. 1,840 bytes, default
+  only (`WSK_NO_GRID`, in `WSK_PANEL`); the tree's pointer adds 16 bytes
+  to each default-tier frame holding a tree copy. **Demo
+  `host/linux/form.c`** (`run.sh --form`, both hosts) has every §5ao/§5ap
+  word in it. The stack tool's "no `<path>`" was a SIGPIPE coin toss
+  under `pipefail`, now fixed.
 - **§5am — the wire on one stream** (2026-11-18): a connection opening
   `WHISKER 1 v=… caps=…` is a seat on that connection, lines both ways
   (`docs/wire.md` §8) — nothing else speaks for it, a POST with its very
@@ -552,14 +569,14 @@ and after the sound** (a full-height key repaint is ~200 ms of nothing else),
 and **measure the stack** (8 KB copied from `wkeys` panicked the board
 twice; it needs over 11.7 KB). Design §9.4.
 
-`src/run.sh --module` is the whole of it: **1,360 checks**, including a step
+`src/run.sh --module` is the whole of it: **1,391 checks**, including a step
 that builds every profile and switch under `-Werror`, the pixels through
 RV-9's own rasteriser, eighteen module builds with the double-link, and a person
-looking at the pictures. `host/linux/run.sh --test` adds 135 — every demo program started — including the
+looking at the pictures. `host/linux/run.sh --test` adds 136 — every demo program started — including the
 typing loop end to end, the real keyboard path, right-click and the clipboard; `--input` is the same loop with a person in it.
 `host/web/run.sh --test` adds 32 over HTTP, 19 in headless Chrome, 16 for
 the code editor (`code.mjs`) and 24 for the conference floor (`floor.mjs`), 14 for two people on it (`seats.mjs`),
-18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`), 13 for files indented with tabs, with Windows line endings, in Latin-1 (`tabfile.py`) — 184 in all.
+18 for docking and floating (`dock.mjs`), 13 for tabs (`tabs.mjs`), 13 for files indented with tabs, with Windows line endings, in Latin-1 (`tabfile.py`), 7 for a form in cells (`form.py`) — 191 in all.
 
 Settled before any of that: **the RV-9 review is answered**
 (`docs/rv9-answers.md`, 2026-09-29) — thirteen of sixteen claims stood, and one

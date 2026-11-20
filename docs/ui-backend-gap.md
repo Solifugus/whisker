@@ -194,8 +194,11 @@ Design §6.1's four, as they stand:
    `WSK_READONLY` — selected and copied, never changed). **All done,
    2026-11-18.** Each a whisker iteration with its
    profile question (§7), none touching the board budgets.
-2. **whisker, larger**: `cells` with spans; submenus; raise and retitle
-   in the host contract.
+2. **whisker, larger**: ~~`cells` with spans~~ (§5aq, 2026-11-19:
+   `overflow = WSK_GRID`, a `wsk_cell_t` per part — row, column,
+   across, down, a height and its share; two parts in one cell
+   refused, so a backend places each past the last one's span);
+   submenus; raise and retitle in the host contract.
 3. **gBASIC: step 6** — the contract tiers under `GBASIC_UI`. Until it
    exists a whisker backend has nothing to be measured by.
 4. **`ui_whisker.c`** — the retained model and the 148 members, on the

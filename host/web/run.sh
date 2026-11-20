@@ -11,6 +11,7 @@
 #   ./run.sh --floor          a conference floor (§5q), floor.c, in a browser
 #   ./run.sh --dock           docked panes (§5ag), dock.c, in a browser
 #   ./run.sh --tabs           notes in tabs (§5ah), tabs.c, in a browser
+#   ./run.sh --form           a form in cells (§5aq), form.c, in a browser
 #   ./run.sh --test           the headless checks (test.py), and headless
 #                             Chrome (chrome.mjs) when it is installed
 set -euo pipefail
@@ -44,6 +45,13 @@ if [[ "${1:-}" == "--tabs" ]]; then
 		-I"$HERE/../linux" -I"$HERE/../../src"
 	exec "$OUT/whisker-tabs-web"
 fi
+
+if [[ "${1:-}" == "--form" ]]; then
+	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-form-web" \
+		"$HERE/../linux/form.c" "$HERE/host_web.c" \
+		-I"$HERE/../linux" -I"$HERE/../../src"
+	exec "$OUT/whisker-form-web"
+fi
 if [[ "${1:-}" == "--test" ]]; then
 	python3 "$HERE/test.py" "$OUT/whisker-edit-web"
 	# §5ai: the code editor opens a file indented with tabs
@@ -62,6 +70,9 @@ if [[ "${1:-}" == "--test" ]]; then
 		"$HERE/../linux/code.c" "$HERE/host_web.c" -I"$HERE/../linux" -I"$HERE/../../src"
 	python3 "$HERE/docsize.py" "$OUT/whisker-code-web" "$HERE/../linux/sample.bas"
 	python3 "$HERE/editorfiles.py" "$OUT/whisker-code-web" "$HERE/../linux/sample.bas" "$OUT"
+	${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-form-web" \
+		"$HERE/../linux/form.c" "$HERE/host_web.c" -I"$HERE/../linux" -I"$HERE/../../src"
+	python3 "$HERE/form.py" "$OUT/whisker-form-web"                 # §5aq: a form in cells
 	if command -v google-chrome >/dev/null && command -v node >/dev/null; then
 		node "$HERE/chrome.mjs" "$OUT/whisker-edit-web" "$OUT"
 		${CC:-gcc} -O2 -Wall -Wextra -Werror -o "$OUT/whisker-code-web" \

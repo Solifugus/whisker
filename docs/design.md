@@ -3513,6 +3513,155 @@ its drivers, and every build here broke on its working tree. The suites
 now build against **RV-9 as committed** — a `git archive` of its HEAD —
 unless `RV9_WORKTREE=1`.
 
+## 5aq. Cells — a grid whose parts may span (2026-11-19), written before its code
+
+The first of `ui-backend-gap.md` §8's larger gaps. gBASIC's `cells`
+holds `row`s, and a part in one may say `across:` and `down:` — Qt's
+`QGridLayout`. whisker's stacks are one axis each and §5n's header lines
+columns up, but **nothing spans**: a field across three columns can be
+faked with a nested row, a memo down two rows cannot be faked at all.
+
+### The decision: one tree, each item placed
+
+Rows as separate trees (as a table's are) cannot carry a part *down*
+into the next row: it would be drawn by one tree into another's area,
+and hit, repaint and focus would each have to know. So a grid is **one
+tree whose items are placed in cells** — what Qt's `addWidget(w, row,
+column, down, across)` says, and what gBASIC's own `ui.at` reads back.
+
+1. **`overflow = WSK_GRID`**, beside `SCROLL`, `WRAP` and `WORLD`: a
+   layout mode, as those are. `cells`, a new pointer on the tree, is
+   the caller's array, one **`wsk_cell_t`** per item — its `row` and
+   `col` from the top left, `across` and `down` (0 means 1), and a
+   height: `tall` in pixels (0, its natural) and `grow`, its share of
+   height left over. **Bytes and shorts, no pointer**: a module's
+   cells may be `static const`. A grid with no `cells` is refused,
+   `WSK_E_KIND`.
+2. **Columns are as wide as their widest part**; a part's width is its
+   `size` or what it would be in a row — `size` and `weight` mean
+   *across* in a grid, as they do in a row. A part spanning columns
+   that together are narrower than it **widens the last of them**.
+   What is left of the width goes to columns by **weight**, a column's
+   being the largest `weight` of the parts ending in it; with none,
+   the grid sits at the start.
+3. **Rows, the same down**: as deep as their deepest part (its `tall`,
+   or its natural depth at the width its columns gave it — so a
+   wrapping paragraph in a cell is as deep as its lines), a spanning
+   part deepening its last row, the rest shared by `grow`.
+4. **A part fills its columns across, and down is its own depth,
+   centred in its rows** — unless it grows, when it fills them. That
+   is Qt's own default: a line edit beside a tall memo stays a line
+   edit, centred. `gap` is between columns, `lgap` between rows
+   (`WSK_SAME`, the gap), padding around.
+5. **Refused, never rearranged** (D10): **two parts in one cell**
+   (`WSK_E_FIT`, naming the second); a cell past column 16 or row 32
+   (`WSK_GRID_COLS`, `WSK_GRID_ROWS`, a program's to raise — a longer
+   form is a grid in a scrolling column); columns or rows that do not
+   fit the area (`WSK_E_FIT`, the first part crossing the edge); a
+   divider in a grid; a grid as a table's row (§5n). **A grid does not
+   scroll itself** — put in a scrolling column it scrolls as any
+   stack's child does, its natural extent its columns and rows.
+6. **Everything else is a stack's**: hit, the rows a part repaints,
+   Tab in declaration order, off parts, a nested stack in a cell —
+   each already asks `wsk_rect`, and a grid answers it. Placement is
+   the only new thing.
+7. **The profile**: `WSK_NO_GRID`, set by `WSK_PANEL` (a board's keypad
+   is rows), refused by name there — the overflow says `WSK_GRID` and
+   the tree is `WSK_E_KIND`. `WSK_NO_NEST` implies it: a grid measures
+   through nesting's arithmetic. The columns and rows are worked out
+   in a function of their own, out of line, so **only a grid pays its
+   frame** (16 + 32 shorts).
+
+**Found in gBASIC on the way, and theirs to fix**: its Qt backend moves
+to the next column by one after a spanning part (`grid_col++`, the span
+applied afterwards), so `qt_cells_test.bas`'s `help_me`, after `agree`
+across 4, sits in column 1 **under** `agree` — Qt allows the overlap
+and the fixture never asks `help_me`'s column. A whisker backend would
+be refused there, by rule 5. A `ui_whisker.c` places a row's parts one
+after another, each past the last one's span and past any cell a
+`down:` from above already holds.
+
+### Done criteria
+
+1. Every earlier output byte-identical; every profile and switch
+   builds under `-Werror`.
+2. **gBASIC's fixture by hand**: `qt_cells_test.bas`'s window, labels
+   in cells of their own as its backend makes them, every part's
+   rectangle worked out on paper and asserted — and the same items as
+   a plain column, misplaced (the control).
+3. Weight shares width and grow height; with neither, the grid at the
+   start; a spanning part widening its last column, and deepening its
+   last row.
+4. Each refusal of rule 5 beside a control that passes.
+5. Hit: every part's centre names it, the gap between two cells names
+   nothing; a stack in a cell is descended.
+6. A part's rows repainted equal a full redraw.
+7. A grid in a scrolling column, scrolled; a wrapping paragraph in a
+   cell as deep as its lines.
+8. Tab walks the fields in declaration order.
+9. At the pixels, through RV-9's rasteriser: a form, looked at.
+10. **A demo** — `host/linux/form.c`, `run.sh --form`, both hosts: a
+    form in cells with §5ao's and §5ap's words in it (a password, a
+    hint, a default button, a read-only memo, a striped list), so
+    Matthew has them in a window at last.
+11. The bytes and the stack, `nm -u` clean for RISC-V.
+
+**What it came to** (2026-11-19): as written, and every earlier output
+byte-identical (52 compared with the commit before).
+
+- **gBASIC's window by hand**: ten parts, every rectangle on paper first
+  — columns 60, 130, 60, 160, 30, the two weighted ones sharing 228;
+  `notes` across three, 362; `agree`'s 200 widening column 3; `help`
+  deepening row 2 to 64 and `agree` centred in it; `tall` down two, its
+  60 deepening row 4 — and all ten matched at once. My own arithmetic
+  was wrong twice in the checks (the leftover height is 74, not 66; a
+  300-wide grid fits), each found by a check that failed, not by
+  whisker.
+- **The fields needed buffers to be Tab stops** — §5j's rule, which the
+  first Tab check met: a field without one is read-only text.
+- **Folding the two passes into one walk** saved 68 bytes; the rest is
+  the arithmetic itself.
+
+**Two faults in the stack tool, found measuring this**
+(`tools/evidence/stack/`), neither in whisker:
+
+- A tail call written `auipc t1` + `jr t1` carries two relocation lines,
+  and `depth.py` looked back only one — so every such jump was also
+  reported "UNRESOLVED indirect call". The depths were right; the
+  warnings, at HEAD too, were noise. It looks back past them now.
+- **"no `<path>` in it at all" was a coin toss.** `grep -q` stops at the
+  first match, `strings` dies of SIGPIPE, and under `pipefail` that read
+  as no path. Every default-tier module does contain the literal (the
+  tree's arrows, §5t); `-DWSK_MINIMAL` still has none, the control. No
+  document had quoted the wrong answer.
+
+**Measured** (RISC-V `-Os`): **cells cost the default 1,840 bytes**
+(built without them); `module_shape` 21,104 → 22,956 (+1,852),
+`module_nest` +2,148; **`WSK_PANEL` +4** (the refusal), `WSK_MINIMAL`
+unchanged. The stack: **the panel tier, which the boards build,
+unchanged frame for frame.** At the default the tree's new pointer makes
+every frame holding a tree copy 16 bytes larger (`wsk__stack` 288 → 304,
+so each level of nesting 320 → 336), and the deepest chain is now a
+grid's measurement, 2,544 → 2,608.
+
+**31 checks** (1,360 → 1,391): 23 in `test.c` — the window by hand and
+the plain column as its control; every part's centre hit, the gaps
+between cells and the space above a centred part naming nothing; drawn;
+`help`'s rows; grow and weight; each refusal beside a control (no cells,
+two parts in one cell — `help` where gBASIC's backend puts it — past
+column 16, a divider, too narrow, too shallow); Tab in declaration
+order; in a scrolling column, scrolled; a wrapping paragraph 54 deep at
+200 and 84 at 120. The panel tier's refusal in `run.sh`, the default
+the control. At the pixels (`cells.ppm`): the memo's well under the
+name's at the same x and width, reaching below the second row's label,
+OK across both columns, and a keystroke's rows repainted alone equal to
+a full redraw — looked at. **The demo**, `host/linux/form.c` (`run.sh
+--form`, both hosts): a sign-up form with a hint, a password, a default
+OK, a read-only licence and a striped list; the Linux suite starts it
+(136), and `host/web/form.py` (7) drives it over HTTP — hints drawn,
+the password sent as stars and never itself, Enter in a field pressing
+OK, a form submitted (191).
+
 ## A fourth independent read, 2026-11-18 — tabs to read only
 
 Overdue: nine iterations since the third (§5ah–§5ap). The same two-reader

@@ -67,7 +67,10 @@ bytes () { depth "$@" | sed -n 's/.* \([0-9]\+\) bytes.*/\1/p' | head -1; }
 # away and leaves no symbol to look for. The string literal survives: if the
 # program can emit a path, `<path d=` is in its rodata.
 paths () {
-	if strings -a "$W/$1.o" | grep -q '<path d='; then
+	# grep -c reads to the end: -q stops at the first match, strings dies of
+	# SIGPIPE, and under pipefail that read as "no path" (found 2026-11-19 --
+	# the answer had been a coin toss for the modules that do contain one)
+	if [[ "$(strings -a "$W/$1.o" | grep -c '<path d=')" != 0 ]]; then
 		echo "CAN emit <path> -- the renderer's deep frame is reachable"
 	else
 		echo "no <path> in it at all -- that frame is unreachable"

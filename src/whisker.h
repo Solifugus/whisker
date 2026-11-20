@@ -118,6 +118,7 @@
  *     -DWSK_NO_HOVER    what the pointer rests on, for a host that has one (§5aa)
  *     -DWSK_NO_TIP      tooltips: a rest, a hold, a key's focus (§5ac)
  *     -DWSK_NO_GRAB     a tree dragged by itself: GRAB, DRAG, DROP (§5ag)
+ *     -DWSK_NO_GRID     cells: a grid whose parts may span (§5aq)
  *
  * What each costs is MEASURED, not written here -- `src/run.sh --module`
  * builds the tiers and the switches and prints the bytes, so the numbers
@@ -167,6 +168,9 @@
 #  endif
 #  ifndef WSK_NO_GRAB
 #    define WSK_NO_GRAB 1          /* docking is a desktop's, as dividers are (§5ag) */
+#  endif
+#  ifndef WSK_NO_GRID
+#    define WSK_NO_GRID 1          /* a form's, and a board's keypad is rows (§5aq) */
 #  endif
 #endif
 #ifdef WSK_MINIMAL
@@ -233,6 +237,9 @@
 
 #if defined(WSK_NO_NEST) && !defined(WSK_NO_OVER)
 #  define WSK_NO_OVER 1            /* an overlay is a tree in `nest` (§5l) */
+#endif
+#if defined(WSK_NO_NEST) && !defined(WSK_NO_GRID)
+#  define WSK_NO_GRID 1            /* measured through nesting's arithmetic (§5aq) */
 #endif
 #if (defined(WSK_NO_NEST) || defined(WSK_NO_SCROLL)) && !defined(WSK_NO_WORLD)
 #  define WSK_NO_WORLD 1           /* drawn through copies, as nesting is; its
@@ -329,8 +336,33 @@ enum {
 	WSK_REFUSE = 0,
 	WSK_SCROLL,
 	WSK_WRAP,                    /* onto a new line across the axis (§5g) */
-	WSK_WORLD                    /* placed, not stacked: a view onto a space (§5q) */
+	WSK_WORLD,                   /* placed, not stacked: a view onto a space (§5q) */
+	WSK_GRID                     /* in cells, which its parts may span (§5aq) */
 };
+
+/*
+ * Where a grid's item is (§5aq): the caller's, one per item, beside the
+ * tree as a world's places are -- bytes and shorts, so a module's may be
+ * `static const`. The cell it starts in, from the top left; how many
+ * columns and rows it covers, 0 meaning 1; and down, its height -- `tall`
+ * pixels, or 0 for its natural one -- and `grow`, its share of the height
+ * left over, as a widget's `weight` is of the width.
+ */
+typedef struct {
+	unsigned char row, col;
+	unsigned char across, down;
+	short         tall;
+	short         grow;
+} wsk_cell_t;
+
+/* How far a grid reaches: past these a cell is refused, WSK_E_FIT. A
+   longer form is a grid in a scrolling column. */
+#ifndef WSK_GRID_COLS
+#define WSK_GRID_COLS 16
+#endif
+#ifndef WSK_GRID_ROWS
+#define WSK_GRID_ROWS 32
+#endif
 
 /* A world's space (§5q rule 4): no edges, a size its view stays inside, or
    a size that wraps both ways. */
@@ -583,7 +615,8 @@ typedef struct wsk_tree {
 	 * refused with WSK_E_SCROLL rather than clamped -- whether an overshoot
 	 * is a bug or a bounce is the caller's to know.
 	 */
-	unsigned char overflow;      /* WSK_REFUSE, WSK_SCROLL or WSK_WRAP */
+	unsigned char overflow;      /* WSK_REFUSE, WSK_SCROLL, WSK_WRAP, WSK_WORLD
+	                                or WSK_GRID */
 	short         scroll;        /* pixels along the axis, from the start */
 #ifndef WSK_NO_SPLIT
 	/*
@@ -723,6 +756,12 @@ typedef struct wsk_tree {
 	/* whisker's, in the copies a poster is laid out in (step 2b): the
 	   factor, 256 = 1:1, its lengths were scaled by -- 0 outside a world */
 	int           wz;
+#endif
+
+#ifndef WSK_NO_GRID
+	/* A grid (§5aq), when `overflow` is WSK_GRID: each item's cells, the
+	   caller's, one per item. */
+	const wsk_cell_t *cells;
 #endif
 
 	/* Whisker's, in the copies a part is drawn through: how far its colours
@@ -1315,6 +1354,10 @@ static inline int wsk__flags_ok(const wsk_tree_t *t, const wsk_widget_t *w)
 	return 1;
 }
 
+#ifndef WSK_NO_GRID
+static int wsk__gcheck(const wsk_tree_t *t, int *which);
+#endif
+
 static inline int wsk__check1(const wsk_tree_t *t, int *which)
 {
 	if (t->stripe > 2) return WSK_E_KIND;     /* odd, even, or none (§5ap) */
@@ -1483,6 +1526,7 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 		   of extents -- not a wrapping one, nor a table's row (§5x rule 6) */
 		if (t->item[i].kind == WSK_DIVIDER &&
 		    (i == 0 || i == t->n - 1 || t->sizes == 0 || t->overflow == WSK_WRAP
+		     || t->overflow == WSK_GRID
 #ifndef WSK_NO_NEST
 		     || t->ghead != 0
 #endif
@@ -1510,6 +1554,12 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 	/* A row in a table (§5n): its widths are its header's, which was
 	   checked as itself; what it may not have is a cell with no column. */
 	if (t->ghead != 0) {
+#ifndef WSK_NO_GRID
+		if (t->overflow == WSK_GRID) {        /* its columns are its own (§5aq) */
+			if (which != 0) *which = -1;
+			return WSK_E_KIND;
+		}
+#endif
 		if (t->n > t->ghead->n) {
 			if (which != 0) *which = t->ghead->n;
 			return WSK_E_FIT;
@@ -1561,6 +1611,14 @@ static inline int wsk__check1(const wsk_tree_t *t, int *which)
 	}
 #endif
 
+#ifdef WSK_NO_GRID
+	if (t->overflow == WSK_GRID) {
+		if (which != 0) *which = -1;
+		return WSK_E_KIND;
+	}
+#else
+	if (t->overflow == WSK_GRID) return wsk__gcheck(t, which);
+#endif
 #ifdef WSK_NO_WORLD
 	if (t->overflow == WSK_WORLD) {
 		if (which != 0) *which = -1;
@@ -1815,6 +1873,9 @@ static inline void wsk_init(wsk_tree_t *t, int axis, int dev_w, int dev_h)
 #ifndef WSK_NO_SPLIT
 	t->sizes = 0;
 #endif
+#ifndef WSK_NO_GRID
+	t->cells = 0;
+#endif
 #ifndef WSK_NO_WORLD
 	t->place = 0;
 	t->order = 0;
@@ -1918,6 +1979,16 @@ static inline int wsk__natural(const wsk_tree_t *t, int i)
  * measured here is the caller's own, which carries no `nest` of its own --
  * only the copies layout makes do. `depth` stops a tree that holds itself.
  */
+/* The axis `size` is along: a stack's own, and in a grid across, as in a
+   row (§5aq) -- a cell's depth is its `tall`. */
+#ifndef WSK_NO_GRID
+#define wsk__along(t) (((t)->overflow == WSK_GRID) ? WSK_ROW : (t)->axis)
+static int wsk__gnat(const wsk_tree_t *r, const wsk_tree_t *c, int axis,
+                     int depth, int avail);
+#else
+#define wsk__along(t) ((t)->axis)
+#endif
+
 static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
                               int axis, int depth, int avail);
 
@@ -1935,6 +2006,10 @@ static inline int wsk__nat_stack(const wsk_tree_t *r, const wsk_tree_t *c,
 #ifndef WSK_NO_WORLD
 	/* nor does a world, either way: it is a view, sized from outside */
 	if (c->overflow == WSK_WORLD) return 2 * c->pad;
+#endif
+#ifndef WSK_NO_GRID
+	/* a grid is its columns across and its rows down (§5aq) */
+	if (c->overflow == WSK_GRID) return wsk__gnat(r, c, axis, depth, avail);
 #endif
 #ifndef WSK_NO_WRAP
 	/* A wrapping stack takes what it is given and wraps to fit it, so
@@ -1992,9 +2067,9 @@ static inline int wsk__nat_on(const wsk_tree_t *r, const wsk_tree_t *t, int i,
 
 #ifndef WSK_NO_SPLIT
 	/* the caller's size for it, which a divider sets (§5x rule 1) */
-	if (axis == t->axis && t->sizes != 0 && t->sizes[i] > 0) return wsk__zv(r, t->sizes[i]);
+	if (axis == wsk__along(t) && t->sizes != 0 && t->sizes[i] > 0) return wsk__zv(r, t->sizes[i]);
 #endif
-	if (w->size > 0 && axis == t->axis) return wsk__zv(r, w->size);
+	if (w->size > 0 && axis == wsk__along(t)) return wsk__zv(r, w->size);
 	if (w->kind == WSK_STACK) {
 		if (r->nest == 0 || w->sub < 0 || w->sub >= r->nests || depth >= WSK_DEPTH_MAX)
 			return 0;                    /* wsk_check refuses it by name */
@@ -2431,6 +2506,216 @@ static inline int wsk__whit(const wsk_tree_t *t, int i, int x, int y)
 
 
 /* A widget's weight -- none once the caller has sized it (§5x rule 1). */
+#ifndef WSK_NO_GRID
+/* ------------------------------------------------------------------ */
+/* Cells: a grid whose parts may span (design.md §5aq)                  */
+/* ------------------------------------------------------------------ */
+
+/* Item i's cells: its first column and row, and how many of each. */
+static inline void wsk__gat(const wsk_tree_t *t, int i, int *c, int *r,
+                            int *a, int *d)
+{
+	const wsk_cell_t *k = &t->cells[i];
+	*c = k->col;
+	*r = k->row;
+	*a = (k->across == 0) ? 1 : k->across;
+	*d = (k->down == 0) ? 1 : k->down;
+}
+
+/* Item i's depth at width `wide`: its `tall`, or what it would be in a
+   column -- a stack's content measured at that width. */
+static inline int wsk__gdeep(const wsk_tree_t *r, const wsk_tree_t *t, int i,
+                             int wide, int depth)
+{
+	if (t->cells[i].tall > 0) return wsk__zv(r, t->cells[i].tall);
+	return wsk__nat_on(r, t, i, WSK_COL, depth, wide);
+}
+
+/* Column (down 0) or row (down 1) j's share of what is left: the largest
+   weight -- or grow -- of the items ending in it. */
+static inline int wsk__gwt(const wsk_tree_t *t, int j, int down)
+{
+	int most = 0;
+	for (int i = 0; i < t->n; i++) {
+		int c, r, a, d, v;
+		wsk__gat(t, i, &c, &r, &a, &d);
+		if ((down ? r + d : c + a) - 1 != j) continue;
+		v = down ? t->cells[i].grow : t->item[i].weight;
+		if (v > most) most = v;
+	}
+	return most;
+}
+
+/* `extra` shared among n columns or rows by their weights, the last
+   weighted one taking what division leaves; with none, nothing moves. */
+static inline void wsk__gshare(const wsk_tree_t *t, short *e, int n,
+                               int extra, int down)
+{
+	int total = 0, last = -1, given = 0;
+	if (extra <= 0) return;
+	for (int j = 0; j < n; j++) {
+		int w = wsk__gwt(t, j, down);
+		total += w;
+		if (w > 0) last = j;
+	}
+	for (int j = 0; j <= last; j++) {
+		int w = wsk__gwt(t, j, down), s;
+		if (w == 0) continue;
+		s = (j == last) ? extra - given : extra * w / total;
+		e[j] = (short)(e[j] + s);
+		given += s;
+	}
+}
+
+/* The width of columns c..c+a-1, the gaps between them included. */
+static inline int wsk__gspan(const short *e, int c, int a, int gap)
+{
+	int s = (a - 1) * gap;
+	for (int j = c; j < c + a; j++) s += e[j];
+	return s;
+}
+
+/*
+ * A grid's columns and rows: cw[] and rh[], *nc and *nr of them. Widths
+ * first -- each column its widest single part, then each spanning part
+ * widening its last column to fit -- and what is left of `aw` shared by
+ * weight (-1: natural widths). Then rows the same, each part measured at
+ * the width its columns gave it, shared from `ah` by grow. 0 when a cell
+ * reaches past the arrays, which wsk_check refuses by name.
+ */
+static int wsk__glay(const wsk_tree_t *r, const wsk_tree_t *t, int aw, int ah,
+                     int depth, short *cw, short *rh, int *nc, int *nr)
+{
+	int lg = (t->lgap == WSK_SAME) ? t->gap : t->lgap;
+	int i, c, ro, a, d;
+
+	*nc = *nr = 0;
+	for (i = 0; i < t->n; i++) {
+		wsk__gat(t, i, &c, &ro, &a, &d);
+		if (c + a > *nc) *nc = c + a;
+		if (ro + d > *nr) *nr = ro + d;
+	}
+	if (*nc > WSK_GRID_COLS || *nr > WSK_GRID_ROWS) return 0;
+	/* across, then down: one walk each way, the same rules */
+	for (int down = 0; down < 2; down++) {
+		short *e = down ? rh : cw;
+		int n = down ? *nr : *nc, g = down ? lg : t->gap, room = down ? ah : aw;
+		for (i = 0; i < n; i++) e[i] = 0;
+		for (int pass = 0; pass < 2; pass++)
+			for (i = 0; i < t->n; i++) {
+				int at, k, m, have;
+				wsk__gat(t, i, &c, &ro, &a, &d);
+				at = down ? ro : c;
+				k = down ? d : a;
+				if ((k > 1) != pass) continue;
+				m = down ? wsk__gdeep(r, t, i, wsk__gspan(cw, c, a, t->gap), depth)
+				         : wsk__nat_on(r, t, i, WSK_ROW, depth, -1);
+				have = wsk__gspan(e, at, k, g);
+				if (m > have) e[at + k - 1] = (short)(e[at + k - 1] + m - have);
+			}
+		if (room >= 0 && n > 0) wsk__gshare(t, e, n, room - wsk__gspan(e, 0, n, g), down);
+	}
+	return 1;
+}
+
+/*
+ * Where item idx is (rule 4): across its columns, and down its own depth
+ * centred in its rows -- or all of them, when it grows. Out of line, so
+ * the arrays are only a grid's frame.
+ */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static wsk_rect_t wsk__grect(const wsk_tree_t *t, int idx)
+{
+	short cw[WSK_GRID_COLS], rh[WSK_GRID_ROWS];
+	int lg = (t->lgap == WSK_SAME) ? t->gap : t->lgap;
+	int nc, nr, c, ro, a, d, h, own;
+	wsk_rect_t q;
+
+	q.x = t->ax; q.y = t->ay; q.w = 0; q.h = 0;
+	if (!wsk__glay(t, t, t->aw - 2 * t->pad, t->ah - 2 * t->pad, 0, cw, rh, &nc, &nr))
+		return q;                              /* refused by wsk_check */
+	wsk__gat(t, idx, &c, &ro, &a, &d);
+	q.x = (short)(t->ax + t->pad + ((c > 0) ? wsk__gspan(cw, 0, c, t->gap) + t->gap : 0));
+	q.w = (short)wsk__gspan(cw, c, a, t->gap);
+	h = wsk__gspan(rh, ro, d, lg);
+	own = (t->cells[idx].grow > 0) ? h : wsk__gdeep(t, t, idx, q.w, 0);
+	if (own > h) own = h;
+	q.y = (short)(t->ay + t->pad + ((ro > 0) ? wsk__gspan(rh, 0, ro, lg) + lg : 0)
+	              + (h - own) / 2);
+	q.h = (short)own;
+	return q;
+}
+
+/* A grid's natural extent: its columns across, its rows down -- at the
+   width it will get, when that is known -- and its padding. */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static int wsk__gnat(const wsk_tree_t *r, const wsk_tree_t *c, int axis,
+                     int depth, int avail)
+{
+	short cw[WSK_GRID_COLS], rh[WSK_GRID_ROWS];
+	int lg = (c->lgap == WSK_SAME) ? c->gap : c->lgap;
+	int nc, nr, inner = (axis == WSK_COL && avail >= 0) ? avail - 2 * c->pad : -1;
+
+	if (!wsk__glay(r, c, inner, -1, depth + 1, cw, rh, &nc, &nr) ||
+	    (axis == WSK_ROW ? nc : nr) == 0)
+		return 2 * c->pad;
+	return ((axis == WSK_ROW) ? wsk__gspan(cw, 0, nc, c->gap) : wsk__gspan(rh, 0, nr, lg))
+	       + 2 * c->pad;
+}
+
+/*
+ * A grid's own refusals (rule 5): no cells; a cell past the arrays; a
+ * divider; two parts in one cell, naming the second; and columns or rows
+ * that do not fit, naming the first part that crosses the edge.
+ */
+#if defined(__GNUC__)
+__attribute__((noinline, unused))
+#endif
+static int wsk__gcheck(const wsk_tree_t *t, int *which)
+{
+	short cw[WSK_GRID_COLS], rh[WSK_GRID_ROWS];
+	int lg = (t->lgap == WSK_SAME) ? t->gap : t->lgap;
+	int nc, nr, c, ro, a, d, c2, r2, a2, d2;
+
+	if (t->cells == 0) {
+		if (which != 0) *which = -1;
+		return WSK_E_KIND;
+	}
+	for (int i = 0; i < t->n; i++) {
+		wsk__gat(t, i, &c, &ro, &a, &d);
+		if (t->item[i].kind == WSK_DIVIDER) {
+			if (which != 0) *which = i;
+			return WSK_E_KIND;
+		}
+		if (c + a > WSK_GRID_COLS || ro + d > WSK_GRID_ROWS) {
+			if (which != 0) *which = i;
+			return WSK_E_FIT;
+		}
+		for (int k = 0; k < i; k++) {
+			wsk__gat(t, k, &c2, &r2, &a2, &d2);
+			if (c < c2 + a2 && c2 < c + a && ro < r2 + d2 && r2 < ro + d) {
+				if (which != 0) *which = i;
+				return WSK_E_FIT;
+			}
+		}
+	}
+	(void)wsk__glay(t, t, t->aw - 2 * t->pad, -1, 0, cw, rh, &nc, &nr);
+	for (int i = 0; i < t->n; i++) {
+		wsk__gat(t, i, &c, &ro, &a, &d);
+		if (wsk__gspan(cw, 0, c + a, t->gap) > t->aw - 2 * t->pad ||
+		    wsk__gspan(rh, 0, ro + d, lg) > t->ah - 2 * t->pad) {
+			if (which != 0) *which = i;
+			return WSK_E_FIT;
+		}
+	}
+	return WSK_OK;
+}
+#endif
+
 static inline int wsk__wt(const wsk_tree_t *t, int i)
 {
 #ifndef WSK_NO_SPLIT
@@ -2453,6 +2738,9 @@ static inline wsk_rect_t wsk_rect(const wsk_tree_t *t, int idx)
 #endif
 #ifndef WSK_NO_NEST
 	if (t->ghead != 0) return wsk__cell(t, idx);
+#endif
+#ifndef WSK_NO_GRID
+	if (t->overflow == WSK_GRID) return wsk__grect(t, idx);
 #endif
 
 	for (int i = 0; i < t->n; i++) {

@@ -7461,6 +7461,171 @@ int main(void)
 		ok(n == 0 || nt[0].kind != WSK_NOTE_CLICK, "and lifted: still no CLICK");
 	}
 
+	printf("\n-- §5aq  cells: a grid whose parts may span\n");
+	{
+		/* gBASIC's qt_cells_test.bas window, its labels in cells of their
+		   own as its backend makes them -- and help_me placed past agree's
+		   span, where that backend put it under it (design §5aq). */
+		static wsk_widget_t G[10], WR[6], PS[2];
+		static wsk_cell_t C[10];
+		static const char *const gid[10] = { "lfirst", "first", "llast", "last", "lnotes",
+		                                     "notes", "agree", "help", "ltall", "tall" };
+		static const unsigned char gat[10][4] = {   /* row, col, across, down */
+			{ 0, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 2, 0, 0 }, { 0, 3, 0, 0 },
+			{ 1, 0, 0, 0 }, { 1, 1, 3, 0 },
+			{ 2, 0, 4, 0 }, { 2, 4, 0, 0 },
+			{ 3, 0, 0, 0 }, { 3, 1, 0, 2 } };
+		static const short want[10][4] = {          /* x, y, w, h, by hand */
+			{ 8, 8, 60, 24 }, { 74, 8, 130, 24 }, { 210, 8, 60, 24 }, { 276, 8, 160, 24 },
+			{ 8, 38, 60, 24 }, { 74, 38, 362, 24 },
+			{ 8, 88, 428, 24 }, { 442, 68, 30, 64 },
+			{ 8, 138, 60, 24 }, { 74, 138, 130, 60 } };
+		wsk_tree_t g, col, k[2];
+		wsk_buf_t gb[4];
+		char gtext[4][16];
+		wsk_ui_t ui;
+		wsk_note_t nt[8];
+		wsk_event_t ev;
+		wsk_rect_t q;
+		char doc[16384];
+		int all = 1, which = 0, hits = 1, y0, y1;
+
+		memset(G, 0, sizeof G); memset(C, 0, sizeof C);
+		for (int i = 0; i < 10; i++) {
+			snprintf(G[i].id, WSK_ID_MAX, "%s", gid[i]);
+			C[i].row = gat[i][0]; C[i].col = gat[i][1]; C[i].across = gat[i][2]; C[i].down = gat[i][3];
+		}
+		G[0].kind = G[2].kind = G[4].kind = G[8].kind = WSK_LABEL;
+		G[0].size = G[2].size = G[4].size = G[8].size = 60;
+		snprintf(G[0].text, WSK_TEXT_MAX, "First"); snprintf(G[2].text, WSK_TEXT_MAX, "Last");
+		snprintf(G[4].text, WSK_TEXT_MAX, "Notes"); snprintf(G[8].text, WSK_TEXT_MAX, "Tall");
+		G[1].kind = G[3].kind = G[5].kind = G[9].kind = WSK_FIELD;
+		G[1].weight = G[3].weight = G[5].weight = G[9].weight = 1;
+		G[6].kind = WSK_CHECK; snprintf(G[6].text, WSK_TEXT_MAX, "I agree"); G[6].size = 200;
+		G[7].kind = WSK_BUTTON; snprintf(G[7].text, WSK_TEXT_MAX, "?"); G[7].size = 30;
+		C[9].tall = 60;
+		memset(gb, 0, sizeof gb);
+		for (int i = 0; i < 4; i++) { gtext[i][0] = '\0'; gb[i].b = gtext[i]; gb[i].cap = 16; }
+		G[1].sub = 0; G[3].sub = 1; G[5].sub = 2; G[9].sub = 3;
+		wsk_init(&g, WSK_ROW, 480, 280);
+		g.pad = 8; g.gap = 6; g.ids = 1;
+		g.item = G; g.n = 10; g.overflow = WSK_GRID; g.cells = C;
+		g.buf = gb; g.bufs = 4;
+
+		ok(wsk_check(&g, &which) == WSK_OK, "gBASIC's cells window, as a grid: checks");
+		for (int i = 0; i < 10; i++) {
+			q = wsk_rect(&g, i);
+			if (q.x != want[i][0] || q.y != want[i][1] || q.w != want[i][2] || q.h != want[i][3]) {
+				printf("     %s at %d,%d %dx%d, want %d,%d %dx%d\n", gid[i], q.x, q.y, q.w, q.h,
+				       want[i][0], want[i][1], want[i][2], want[i][3]);
+				all = 0;
+			}
+		}
+		ok(all, "every part where it was worked out on paper: columns 60 130 60 160 30, the two weighted "
+		   "ones sharing 228; notes across three, 362; agree's 200 widening column 3; help deepening row 2 to 64, "
+		   "agree centred in it; tall down two, its 60 deepening row 4");
+		g.overflow = WSK_REFUSE; g.axis = WSK_COL;
+		q = wsk_rect(&g, 5);
+		ok(q.x == 8 && q.y != 38, "CONTROL: the same items as a plain column -- notes at the column's start, not in its cell");
+		g.overflow = WSK_GRID; g.axis = WSK_ROW;
+
+		/* hit: each part's centre, and the gaps between */
+		for (int i = 0; i < 10; i++)
+			if (wsk_hit(&g, want[i][0] + want[i][2] / 2, want[i][1] + want[i][3] / 2) != i) hits = 0;
+		ok(hits, "every part's centre names it");
+		ok(wsk_hit(&g, 70, 20) == WSK_E_NOTFOUND && wsk_hit(&g, 20, 34) == WSK_E_NOTFOUND,
+		   "the gap between two columns names nothing, nor the gap between two rows");
+		ok(wsk_hit(&g, 20, 72) == WSK_E_NOTFOUND && wsk_hit(&g, 450, 72) == 7,
+		   "row 2 above agree's centred box: nothing -- and help, as deep as the row, there");
+
+		/* drawn, its parts where they are laid out */
+		render_into(&g, doc, sizeof doc, 16384);
+		ok(has(doc, "id=\"notes\"") && has(doc, "x=\"74\" y=\"38\" width=\"362\" height=\"24\""),
+		   "drawn: notes's well across its three columns");
+
+		/* rows a part repaints */
+		{
+			const char *ids[1] = { "help" };
+			ok(wsk_rows(&g, ids, 1, &y0, &y1) == WSK_OK && y0 == 64 && y1 == 136,
+			   "help's rows, 68 to 132, snapped to the bands: 64 to 136");
+		}
+
+		/* grow and weight */
+		C[9].grow = 1;
+		q = wsk_rect(&g, 9);
+		ok(q.y == 138 && q.h == 134, "tall grows: row 4 takes the 74 rows left over (264 less 190), and tall fills both its rows, 134");
+		C[9].grow = 0;
+		for (int i = 0; i < 10; i++) G[i].weight = 0;
+		ok(wsk_rect(&g, 1).w == 16 && wsk_rect(&g, 3).x == 162,
+		   "nothing weighted: columns at their natural widths, the grid at the start");
+		G[1].weight = G[3].weight = G[5].weight = G[9].weight = 1;
+
+		/* refusals, each beside the control above */
+		g.cells = 0;
+		ok(wsk_check(&g, &which) == WSK_E_KIND && which == -1, "a grid with no cells: refused");
+		g.cells = C;
+		C[7].col = 3;
+		ok(wsk_check(&g, &which) == WSK_E_FIT && which == 7,
+		   "help put in column 3, under agree's span (where gBASIC's backend puts it): refused, naming help");
+		C[7].col = 16;
+		ok(wsk_check(&g, &which) == WSK_E_FIT && which == 7, "a cell in column 16, past WSK_GRID_COLS: refused");
+		C[7].col = 4;
+		G[7].kind = WSK_DIVIDER;
+		ok(wsk_check(&g, &which) == WSK_E_KIND && which == 7, "a divider in a grid: refused");
+		G[7].kind = WSK_BUTTON;
+		g.aw = 300;
+		ok(wsk_check(&g, &which) == WSK_OK, "CONTROL: 300 wide, 284 inside, the natural columns' 236 fit");
+		g.aw = 240;
+		ok(wsk_check(&g, &which) == WSK_E_FIT && which == 7,
+		   "240 wide, 224 inside: refused, naming help, the first part past the edge");
+		g.aw = 480;
+		g.ah = 150;
+		ok(wsk_check(&g, &which) == WSK_E_FIT && which == 8, "150 deep: refused, naming Tall's label");
+		g.ah = 280;
+		ok(wsk_check(&g, &which) == WSK_OK, "and back as it was: checks");
+
+		/* Tab: declaration order */
+		g.ids = 0;
+		wsk_ui_init(&ui, &g);
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_KEY; ev.key = WSK_KEY_TAB;
+		for (int i = 0; i < 3; i++) wsk_feed(&ui, &ev, nt, 8, &y0, &y1);
+		ok(g.focus == &G[5], "Tab three times: first, last, notes -- declaration order");
+
+		/* a grid in a scrolling column, and a paragraph in a cell */
+		memset(WR, 0, sizeof WR); memset(PS, 0, sizeof PS);
+		PS[0].kind = WSK_STACK; snprintf(PS[0].id, WSK_ID_MAX, "form"); PS[0].sub = 0;
+		PS[1].kind = WSK_LABEL; snprintf(PS[1].id, WSK_ID_MAX, "below"); PS[1].size = 30;
+		wsk_init(&col, WSK_COL, 480, 120);
+		col.item = PS; col.n = 2; col.pad = 0; col.gap = 0; col.overflow = WSK_SCROLL;
+		col.nest = k; col.nests = 1;
+		wsk__tcopy(&k[0], &g);
+		k[0].w = 480; k[0].h = 120;
+		ok(wsk_rect(&col, 1).y == 206, "in a scrolling column: the grid as deep as its rows and padding, 206");
+		col.scroll = 40;
+		ok(wsk_check(&col, &which) == WSK_OK && rect_of(&col, "notes").y == 38 - 40,
+		   "scrolled 40: notes 40 rows up");
+
+		for (int i = 0; i < 6; i++) {
+			WR[i].kind = WSK_LABEL; WR[i].size = 50; snprintf(WR[i].text, WSK_TEXT_MAX, "w%d", i);
+		}
+		{
+			wsk_widget_t one[1];
+			wsk_cell_t oc[1];
+			wsk_tree_t p;
+			memset(one, 0, sizeof one); memset(oc, 0, sizeof oc);
+			one[0].kind = WSK_STACK; snprintf(one[0].id, WSK_ID_MAX, "para"); one[0].sub = 0; one[0].weight = 1;
+			wsk_init(&p, WSK_ROW, 200, 200);
+			p.pad = 0; p.item = one; p.n = 1; p.overflow = WSK_GRID; p.cells = oc;
+			p.nest = k; p.nests = 1;
+			wsk_nest_init(&k[0], &p, WSK_ROW);
+			k[0].item = WR; k[0].n = 6; k[0].overflow = WSK_WRAP; k[0].pad = 0; k[0].gap = 6;
+			ok(wsk_check(&p, &which) == WSK_OK && wsk_rect(&p, 0).h == 54,
+			   "a wrapping paragraph in a 200-wide cell: three words a line, two lines, 54 deep");
+			p.aw = 120;
+			ok(wsk_rect(&p, 0).h == 84, "and at 120: two a line, three lines, 84 -- the depth its width gives");
+		}
+	}
+
 	printf(fails ? "\n%d check(s) failed\n" : "\nall checks passed\n", fails);
 	return fails != 0;
 }

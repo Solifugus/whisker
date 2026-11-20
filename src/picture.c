@@ -2399,6 +2399,88 @@ int main(void)
 		shot("striped.ppm");
 	}
 
+	/*
+	 * Cells (§5aq) at the pixels: a form in a grid -- two labelled fields,
+	 * a memo down two rows that grows into what is left, OK across both
+	 * columns -- and a keystroke's rows, repainted alone, against a full
+	 * redraw.
+	 */
+	{
+		static wsk_widget_t W[6];
+		static wsk_cell_t C[6];
+		static char nb[16] = "Ada", mb[64] = "a memo two\nrows deep";
+		static uint16_t want[PW * PH];
+		wsk_buf_t bufs[2];
+		wsk_tree_t root;
+		wsk_ui_t ui;
+		wsk_note_t nt[4];
+		wsk_event_t ev;
+		wsk_sink_t s;
+		wsk_rect_t q[6];
+		uint32_t v;
+		int lo, hi, which = 0, y0, y1, wn, wm, ok_l, ok_r, ok_w;
+
+		memset(W, 0, sizeof W); memset(C, 0, sizeof C); memset(bufs, 0, sizeof bufs);
+		bufs[0].b = nb; bufs[0].cap = sizeof nb; bufs[0].len = 3; bufs[0].caret = 3;
+		bufs[1].b = mb; bufs[1].cap = sizeof mb; bufs[1].len = (int)strlen(mb);
+		W[0].kind = WSK_LABEL; snprintf(W[0].id, WSK_ID_MAX, "lname"); snprintf(W[0].text, WSK_TEXT_MAX, "Name"); W[0].size = 64;
+		W[1].kind = WSK_FIELD; snprintf(W[1].id, WSK_ID_MAX, "name"); W[1].sub = 0; W[1].weight = 1;
+		W[2].kind = WSK_LABEL; snprintf(W[2].id, WSK_ID_MAX, "lnotes"); snprintf(W[2].text, WSK_TEXT_MAX, "Notes"); W[2].size = 64;
+		W[3].kind = WSK_MEMO;  snprintf(W[3].id, WSK_ID_MAX, "notes"); W[3].sub = 1; W[3].weight = 1;
+		W[4].kind = WSK_BUTTON; snprintf(W[4].id, WSK_ID_MAX, "ok"); snprintf(W[4].text, WSK_TEXT_MAX, "OK");
+		W[4].flags = WSK_DEFAULT;
+		W[5].kind = WSK_LABEL; snprintf(W[5].id, WSK_ID_MAX, "foot"); snprintf(W[5].text, WSK_TEXT_MAX, "cells");
+		C[0].row = 0; C[0].col = 0;
+		C[1].row = 0; C[1].col = 1;
+		C[2].row = 1; C[2].col = 0;
+		C[3].row = 1; C[3].col = 1; C[3].down = 2; C[3].grow = 1;
+		C[4].row = 3; C[4].col = 0; C[4].across = 2; C[4].tall = 32;
+		C[5].row = 2; C[5].col = 0;
+		wsk_init(&root, WSK_ROW, PW, PH);
+		root.bg = 0x10203au; root.font = 16; root.item = W; root.n = 6; root.pad = 6; root.gap = 6;
+		root.overflow = WSK_GRID; root.cells = C; root.buf = bufs; root.bufs = 2;
+		printf("\n  cells (§5aq)\n");
+		ok(wsk_check(&root, &which) == WSK_OK, "a form in a grid checks");
+		for (int i = 0; i < 6; i++) q[i] = wsk_rect(&root, i);
+		s.put = to_window; s.ctx = &dev;
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0;
+		ok(wsk_render(&root, &s, 4096) > 0, "drawn, in one document under 4 KB");
+		{
+			wsk_rect_t e = q[1]; e.y = (short)(e.y + e.h - 1); e.h = 1;
+			wn = span(e, pix565(root.trough), &lo, &hi);
+			e = q[3]; e.y = (short)(e.y + e.h - 1); e.h = 1;
+			wm = span(e, pix565(root.trough), &lo, &hi);
+			e = q[4]; e.y = (short)(e.y + e.h / 2); e.h = 1;
+			ok_w = span(e, pix565(root.accent), &ok_l, &ok_r);
+		}
+		printf("    name's well %d,%d %dx%d (%d of its bottom row the trough); notes %d,%d %dx%d (%d); "
+		       "OK %d..%d of %d..%d\n", q[1].x, q[1].y, q[1].w, q[1].h, wn, q[3].x, q[3].y, q[3].w, q[3].h, wm,
+		       ok_l, ok_r, q[4].x, q[4].x + q[4].w - 1);
+		ok(wn >= q[1].w - 2 && q[1].x == q[3].x && q[1].w == q[3].w,
+		   "the name field's well across its column, the memo's under it at the same x and width");
+		ok(wm >= q[3].w - 2 && q[3].y + q[3].h > q[5].y + q[5].h,
+		   "the memo down two rows, its well reaching below the label in the second");
+		ok(ok_w > 0 && ok_l <= q[0].x + 1 && ok_r >= q[1].x + q[1].w - 2, "OK across both columns");
+
+		wsk_ui_init(&ui, &root);
+		memset(&ev, 0, sizeof ev);
+		ev.kind = WSK_EV_DOWN; ev.x = (short)(q[1].x + q[1].w - 4); ev.y = (short)(q[1].y + 8); ev.d = 1;
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		ev.kind = WSK_EV_UP; wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		memset(&ev, 0, sizeof ev); ev.kind = WSK_EV_TEXT; ev.text[0] = '!';
+		wsk_feed(&ui, &ev, nt, 4, &y0, &y1);
+		v = ((uint32_t)y0 << 16) | ((uint32_t)y1 & 0xFFFFu);
+		svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render_rows(&root, y0, y1, &s, 4096);
+		memcpy(want, screen, sizeof screen);
+		v = 0; svgwin_setstat(&dev, RV9_SVG_SS_ROWS, &v);
+		s.len = 0; wsk_render(&root, &s, 4096);
+		ok(strcmp(nb, "Ada!") == 0 && memcmp(screen, want, sizeof screen) == 0,
+		   "\"!\" typed into the name: its rows, repainted alone, equal a full redraw");
+		shot("cells.ppm");
+	}
+
 	printf(fails ? "\n%d pixel check(s) failed\n" : "\nall pixel checks passed\n", fails);
 	return fails != 0;
 }

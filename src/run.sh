@@ -95,14 +95,14 @@ for D in "" -DWSK_PANEL -DWSK_MINIMAL -DWSK_NO_FIELD -DWSK_NO_MARKS -DWSK_NO_SCR
          -DWSK_NO_NEST -DWSK_NO_WRAP -DWSK_NO_TEXT -DWSK_NO_OVER -DWSK_NO_CHECK \
          -DWSK_NO_MEMO -DWSK_NO_INPUT -DWSK_NO_UTF8 -DWSK_NO_IMAGE -DWSK_NO_TEXTSEL -DWSK_NO_UNDO -DWSK_NO_SOURCE -DWSK_NO_ENTITY \
          -DWSK_NO_WORDS -DWSK_NO_SPLIT -DWSK_NO_MENUKEYS \
-         -DWSK_NO_WORLD -DWSK_NO_LISTKEYS -DWSK_NO_HOVER -DWSK_NO_TIP -DWSK_NO_GRAB -DWSK_NO_TABCHAR -DWSK_NO_UNDRAWN; do
+         -DWSK_NO_WORLD -DWSK_NO_LISTKEYS -DWSK_NO_HOVER -DWSK_NO_TIP -DWSK_NO_GRAB -DWSK_NO_TABCHAR -DWSK_NO_UNDRAWN -DWSK_NO_GRID; do
 	if ${CC:-gcc} -O1 -Wall -Wextra -Werror $D -I"$HERE" -c -o /dev/null /tmp/wsk_switch.c 2>/tmp/wsk_switch.err; then
 		:
 	else
 		echo "FAIL  whisker.h does not build with '${D:-the default}'"; head -5 /tmp/wsk_switch.err; exit 1
 	fi
 done
-echo "ok    whisker.h builds with each of the 29 profiles and switches, -Werror"
+echo "ok    whisker.h builds with each of the 30 profiles and switches, -Werror"
 # a switch that drops a thing refuses it, rather than drawing it some other
 # way: WSK_NO_TABCHAR let a tab into a memo as a marker (the fourth read)
 cat > /tmp/wsk_notab.c <<'C'
@@ -113,6 +113,32 @@ if ${CC:-gcc} -O1 -Wall -Wextra -Werror -DWSK_NO_TABCHAR -I"$HERE" -o /tmp/wsk_n
 	echo "ok    -DWSK_NO_TABCHAR: a memo refuses a tab, not a marker for it"
 else
 	echo "FAIL  -DWSK_NO_TABCHAR lets a tab into a memo"; exit 1
+fi
+# and a grid (§5aq), in the panel tier, is refused there by name -- with the
+# default build drawing the same tree the control
+cat > /tmp/wsk_nogrid.c <<'C'
+#include "whisker.h"
+int main(void)
+{
+	wsk_widget_t w[1] = { { .kind = WSK_LABEL, .text = "a" } };
+	wsk_tree_t t;
+	int which = 0;
+	wsk_init(&t, WSK_ROW, 100, 40);
+	t.item = w; t.n = 1; t.overflow = WSK_GRID;
+#ifndef WSK_NO_GRID
+	static const wsk_cell_t c[1];
+	t.cells = c;
+	return wsk_check(&t, &which) != WSK_OK;
+#else
+	return wsk_check(&t, &which) != WSK_E_KIND;
+#endif
+}
+C
+if ${CC:-gcc} -O1 -Wall -Wextra -Werror -I"$HERE" -o /tmp/wsk_nogrid /tmp/wsk_nogrid.c && /tmp/wsk_nogrid &&
+   ${CC:-gcc} -O1 -Wall -Wextra -Werror -DWSK_PANEL -I"$HERE" -o /tmp/wsk_nogrid /tmp/wsk_nogrid.c && /tmp/wsk_nogrid; then
+	echo "ok    a grid: checks at the default (the control), refused WSK_E_KIND at -DWSK_PANEL"
+else
+	echo "FAIL  -DWSK_PANEL does not refuse a grid by name"; exit 1
 fi
 
 echo
@@ -195,6 +221,8 @@ link_check module_shape.c "module_shape.c -DWSK_NO_UTF8" -DWSK_NO_UTF8
 NOUTF8="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_NO_WORLD" -DWSK_NO_WORLD
 NOWORLD="$SIZE"
+link_check module_shape.c "module_shape.c -DWSK_NO_GRID" -DWSK_NO_GRID
+NOGRID="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_PANEL" -DWSK_PANEL
 PANEL="$SIZE"
 link_check module_shape.c "module_shape.c -DWSK_MINIMAL" -DWSK_MINIMAL
@@ -208,7 +236,7 @@ echo "      and what each part costs the default, by building without it:"
 printf "        nesting %d, wrap %d, text items %d, the check %d, the memo %d, source %d,\n" \
 	"$(( FULL - NONEST ))" "$(( FULL - NOWRAP ))" "$(( FULL - NOTEXT ))" "$(( FULL - NOCHECK ))" \
 	"$(( FULL - NOMEMO ))" "$(( FULL - NOSOURCE ))"
-printf "        UTF-8 %d, the world %d;\n" "$(( FULL - NOUTF8 ))" "$(( FULL - NOWORLD ))"
+printf "        UTF-8 %d, the world %d, cells %d;\n" "$(( FULL - NOUTF8 ))" "$(( FULL - NOWORLD ))" "$(( FULL - NOGRID ))"
 printf "        overlays %d, selection and the clipboard %d, undo %d, words %d, dividers %d,\n" \
 	"$(( NEST - NOOVER ))" "$(( NEST - NOSEL ))" "$(( NEST - NOUNDO ))" "$(( NEST - NOWORDS ))" \
 	"$(( NEST - NOSPLIT ))"

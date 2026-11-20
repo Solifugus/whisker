@@ -81,7 +81,17 @@ for i, line in enumerate(lines):
 	if m:
 		(call if links(i + 1) else tail)[cur].add(m.group(1).split("+")[0])
 		continue
-	if not INSN.match(line) or RELOC.match(lines[i - 1] if i else ""):
+	if not INSN.match(line):
+		continue
+	# the jump a CALL relocation names is direct: the relocation lines sit
+	# between the auipc and it -- CALL_PLT and, since a later binutils,
+	# RELAX too, so look back past every one (a tail call through auipc t1
+	# + jr t1 was reported as an indirect call, 2026-11-19)
+	k = i - 1
+	while k >= 0 and not INSN.match(lines[k]) and not RELOC.match(lines[k]) and \
+	      re.match(r"^\s+[0-9a-f]+: R_RISCV_", lines[k]):
+		k -= 1
+	if k >= 0 and RELOC.match(lines[k]):
 		continue
 	direct_tail = re.search(r"\tjr\t(?!ra\b)", line)
 	if re.search(r"\tjalr\t(?:ra,\s*)?(?!ra\b)[a-z]", line) or direct_tail:
